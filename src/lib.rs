@@ -3,7 +3,6 @@ use std::{
     mem::MaybeUninit,
     path::{Path, PathBuf},
     ptr::{addr_of_mut, null_mut},
-    sync::OnceLock,
 };
 
 use errors::CodegenError;
@@ -13,10 +12,6 @@ use llvm_sys::{
         LLVMPrintModuleToFile,
     },
     error::LLVMGetErrorMessage,
-    target::{
-        LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs,
-        LLVM_InitializeAllTargets,
-    },
     target_machine::{
         LLVMCodeGenFileType, LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine,
         LLVMDisposeTargetMachine, LLVMGetDefaultTargetTriple, LLVMGetHostCPUFeatures,
@@ -42,13 +37,6 @@ pub mod program;
 pub mod utils;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
-    static INITIALIZED: OnceLock<()> = OnceLock::new();
-    INITIALIZED.get_or_init(|| unsafe {
-        LLVM_InitializeAllTargets();
-        LLVM_InitializeAllTargetInfos();
-        LLVM_InitializeAllTargetMCs();
-        LLVM_InitializeAllAsmPrinters();
-    });
     let context = Context::new();
     let mlir_module = context.compile(program, &output_file)?;
     compile_to_object(&mlir_module, output_file)
@@ -288,5 +276,82 @@ pub fn compile_binary(
 ) -> Result<(), CodegenError> {
     let object_file = compile(program, &output_file)?;
     link_binary(&[object_file], output_file)?;
+    Ok(())
+}
+
+pub fn link_shared_lib(
+    objects: &[impl AsRef<Path>],
+    output_filename: impl AsRef<Path>,
+) -> std::io::Result<()> {
+    let mut output_filename = output_filename.as_ref().to_path_buf();
+    let objects: Vec<_> = objects
+        .iter()
+        .map(|x| x.as_ref().display().to_string())
+        .collect();
+
+    if output_filename.extension().is_none() {
+        output_filename = output_filename.with_extension(get_platform_library_ext());
+    }
+
+    let output_filename = output_filename.to_string_lossy().to_string();
+
+    let args: Vec<_> = {
+        #[cfg(target_os = "macos")]
+        {
+            let mut args = vec![
+                "-demangle",
+                "-no_deduplicate",
+                "-dynamic",
+                "-dylib",
+                "-L/usr/local/lib",
+                "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib",
+            ];
+
+            args.extend(objects.iter().map(|x| x.as_str()));
+
+            args.extend(&["-o", &output_filename, "-lSystem"]);
+
+            args
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mut args = vec!["--hash-style=gnu", "--eh-frame-hdr", "-shared"];
+
+            args.extend(&["-o", &output_filename]);
+
+            args.extend(&["-L/lib/../lib64", "-L/usr/lib/../lib64", "-lc", "-O1"]);
+
+            args.extend(objects.iter().map(|x| x.as_str()));
+
+            args
+        }
+        #[cfg(target_os = "windows")]
+        {
+            unimplemented!()
+        }
+    };
+
+    let mut linker = std::process::Command::new("ld");
+    let proc = linker.args(args.iter()).spawn()?;
+    proc.wait_with_output()?;
+    Ok(())
+}
+
+pub fn get_platform_library_ext() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "dylib"
+    } else if cfg!(target_os = "windows") {
+        "dll"
+    } else {
+        "so"
+    }
+}
+
+pub fn compile_shared_lib(
+    program: &Program,
+    output_file: impl AsRef<Path>,
+) -> Result<(), CodegenError> {
+    let object_file = compile(program, &output_file)?;
+    link_shared_lib(&[object_file], output_file)?;
     Ok(())
 }

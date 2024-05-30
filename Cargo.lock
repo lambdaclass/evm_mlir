@@ -233,6 +233,7 @@ name = "evm_mlir"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "libloading",
  "llvm-sys",
  "melior",
  "mlir-sys",

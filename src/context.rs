@@ -1,5 +1,9 @@
 use llvm_sys::{
     core::LLVMDisposeMessage,
+    target::{
+        LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs,
+        LLVM_InitializeAllTargets,
+    },
     target_machine::{
         LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMGetDefaultTargetTriple,
         LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMGetTargetFromTriple, LLVMRelocMode,
@@ -16,7 +20,7 @@ use melior::{
         attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
-        Block, Identifier, Location, Module as MeliorModule, Region, Value,
+        Attribute, Block, Identifier, Location, Module as MeliorModule, Region, Value,
     },
     utility::{register_all_dialects, register_all_llvm_translations, register_all_passes},
     Context as MeliorContext,
@@ -26,6 +30,7 @@ use std::{
     mem::MaybeUninit,
     path::Path,
     ptr::{addr_of_mut, null_mut},
+    sync::OnceLock,
 };
 
 use crate::{
@@ -62,6 +67,14 @@ impl Context {
         program: &Program,
         output_file: impl AsRef<Path>,
     ) -> Result<MLIRModule, CodegenError> {
+        static INITIALIZED: OnceLock<()> = OnceLock::new();
+        INITIALIZED.get_or_init(|| unsafe {
+            LLVM_InitializeAllTargets();
+            LLVM_InitializeAllTargetInfos();
+            LLVM_InitializeAllTargetMCs();
+            LLVM_InitializeAllAsmPrinters();
+        });
+
         let target_triple = get_target_triple();
 
         let context = &self.melior_context;
@@ -239,7 +252,16 @@ fn compile_program(
         StringAttribute::new(context, "main"),
         TypeAttribute::new(FunctionType::new(context, &[], &[uint8.into()]).into()),
         main_region,
-        &[],
+        &[
+            (
+                Identifier::new(context, "sym_visibility"),
+                StringAttribute::new(context, "public").into(),
+            ),
+            (
+                Identifier::new(context, "llvm.emit_c_interface"),
+                Attribute::unit(context),
+            ),
+        ],
         location,
     );
 
