@@ -63,7 +63,7 @@ fn codegen_gt<'c, 'r>(
     let result = ok_block
         .append_operation(arith::cmpi(
             context,
-            arith::CmpiPredicate::Sgt,
+            arith::CmpiPredicate::Ugt,
             lhs,
             rhs,
             location,
