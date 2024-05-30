@@ -128,3 +128,41 @@ fn pop_with_stack_underflow() {
     let program = vec![Operation::Pop];
     run_program_assert_revert(program);
 }
+
+#[test]
+fn test_gt_less_than() {
+    let (a, b) = (9, 8);
+    let program = vec![
+        Operation::Push32(new_32_byte_immediate(a)),
+        Operation::Push32(new_32_byte_immediate(b)),
+        Operation::Gt,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_gt_greater_than() {
+    let (a, b) = (10, 15);
+    let program = vec![
+        Operation::Push32(new_32_byte_immediate(a)),
+        Operation::Push32(new_32_byte_immediate(b)),
+        Operation::Gt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_gt_equal() {
+    let (a, b) = (10, 10);
+    let program = vec![
+        Operation::Push32(new_32_byte_immediate(a)),
+        Operation::Push32(new_32_byte_immediate(b)),
+        Operation::Gt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn gt_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Gt]);
+}

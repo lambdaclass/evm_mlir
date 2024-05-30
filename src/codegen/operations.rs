@@ -26,8 +26,54 @@ pub fn generate_code_for_op<'c, 'r>(
         Operation::Add => codegen_add(context, region),
         Operation::Mul => codegen_mul(context, region),
         Operation::Pop => codegen_pop(context, region),
-        Operation::Gt => todo!(),
+        Operation::Gt => codegen_gt(context, region),
     }
+}
+
+fn codegen_gt<'c, 'r>(
+    codegen_ctx: CodegenCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &codegen_ctx.mlir_context;
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    // Create REVERT block
+    let revert_block = region.append_block(revert_block(context)?);
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let location = Location::unknown(context);
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let rhs = stack_pop(context, &ok_block)?;
+    let lhs = stack_pop(context, &ok_block)?;
+
+    let result = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Sgt,
+            lhs,
+            rhs,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
 }
 
 // TODO: use const generics to generalize for pushN
