@@ -16,7 +16,7 @@ pub enum Opcode {
     // unused 0x0C-0x0F
 
     // LT = 0x10,
-    // GT = 0x11,
+    GT = 0x11,
     // SLT = 0x12,
     // SGT = 0x13,
     // EQ = 0x14,
@@ -177,6 +177,7 @@ impl From<u8> for Opcode {
 pub enum Operation {
     Add,
     Mul,
+    Gt,
     Push32([u8; 32]),
     Pop,
 }
@@ -193,6 +194,7 @@ impl Operation {
             let op = match Opcode::from(opcode) {
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
+                Opcode::GT => Operation::Gt,
                 Opcode::PUSH32 => {
                     i += 1;
                     let x = bytecode[i..(i + 32)].try_into().unwrap();
