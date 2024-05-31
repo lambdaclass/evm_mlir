@@ -14,10 +14,10 @@ use melior::{
     dialect::{
         arith, cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
-        DialectRegistry,
+        ods, DialectRegistry,
     },
     ir::{
-        attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
+        attribute::{DenseI32ArrayAttribute, IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
         Attribute, Block, Identifier, Location, Module as MeliorModule, Region, Value,
@@ -39,6 +39,7 @@ use crate::{
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
+    syscall_handler::SyscallHandlerCallbacks,
     utils::{generate_revert_block, llvm_mlir, stack_pop, stack_push},
 };
 
@@ -204,15 +205,14 @@ fn compile_program(
     let location = Location::unknown(context);
 
     let uint8 = IntegerType::new(context, 8);
-    let callbacks_ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64);
+    let ptr_type = pointer(context, 0);
 
     // Build the main function
     let main_func = func::func(
         context,
         StringAttribute::new(context, "main"),
-        TypeAttribute::new(
-            FunctionType::new(context, &[callbacks_ptr_type], &[uint8.into()]).into(),
-        ),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[]).into()),
         Region::new(),
         &[
             (
@@ -235,29 +235,71 @@ fn compile_program(
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
 
-    let callbacks_ptr = setup_block.add_argument(callbacks_ptr_type, location);
-    // let context_ptr = setup_block
-    //     .append_operation(llvm::load(
-    //         context,
-    //         callbacks_ptr,
-    //         callbacks_ptr_type,
-    //         location,
-    //         LoadStoreOptions::default(),
-    //     ))
-    //     .result(0)?;
+    let context_ptr = setup_block.add_argument(ptr_type, location);
 
-    // TODO: use GEP to fetch callback ptr
-    // - call to ptr, passing parameters?
-    // setup_block
-    //     .append_operation(llvm::get_element_ptr(
-    //         context_ptr,
-    //         stack_ptr.into(),
-    //         DenseI32ArrayAttribute::new(context, &[-1]),
-    //         uint256.into(),
+    let write_result_syscall_ptr = setup_block
+        .append_operation(llvm::get_element_ptr(
+            context,
+            context_ptr,
+            DenseI32ArrayAttribute::new(
+                context,
+                &[SyscallHandlerCallbacks::WRITE_RESULT.try_into().unwrap()],
+            )
+            .into(),
+            ptr_type,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let write_result_syscall = setup_block
+        .append_operation(llvm::load(
+            context,
+            write_result_syscall_ptr,
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    // let array_size = setup_block
+    //     .append_operation(arith::constant(
+    //         context,
+    //         IntegerAttribute::new(uint8.into(), 42).into(),
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    // let ptr = setup_block
+    //     .append_operation(llvm::alloca(
+    //         context,
+    //         array_size,
     //         ptr_type,
     //         location,
+    //         AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint8.into()))),
     //     ))
-    //     .result(0)?;
+    //     .result(0)?
+    //     .into();
+
+    // let array_size_value = setup_block
+    //     .append_operation(arith::constant(
+    //         context,
+    //         // TODO: this should be usize
+    //         IntegerAttribute::new(uint64.into(), 42).into(),
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    // TODO: check if we have to load the ptr first
+    setup_block.append_operation(
+        OperationBuilder::new("llvm.call", location)
+            .add_operands(&[write_result_syscall])
+            .build()?,
+    );
 
     // stack_push(context, &setup_block, argument).unwrap();
 
@@ -287,13 +329,28 @@ fn compile_program(
     // Setup return operation
     // This returns the last element of the stack
     // TODO: handle case where stack is empty
-    let stack_top = stack_pop(context, &return_block)?;
+    // let stack_top = stack_pop(context, &return_block)?;
     // Truncate the value to 8 bits.
     // NOTE: this is due to amd64 using two registers (128 bits) for return values.
-    let exit_code = return_block
-        .append_operation(arith::trunci(stack_top, uint8.into(), location))
-        .result(0)?;
-    return_block.append_operation(func::r#return(&[exit_code.into()], location));
+    // let exit_code = return_block
+    //     .append_operation(arith::trunci(stack_top, uint8.into(), location))
+    //     .result(0)?;
+    // let constant_42 = return_block
+    //     .append_operation(arith::constant(
+    //         context,
+    //         IntegerAttribute::new(uint8.into(), 42).into(),
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+    // return_block.append_operation(llvm::store(
+    //     context,
+    //     constant_42,
+    //     return_ptr,
+    //     location,
+    //     LoadStoreOptions::default(),
+    // ));
+    return_block.append_operation(func::r#return(&[], location));
 
     module.body().append_operation(main_func);
     Ok(())

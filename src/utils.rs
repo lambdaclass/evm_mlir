@@ -426,13 +426,13 @@ pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenEr
     let uint8 = IntegerType::new(context, 8);
     let revert_block = Block::new(&[]);
 
-    let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
+    // let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
 
-    let exit_code = revert_block
-        .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?;
+    // let exit_code = revert_block
+    //     .append_operation(arith::constant(context, constant_value, location))
+    //     .result(0)?;
 
-    revert_block.append_operation(func::r#return(&[exit_code.into()], location));
+    revert_block.append_operation(func::r#return(&[], location));
     Ok(revert_block)
 }
 
