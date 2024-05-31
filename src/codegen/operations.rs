@@ -25,6 +25,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
+        Operation::Eq => todo!(),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Push(x) => codegen_push(op_ctx, region, x),
     }
