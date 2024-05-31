@@ -173,10 +173,69 @@ fn codegen_div<'c, 'r>(
 }
 
 fn codegen_sdiv<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let num = stack_pop(context, &ok_block)?;
+    let den = stack_pop(context, &ok_block)?;
+    let den_is_zero = check_denominator_is_zero(context, &ok_block, &den)?;
+    let den_zero_bloq = region.append_block(Block::new(&[]));
+    let den_not_zero_bloq = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));
+
+    // Denominator is zero path
+    let constant_value = den_zero_bloq
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_zero_bloq, constant_value)?;
+
+    den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    // Denominator is not zero path
+    let result = den_not_zero_bloq
+        .append_operation(arith::divsi(num, den, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_not_zero_bloq, result)?;
+
+    den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    // Branch to den_zero if den_is_zero == true; else branch to den_not_zero
+    ok_block.append_operation(cf::cond_br(
+        context,
+        den_is_zero,
+        &den_zero_bloq,
+        &den_not_zero_bloq,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, return_block))
 }
 
 fn codegen_mul<'c, 'r>(
