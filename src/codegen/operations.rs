@@ -25,10 +25,55 @@ pub fn generate_code_for_op<'c>(
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
-        Operation::Eq => todo!(),
+        Operation::Eq => codegen_eq(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Push(x) => codegen_push(op_ctx, region, x),
     }
+}
+
+fn codegen_eq<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    // Create REVERT block
+    let revert_block = region.append_block(generate_revert_block(context)?);
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
+
+    let result = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Eq,
+            lhs,
+            rhs,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_push<'c, 'r>(
