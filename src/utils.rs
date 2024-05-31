@@ -324,7 +324,7 @@ pub fn check_stack_has_at_least<'ctx>(
     Ok(flag.into())
 }
 
-pub fn revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
+pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
     // TODO: create only one revert block and use it for all revert operations
     let location = Location::unknown(context);
     let uint8 = IntegerType::new(context, 8);

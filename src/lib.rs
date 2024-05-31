@@ -29,7 +29,7 @@ use llvm_sys::{
 };
 use mlir_sys::mlirTranslateModuleToLLVMIR;
 use module::MLIRModule;
-use opcodes::Operation;
+use program::Program;
 
 use crate::context::Context;
 
@@ -38,13 +38,10 @@ pub mod constants;
 pub mod context;
 pub mod errors;
 pub mod module;
-pub mod opcodes;
+pub mod program;
 pub mod utils;
 
-pub fn compile(
-    program: Vec<Operation>,
-    output_file: impl AsRef<Path>,
-) -> Result<PathBuf, CodegenError> {
+pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
     static INITIALIZED: OnceLock<()> = OnceLock::new();
     INITIALIZED.get_or_init(|| unsafe {
         LLVM_InitializeAllTargets();
@@ -53,7 +50,7 @@ pub fn compile(
         LLVM_InitializeAllAsmPrinters();
     });
     let context = Context::new();
-    let mlir_module = context.compile(&program, &output_file)?;
+    let mlir_module = context.compile(program, &output_file)?;
     compile_to_object(&mlir_module, output_file)
 }
 
@@ -286,7 +283,7 @@ pub fn link_binary(
 }
 
 pub fn compile_binary(
-    program: Vec<Operation>,
+    program: &Program,
     output_file: impl AsRef<Path>,
 ) -> Result<(), CodegenError> {
     let object_file = compile(program, &output_file)?;

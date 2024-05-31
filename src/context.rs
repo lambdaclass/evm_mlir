@@ -16,7 +16,7 @@ use melior::{
         attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
-        Block, Identifier, Location, Module as MeliorModule, Region,
+        Block, Identifier, Location, Module as MeliorModule, Region, Value,
     },
     utility::{register_all_dialects, register_all_llvm_translations, register_all_passes},
     Context as MeliorContext,
@@ -29,12 +29,12 @@ use std::{
 };
 
 use crate::{
-    codegen::{context::CodegenCtx, operations::generate_code_for_op, run_pass_manager},
+    codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
     constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
     errors::CodegenError,
     module::MLIRModule,
-    opcodes::Operation,
-    utils::{llvm_mlir, stack_pop},
+    program::{Operation, Program},
+    utils::{generate_revert_block, llvm_mlir, stack_pop},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -59,7 +59,7 @@ impl Context {
 
     pub fn compile(
         &self,
-        program: &[Operation],
+        program: &Program,
         output_file: impl AsRef<Path>,
     ) -> Result<MLIRModule, CodegenError> {
         let target_triple = get_target_triple();
@@ -92,13 +92,7 @@ impl Context {
 
         let mut melior_module = MeliorModule::from_operation(op).expect("module failed to create");
 
-        let codegen_ctx = CodegenCtx {
-            mlir_context: &self.melior_context,
-            mlir_module: &melior_module,
-            program,
-        };
-
-        compile_program(codegen_ctx)?;
+        compile_program(context, &melior_module, program)?;
 
         assert!(melior_module.as_operation().verify());
 
@@ -189,27 +183,41 @@ pub fn get_data_layout_rep() -> Result<String, CodegenError> {
     }
 }
 
-fn compile_program(codegen_ctx: CodegenCtx) -> Result<(), CodegenError> {
-    let context = codegen_ctx.mlir_context;
-    let module = codegen_ctx.mlir_module;
-    let operations = codegen_ctx.program;
-
+fn compile_program(
+    context: &MeliorContext,
+    module: &MeliorModule,
+    program: &Program,
+) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
 
     // Build a region for the main function
     let main_region = Region::new();
 
     // Setup the stack, memory, etc.
-    let setup_block = generate_stack_setup_block(context, module)?;
-    let mut last_block = main_region.append_block(setup_block);
+    // PERF: avoid generating unneeded setup blocks
+    let setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
+    let revert_block = main_region.append_block(generate_revert_block(context)?);
+    let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
+
+    let mut last_block = setup_block;
+
+    let mut op_ctx = OperationCtx {
+        mlir_context: context,
+        program,
+        revert_block,
+        jumptable_block,
+        jumpdest_blocks: Default::default(),
+    };
 
     // Generate code for the program
-    for op in operations {
-        let (block_start, block_end) = generate_code_for_op(codegen_ctx, &main_region, op.clone())?;
+    for op in &op_ctx.program.operations {
+        let (block_start, block_end) = generate_code_for_op(&mut op_ctx, &main_region, op.clone())?;
 
         last_block.append_operation(cf::br(&block_start, &[], location));
         last_block = block_end;
     }
+
+    populate_jumptable(&op_ctx)?;
 
     let return_block = main_region.append_block(Block::new(&[]));
     last_block.append_operation(cf::br(&return_block, &[], location));
@@ -324,4 +332,62 @@ fn generate_stack_setup_block<'c>(
     assert!(res.verify());
 
     Ok(block)
+}
+
+/// Create the jumptable landing block. This is the main entrypoint
+/// for JUMP and JUMPI operations.
+fn create_jumptable_landing_block(context: &MeliorContext) -> Block {
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    Block::new(&[(uint256.into(), location)])
+}
+
+/// Populate the jumptable block with a dynamic dispatch according to the
+/// received PC.
+fn populate_jumptable(op_ctx: &OperationCtx) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let program = op_ctx.program;
+    let start_block = op_ctx.jumptable_block;
+
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+
+    // The block receives a single argument: the value to switch on
+    let jumpdest_pcs: Vec<i64> = program
+        .operations
+        .iter()
+        .filter_map(|op| match op {
+            Operation::Jumpdest { pc } => Some(*pc as i64),
+            _ => None,
+        })
+        .collect();
+
+    let arg = start_block.argument(0).unwrap();
+
+    let case_destinations: Vec<_> = op_ctx
+        .jumpdest_blocks
+        .values()
+        .map(|b| {
+            let x: (&Block, &[Value]) = (b, &[]);
+            x
+        })
+        .collect();
+
+    let op = start_block.append_operation(
+        cf::switch(
+            context,
+            &jumpdest_pcs,
+            arg.into(),
+            uint256.into(),
+            (&op_ctx.revert_block, &[]),
+            &case_destinations,
+            location,
+        )
+        // TODO
+        .unwrap(),
+    );
+
+    assert!(op.verify());
+
+    Ok(())
 }
