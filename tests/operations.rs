@@ -3,7 +3,7 @@ use evm_mlir::{
     constants::REVERT_EXIT_CODE,
     program::{Operation, Program},
 };
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use tempfile::NamedTempFile;
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -172,6 +172,104 @@ fn div_with_zero_numerator() {
 #[test]
 fn div_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Div]);
+}
+
+#[test]
+fn sdiv_without_remainder() {
+    let (a, b) = (BigUint::from(20_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), //
+        Operation::Push(a), //
+        Operation::Sdiv,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_1() {
+    // a = [1, 0, 0, 0, .... , 0, 0, 0, 0] == 1 << 255
+    let mut a = BigUint::from(0_u8);
+    a.set_bit(255, true);
+    // b = [0, 0, 1, 0, .... , 0, 0, 0, 0] == 1 << 253
+    let mut b = BigUint::from(0_u8);
+    b.set_bit(253, true);
+
+    //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0]
+    //If we take the lowest byte
+    //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
+    //let expected_result = (&a / &b).try_into().unwrap();
+    let expected_result: u8 = 252_u8;
+
+    let program = vec![
+        Operation::Push(b.try_into().unwrap()), //
+        Operation::Push(a.try_into().unwrap()), //
+        Operation::Sdiv,                        //
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_2() {
+    let a = BigInt::from(-2_i8);
+    let b = BigInt::from(-1_i8);
+
+    let a_biguint = BigUint::from_bytes_be(&a.to_bytes_be().1);
+    let b_biguint = BigUint::from_bytes_be(&b.to_bytes_be().1);
+
+    let expected_result: u8 = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b_biguint), //
+        Operation::Push(a_biguint), //
+        Operation::Sdiv,            //
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_remainder() {
+    let (a, b) = (BigUint::from(21_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), //
+        Operation::Push(a), //
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_denominator() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(0_u8));
+
+    let expected_result: u8 = 0_u8;
+
+    let program = vec![
+        Operation::Push(b), //
+        Operation::Push(a), //
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_numerator() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), //
+        Operation::Push(a), //
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
 }
 
 #[test]
