@@ -33,6 +33,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
+        Operation::Byte => codegen_byte(op_ctx, region),
     }
 }
 
@@ -47,16 +48,13 @@ fn codegen_gt<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    // Create REVERT block
-    let revert_block = region.append_block(generate_revert_block(context)?);
-
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
         flag,
         &ok_block,
-        &revert_block,
+        &op_ctx.revert_block,
         &[],
         &[],
         location,
@@ -79,12 +77,6 @@ fn codegen_gt<'c, 'r>(
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
-}
-
-// TODO: use const generics to generalize for pushN
-        Operation::Push(x) => codegen_push(op_ctx, region, x),
-        Operation::Byte => codegen_byte(op_ctx, region),
-    }
 }
 
 fn codegen_push<'c, 'r>(
