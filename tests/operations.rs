@@ -311,3 +311,56 @@ fn jumpdest() {
     ];
     run_program_assert_result(program, expected)
 }
+
+#[test]
+fn signextend_one_byte_negative_value() {
+    /*
+    Since we are constrained by the output size u8, in order to check that the result
+    was correctly sign extended (completed with 1s), we have to divide by 2 so we can check
+    that the first byte is 0x3F = [1, 1, 1, 1, 1, 1, 1, 1]
+    */
+    let value = BigUint::from(0xFF_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let denominator = BigUint::from(2_u8);
+
+    let expected_result = 0xFF_u8;
+
+    let program = vec![
+        Operation::Push(denominator),      //
+        Operation::Push(value),            //
+        Operation::Push(value_bytes_size), //
+        Operation::Signextend,             //
+        Operation::Div,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn signextend_one_byte_positive_value() {
+    /*
+    Since we are constrained by the output size u8, in order to check that the result
+    was correctly sign extended (completed with 0s), we have to divide by 2 so we can check
+    that the first byte is 0x3F = [0, 0, 1, 1, 1, 1, 1, 1]
+    */
+    let value = BigUint::from(0x7F_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let denominator = BigUint::from(2_u8);
+
+    let expected_result = 0x3F_u8;
+
+    let program = vec![
+        Operation::Push(denominator),      //
+        Operation::Push(value),            //
+        Operation::Push(value_bytes_size), //
+        Operation::Signextend,             //
+        Operation::Div,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn signextend_with_stack_underflow() {
+    let program = vec![Operation::Signextend];
+    run_program_assert_revert(program);
+}
