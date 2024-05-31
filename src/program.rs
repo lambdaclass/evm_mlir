@@ -24,7 +24,7 @@ pub enum Opcode {
     // EQ = 0x14,
     // ISZERO = 0x15,
     // AND = 0x16,
-    // OR = 0x17,
+    OR = 0x17,
     // XOR = 0x18,
     // NOT = 0x19,
     // BYTE = 0x1A,
@@ -168,6 +168,7 @@ impl From<u8> for Opcode {
         match opcode {
             x if x == Opcode::ADD as u8 => Opcode::ADD,
             x if x == Opcode::MUL as u8 => Opcode::MUL,
+            x if x == Opcode::OR as u8 => Opcode::OR,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
             x if x == Opcode::PUSH0 as u8 => Opcode::PUSH0,
@@ -212,6 +213,7 @@ impl From<u8> for Opcode {
 pub enum Operation {
     Add,
     Mul,
+    Or,
     Pop,
     Jumpdest { pc: usize },
     Push(BigUint),
@@ -234,6 +236,7 @@ impl Program {
             let op = match Opcode::from(opcode) {
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
+                Opcode::OR => Operation::Or,
                 Opcode::POP => Operation::Pop,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
