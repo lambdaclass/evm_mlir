@@ -26,6 +26,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Div => codegen_div(op_ctx, region),
+        Operation::Sdiv => codegen_sdiv(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Push(x) => codegen_push(op_ctx, region, x),
@@ -169,6 +170,13 @@ fn codegen_div<'c, 'r>(
     ));
 
     Ok((start_block, return_block))
+}
+
+fn codegen_sdiv<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
 
 fn codegen_mul<'c, 'r>(
