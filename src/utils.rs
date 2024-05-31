@@ -340,6 +340,50 @@ pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenEr
     Ok(revert_block)
 }
 
+pub fn check_if_zero<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: &'ctx Value,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    //Load zero value constant
+    let zero_constant_value = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    //Perform the comparisson -> value == 0
+    let flag = block
+        .append_operation(
+            ods::llvm::icmp(
+                context,
+                IntegerType::new(context, 1).into(),
+                zero_constant_value,
+                *value,
+                IntegerAttribute::new(
+                    IntegerType::new(context, 64).into(),
+                    /* "eq" predicate enum value */ 0,
+                )
+                .into(),
+                location,
+            )
+            .into(),
+        )
+        .result(0)?;
+
+    Ok(flag.into())
+}
+
+pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
+    let uint256 = IntegerType::new(context, 256);
+    IntegerAttribute::new(uint256.into(), value)
+}
+
 pub mod llvm_mlir {
     use melior::{
         dialect::llvm::{self, attributes::Linkage},
