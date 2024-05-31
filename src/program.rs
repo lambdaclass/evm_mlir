@@ -18,7 +18,7 @@ pub enum Opcode {
     // unused 0x0C-0x0F
 
     // LT = 0x10,
-    // GT = 0x11,
+    GT = 0x11,
     // SLT = 0x12,
     // SGT = 0x13,
     // EQ = 0x14,
@@ -213,6 +213,7 @@ pub enum Operation {
     Add,
     Mul,
     Pop,
+    Gt,
     Jumpdest { pc: usize },
     Push(BigUint),
 }
@@ -235,6 +236,7 @@ impl Program {
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
                 Opcode::POP => Operation::Pop,
+                Opcode::GT => Operation::Gt,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
                 Opcode::PUSH1 => {

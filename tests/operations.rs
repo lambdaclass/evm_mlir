@@ -141,44 +141,6 @@ fn pop_with_stack_underflow() {
 }
 
 #[test]
-fn test_gt_less_than() {
-    let (a, b) = (9, 8);
-    let program = vec![
-        Operation::Push32(new_32_byte_immediate(a)),
-        Operation::Push32(new_32_byte_immediate(b)),
-        Operation::Gt,
-    ];
-    run_program_assert_result(program, 1);
-}
-
-#[test]
-fn test_gt_greater_than() {
-    let (a, b) = (10, 15);
-    let program = vec![
-        Operation::Push32(new_32_byte_immediate(a)),
-        Operation::Push32(new_32_byte_immediate(b)),
-        Operation::Gt,
-    ];
-    run_program_assert_result(program, 0);
-}
-
-#[test]
-fn test_gt_equal() {
-    let (a, b) = (10, 10);
-    let program = vec![
-        Operation::Push32(new_32_byte_immediate(a)),
-        Operation::Push32(new_32_byte_immediate(b)),
-        Operation::Gt,
-    ];
-    run_program_assert_result(program, 0);
-}
-
-#[test]
-fn gt_with_stack_underflow() {
-    run_program_assert_revert(vec![Operation::Gt]);
-}
-
-#[test]
 fn jumpdest() {
     let expected = 5;
     let program = vec![
@@ -187,4 +149,33 @@ fn jumpdest() {
         Operation::Jumpdest { pc: 34 },
     ];
     run_program_assert_result(program, expected)
+}
+
+#[test]
+fn test_gt_less_than() {
+    let a = BigUint::from(9_u8);
+    let b = BigUint::from(8_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_gt_greater_than() {
+    let a = BigUint::from(8_u8);
+    let b = BigUint::from(9_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_gt_equal() {
+    let a = BigUint::from(10_u8);
+    let b = BigUint::from(10_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn gt_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Gt]);
 }

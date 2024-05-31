@@ -22,30 +22,30 @@ pub fn generate_code_for_op<'c>(
     op: Operation,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     match op {
-        Operation::Push32(x) => codegen_push(context, region, x),
-        Operation::Add => codegen_add(context, region),
-        Operation::Mul => codegen_mul(context, region),
-        Operation::Pop => codegen_pop(context, region),
-        Operation::Gt => codegen_gt(context, region),
+        Operation::Push(x) => codegen_push(op_ctx, region, x),
+        Operation::Add => codegen_add(op_ctx, region),
+        Operation::Mul => codegen_mul(op_ctx, region),
+        Operation::Pop => codegen_pop(op_ctx, region),
+        Operation::Gt => codegen_gt(op_ctx, region),
+        Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
     }
 }
 
 fn codegen_gt<'c, 'r>(
-    codegen_ctx: CodegenCtx<'c>,
+    op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
-    let context = &codegen_ctx.mlir_context;
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
     // Create REVERT block
-    let revert_block = region.append_block(revert_block(context)?);
+    let revert_block = region.append_block(generate_revert_block(context)?);
 
     let ok_block = region.append_block(Block::new(&[]));
-
-    let location = Location::unknown(context);
 
     start_block.append_operation(cf::cond_br(
         context,
