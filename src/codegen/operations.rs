@@ -623,7 +623,14 @@ fn codegen_not<'c, 'r>(
     ));
 
     let lhs = stack_pop(context, &ok_block)?;
-    let one = integer_constant_from_i64(context, 1);
+    let one = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 1),
+            location,
+        ))
+        .result(0)?
+        .into();
     let result = ok_block
         .append_operation(arith::xori(lhs, one, location))
         .result(0)?
