@@ -217,6 +217,7 @@ pub enum Operation {
     Add,
     Sub,
     Mul,
+    Shr,
     Pop,
     Div,
     Jumpdest { pc: usize },
