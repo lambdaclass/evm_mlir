@@ -14,7 +14,6 @@ mlir-sys = "0.2.2"
 num-bigint = "0.4.5"
 tempfile = "3.10.1"
 thiserror = "1.0.57"
-libloading = "0.8.3"
 
 [dev-dependencies]
 rstest = "0.21.0"

@@ -34,6 +34,7 @@ pub mod context;
 pub mod errors;
 pub mod module;
 pub mod program;
+pub mod syscall_handler;
 pub mod utils;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {

@@ -39,7 +39,7 @@ use crate::{
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
-    utils::{generate_revert_block, llvm_mlir, stack_pop},
+    utils::{generate_revert_block, llvm_mlir, stack_pop, stack_push},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -203,14 +203,63 @@ fn compile_program(
 ) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
 
-    // Build a region for the main function
-    let main_region = Region::new();
+    let uint8 = IntegerType::new(context, 8);
+    let callbacks_ptr_type = pointer(context, 0);
+
+    // Build the main function
+    let main_func = func::func(
+        context,
+        StringAttribute::new(context, "main"),
+        TypeAttribute::new(
+            FunctionType::new(context, &[callbacks_ptr_type], &[uint8.into()]).into(),
+        ),
+        Region::new(),
+        &[
+            (
+                Identifier::new(context, "sym_visibility"),
+                StringAttribute::new(context, "public").into(),
+            ),
+            (
+                Identifier::new(context, "llvm.emit_c_interface"),
+                Attribute::unit(context),
+            ),
+        ],
+        location,
+    );
+
+    let main_region = main_func.region(0).unwrap();
 
     // Setup the stack, memory, etc.
     // PERF: avoid generating unneeded setup blocks
     let setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
+
+    let callbacks_ptr = setup_block.add_argument(callbacks_ptr_type, location);
+    // let context_ptr = setup_block
+    //     .append_operation(llvm::load(
+    //         context,
+    //         callbacks_ptr,
+    //         callbacks_ptr_type,
+    //         location,
+    //         LoadStoreOptions::default(),
+    //     ))
+    //     .result(0)?;
+
+    // TODO: use GEP to fetch callback ptr
+    // - call to ptr, passing parameters?
+    // setup_block
+    //     .append_operation(llvm::get_element_ptr(
+    //         context_ptr,
+    //         stack_ptr.into(),
+    //         DenseI32ArrayAttribute::new(context, &[-1]),
+    //         uint256.into(),
+    //         ptr_type,
+    //         location,
+    //     ))
+    //     .result(0)?;
+
+    // stack_push(context, &setup_block, argument).unwrap();
 
     let mut last_block = setup_block;
 
@@ -241,29 +290,10 @@ fn compile_program(
     let stack_top = stack_pop(context, &return_block)?;
     // Truncate the value to 8 bits.
     // NOTE: this is due to amd64 using two registers (128 bits) for return values.
-    let uint8 = IntegerType::new(context, 8);
     let exit_code = return_block
         .append_operation(arith::trunci(stack_top, uint8.into(), location))
         .result(0)?;
     return_block.append_operation(func::r#return(&[exit_code.into()], location));
-
-    let main_func = func::func(
-        context,
-        StringAttribute::new(context, "main"),
-        TypeAttribute::new(FunctionType::new(context, &[], &[uint8.into()]).into()),
-        main_region,
-        &[
-            (
-                Identifier::new(context, "sym_visibility"),
-                StringAttribute::new(context, "public").into(),
-            ),
-            (
-                Identifier::new(context, "llvm.emit_c_interface"),
-                Attribute::unit(context),
-            ),
-        ],
-        location,
-    );
 
     module.body().append_operation(main_func);
     Ok(())

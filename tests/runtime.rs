@@ -1,8 +1,10 @@
+#![allow(dead_code)]
 use std::path::PathBuf;
 
 use evm_mlir::{
     context::Context,
     program::{Operation, Program},
+    syscall_handler::{MainFunc, SyscallHandler, SyscallHandlerCallbacks},
 };
 use melior::ExecutionEngine;
 use num_bigint::BigUint;
@@ -27,6 +29,7 @@ fn runtime_test() {
 
     let engine = ExecutionEngine::new(module.module(), 0, &[], false);
 
+    // See: fn cairo_native__libfunc__debug__print
     // unsafe {
     //     engine.register_symbol(
     //         "cairo_native__libfunc__debug__print",
@@ -35,11 +38,17 @@ fn runtime_test() {
     //     );
     // }
 
-    // let fptr = engine.lookup("main") as *mut c_void;
-    let mut result = 0_i64;
-    unsafe { engine.invoke_packed("main", &mut [&mut result as *mut i64 as *mut ()]) }.unwrap();
+    let mut handler = SyscallHandler { counter: 41 };
+
+    let function_name = "_mlir_ciface_main";
+    let fptr = engine.lookup(function_name);
+    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+
+    let callbacks = SyscallHandlerCallbacks::new(&mut handler);
+
+    let result = main_fn(&callbacks);
 
     assert_eq!(result, (a + b).try_into().unwrap());
 
-    assert!(output_file.exists(), "output file does not exist");
+    assert_eq!(handler.counter, 42);
 }
