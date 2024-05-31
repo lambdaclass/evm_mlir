@@ -215,7 +215,7 @@ If you decide to build from source, here are some indications:
 wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.4/llvm-project-18.1.4.src.tar.xz
 tar xf llvm-project-18.1.4.src.tar.xz
 
-cd llvm-project-18.1.4.src.tar
+cd llvm-project-18.1.4.src
 mkdir build
 cd build
 
