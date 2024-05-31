@@ -245,6 +245,17 @@ fn mul_with_stack_underflow() {
 }
 
 #[test]
+fn push_push_shr() {
+    let program = vec![
+        Operation::Push(BigUint::from(32_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Shr
+    ];
+
+    run_program_assert_result(program, 4);
+}
+
+#[test]
 fn push_push_pop() {
     // Push two values to the stack and then pop once
     // The program result should be equal to the first

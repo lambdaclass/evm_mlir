@@ -1,6 +1,6 @@
 use melior::{
     dialect::{arith, cf},
-    ir::{Attribute, Block, BlockRef, Location, Region},
+    ir::{attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location, Region, Value},
     Context as MeliorContext,
 };
 
@@ -9,8 +9,7 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_denominator_is_zero, check_stack_has_at_least, check_stack_has_space_for,
-        generate_revert_block, integer_constant_from_i64, stack_pop, stack_push,
+        check_denominator_is_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, generate_revert_block, integer_constant_from_i64, stack_pop, stack_push
     },
 };
 use num_bigint::BigUint;
@@ -255,9 +254,10 @@ fn codegen_shr<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let mut flag = check_stack_has_at_least(context, &start_block, 2)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -274,19 +274,50 @@ fn codegen_shr<'c, 'r>(
     let shift = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let result = ok_block
+    let value_255 = ok_block
+    .append_operation(arith::constant(
+        context,
+        IntegerAttribute::new(uint32.into(), 255 as i64).into(),
+        location,
+    ))
+    .result(0)?
+    .into();
+
+    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+
+    // if shift is less than 255
+    let ok_ok_block = region.append_block(Block::new(&[]));
+
+    let result = ok_ok_block
         .append_operation(arith::shrui(value, shift, location))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, result)?;
+    stack_push(context, &ok_ok_block, result)?;
 
-    let result = ok_block
-        .append_operation(arith::constant(context, Attribute::from(0), location))
-        .result(0)?
-        .into();
+    // if shifht is grater than 255
+    let altv_block = region.append_block(Block::new(&[]));
 
-    stack_push(context, &ok_block, result)?;
+    let result = altv_block
+    .append_operation(arith::constant(
+        context,
+        IntegerAttribute::new(uint32.into(), 0 as i64).into(),
+        location,
+    ))
+    .result(0)?
+    .into();
+
+    stack_push(context, &altv_block, result)?;
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_ok_block,
+        &altv_block,
+        &[],
+        &[],
+        location,
+    ));
 
     return Ok((start_block, ok_block));
 }
