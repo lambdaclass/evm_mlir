@@ -308,3 +308,34 @@ fn mod_with_zero_numerator() {
 fn mod_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Mod]);
 }
+
+#[test]
+fn smod_with_negative_numerator() {
+    let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
+    let expected_result = (&num % &den).try_into().unwrap();
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn smod_with_positive_numerator() {
+    let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
+    let expected_result = (&num % &den).try_into().unwrap();
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn smod_with_zero_denominator() {
+    let (num, den) = (BigUint::from(10_u8), BigUint::from(0_u8));
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn smod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Smod]);
+}
