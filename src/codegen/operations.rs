@@ -10,7 +10,7 @@ use crate::{
     program::Operation,
     utils::{
         check_denominator_is_zero, check_stack_has_at_least, check_stack_has_space_for,
-        integer_constant_from_i64, stack_pop, stack_push,
+        constant_value_from_i64, stack_pop, stack_push,
     },
 };
 use num_bigint::BigUint;
@@ -115,7 +115,6 @@ fn codegen_div<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -130,23 +129,14 @@ fn codegen_div<'c, 'r>(
 
     let num = stack_pop(context, &ok_block)?;
     let den = stack_pop(context, &ok_block)?;
-
     let den_is_zero = check_denominator_is_zero(context, &ok_block, &den)?;
     let den_zero_bloq = region.append_block(Block::new(&[]));
     let den_not_zero_bloq = region.append_block(Block::new(&[]));
     let return_block = region.append_block(Block::new(&[]));
 
-    let constant_value = den_zero_bloq
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    stack_push(context, &den_zero_bloq, constant_value)?;
-
+    // Denominator is zero path
+    let zero_value = constant_value_from_i64(context, &den_zero_bloq, 0i64)?;
+    stack_push(context, &den_zero_bloq, zero_value)?;
     den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 
     // Denominator is not zero path
@@ -156,9 +146,9 @@ fn codegen_div<'c, 'r>(
         .into();
 
     stack_push(context, &den_not_zero_bloq, result)?;
-
     den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 
+    // Branch to den_zero if den_is_zero == true; else branch to den_not_zero
     ok_block.append_operation(cf::cond_br(
         context,
         den_is_zero,
@@ -179,6 +169,7 @@ fn codegen_sdiv<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -201,17 +192,8 @@ fn codegen_sdiv<'c, 'r>(
     let return_block = region.append_block(Block::new(&[]));
 
     // Denominator is zero path
-    let constant_value = den_zero_bloq
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    stack_push(context, &den_zero_bloq, constant_value)?;
-
+    let zero_value = constant_value_from_i64(context, &den_zero_bloq, 0i64)?;
+    stack_push(context, &den_zero_bloq, zero_value)?;
     den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 
     // Denominator is not zero path
@@ -221,7 +203,6 @@ fn codegen_sdiv<'c, 'r>(
         .into();
 
     stack_push(context, &den_not_zero_bloq, result)?;
-
     den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 
     // Branch to den_zero if den_is_zero == true; else branch to den_not_zero
@@ -338,29 +319,10 @@ fn codegen_byte<'c, 'r>(
 
     const BITS_PER_BYTE: u8 = 8;
     const MAX_SHIFT: u8 = 31;
-    let mut bits_per_byte: [u8; 32] = [0; 32];
-    bits_per_byte[31] = BITS_PER_BYTE;
 
-    let mut max_shift_in_bits: [u8; 32] = [0; 32];
-    max_shift_in_bits[31] = MAX_SHIFT * BITS_PER_BYTE;
-
-    let constant_bits_per_byte = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant(context, bits_per_byte),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_max_shift_in_bits = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant(context, max_shift_in_bits),
-            location,
-        ))
-        .result(0)?
-        .into();
+    let constant_bits_per_byte = constant_value_from_i64(context, &ok_block, BITS_PER_BYTE as i64)?;
+    let constant_max_shift_in_bits =
+        constant_value_from_i64(context, &ok_block, (MAX_SHIFT * BITS_PER_BYTE) as i64)?;
 
     let offset_in_bits = ok_block
         .append_operation(arith::muli(offset, constant_bits_per_byte, location))
@@ -391,17 +353,10 @@ fn codegen_byte<'c, 'r>(
         location,
     ));
 
-    let zero = out_of_bounds_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant(context, [0; 32]),
-            location,
-        ))
-        .result(0)?
-        .into();
+    let zero_constant_value = constant_value_from_i64(context, &out_of_bounds_block, 0_i64)?;
 
     // push zero to the stack
-    stack_push(context, &out_of_bounds_block, zero)?;
+    stack_push(context, &out_of_bounds_block, zero_constant_value)?;
 
     out_of_bounds_block.append_operation(cf::br(&end_block, &[], location));
 
