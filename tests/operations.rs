@@ -205,9 +205,9 @@ fn sdiv_signed_division_1() {
     let expected_result: u8 = 252_u8;
 
     let program = vec![
-        Operation::Push(b.try_into().unwrap()), //
-        Operation::Push(a.try_into().unwrap()), //
-        Operation::Sdiv,                        //
+        Operation::Push(b), //
+        Operation::Push(a), //
+        Operation::Sdiv,    //
     ];
     run_program_assert_result(program, expected_result);
 }
