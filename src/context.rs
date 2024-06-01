@@ -14,7 +14,7 @@ use melior::{
     dialect::{
         arith, cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
-        ods, DialectRegistry,
+        DialectRegistry,
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, StringAttribute, TypeAttribute},
@@ -40,7 +40,7 @@ use crate::{
     module::MLIRModule,
     program::{Operation, Program},
     syscall_handler::SyscallHandlerCallbacks,
-    utils::{generate_revert_block, llvm_mlir, stack_pop, stack_push},
+    utils::{generate_revert_block, llvm_mlir},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -235,12 +235,23 @@ fn compile_program(
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
 
-    let context_ptr = setup_block.add_argument(ptr_type, location);
+    let callback_ptr = setup_block.add_argument(ptr_type, location);
+
+    let context_ptr = setup_block
+        .append_operation(llvm::load(
+            context,
+            callback_ptr,
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     let write_result_syscall_ptr = setup_block
         .append_operation(llvm::get_element_ptr(
             context,
-            context_ptr,
+            callback_ptr,
             DenseI32ArrayAttribute::new(
                 context,
                 &[SyscallHandlerCallbacks::WRITE_RESULT.try_into().unwrap()],
@@ -264,40 +275,48 @@ fn compile_program(
         .result(0)?
         .into();
 
-    // let array_size = setup_block
-    //     .append_operation(arith::constant(
-    //         context,
-    //         IntegerAttribute::new(uint8.into(), 42).into(),
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
+    let array_size = setup_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint8.into(), 42).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    // let ptr = setup_block
-    //     .append_operation(llvm::alloca(
-    //         context,
-    //         array_size,
-    //         ptr_type,
-    //         location,
-    //         AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint8.into()))),
-    //     ))
-    //     .result(0)?
-    //     .into();
+    let ptr = setup_block
+        .append_operation(llvm::alloca(
+            context,
+            array_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint8.into()))),
+        ))
+        .result(0)?
+        .into();
 
-    // let array_size_value = setup_block
-    //     .append_operation(arith::constant(
-    //         context,
-    //         // TODO: this should be usize
-    //         IntegerAttribute::new(uint64.into(), 42).into(),
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
+    setup_block.append_operation(llvm::store(
+        context,
+        array_size,
+        ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    let array_size_value = setup_block
+        .append_operation(arith::constant(
+            context,
+            // TODO: this should be usize
+            IntegerAttribute::new(uint64.into(), 42).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
     // TODO: check if we have to load the ptr first
     setup_block.append_operation(
         OperationBuilder::new("llvm.call", location)
-            .add_operands(&[write_result_syscall])
+            .add_operands(&[write_result_syscall, context_ptr, ptr, array_size_value])
             .build()?,
     );
 

@@ -16,12 +16,12 @@ pub struct SyscallHandler {
 #[repr(C)]
 pub struct SyscallHandlerCallbacks<'a> {
     self_ptr: &'a mut SyscallHandler,
-    write_result: extern "C" fn(/*ptr: &mut SyscallHandler, bytes_ptr: *const u8, bytes_len: usize*/),
+    write_result: extern "C" fn(ptr: &mut SyscallHandler, bytes_ptr: *const u8, bytes_len: u64),
 }
 
 impl SyscallHandler {
     fn write_result(&mut self, bytes: &[u8]) {
-        self.result.extend_from_slice(bytes);
+        self.result.push(bytes[0]);
     }
 }
 
@@ -39,14 +39,15 @@ impl<'a> SyscallHandlerCallbacks<'a> {
         }
     }
 
-    extern "C" fn wrap_write_result(// ptr: &mut SyscallHandler,
-        // bytes_ptr: *const u8,
-        // bytes_len: usize,
+    extern "C" fn wrap_write_result(
+        ptr: &mut SyscallHandler,
+        bytes_ptr: *const u8,
+        bytes_len: u64,
     ) {
         eprintln!("aaaaaaaaaaaaaaaaa");
         // TODO: verify safety
-        // let bytes = unsafe { std::slice::from_raw_parts(bytes_ptr, bytes_len) };
-        // ptr.write_result(bytes);
+        let bytes = unsafe { std::slice::from_raw_parts(bytes_ptr, bytes_len as usize) };
+        ptr.write_result(bytes);
     }
 }
 
