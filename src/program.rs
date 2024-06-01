@@ -19,7 +19,7 @@ pub enum Opcode {
 
     // LT = 0x10,
     // GT = 0x11,
-    // SLT = 0x12,
+    SLT = 0x12,
     // SGT = 0x13,
     // EQ = 0x14,
     // ISZERO = 0x15,
@@ -207,6 +207,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::PUSH31 as u8 => Opcode::PUSH31,
             x if x == Opcode::PUSH32 as u8 => Opcode::PUSH32,
             x if x == Opcode::BYTE as u8 => Opcode::BYTE,
+            x if x == Opcode::SLT as u8 => Opcode::SLT,
             _ => Opcode::UNUSED,
         }
     }
@@ -224,6 +225,7 @@ pub enum Operation {
     Jumpdest { pc: usize },
     Push(BigUint),
     Byte,
+    Slt,
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +251,7 @@ impl Program {
                 Opcode::MOD => Operation::Mod,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
                 Opcode::ADDMOD => Operation::Addmod,
+                Opcode::SLT => Operation::Slt,
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
                 Opcode::PUSH1 => {
                     pc += 1;

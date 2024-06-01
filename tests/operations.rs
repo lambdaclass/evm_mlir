@@ -383,3 +383,77 @@ fn addmod_with_zero_denominator() {
     ];
     run_program_assert_result(program, 0);
 }
+
+#[test]
+fn test_slt_unsigned_greater_than() {
+    let a = BigUint::from(2_u8);
+    let b = BigUint::from(1_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_slt_unsigned_less_than() {
+    let a = BigUint::from(0_u8);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_slt_signed_less_than() {
+    let mut a = BigUint::from(3_u8);
+    a.set_bit(255, true);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_slt_signed_greater_than() {
+    let a = BigUint::from(2_u8);
+    let mut b = BigUint::from(3_u8);
+    b.set_bit(255, true);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_slt_equal() {
+    let a = BigUint::from(2_u8);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_slt_stack_underflow() {
+    let program = vec![Operation::Slt];
+    run_program_assert_revert(program);
+}
