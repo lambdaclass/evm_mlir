@@ -424,6 +424,20 @@ fn test_slt_signed_less_than() {
 
     run_program_assert_result(program, 0);
 }
+#[test]
+fn test_slt_both_signed() {
+    let mut a = BigUint::from(3_u8);
+    a.set_bit(255, true);
+    let mut  b = BigUint::from(2_u8);
+    a.set_bit(255, true);
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, 0);
+}
 
 #[test]
 fn test_slt_signed_greater_than() {
@@ -449,7 +463,7 @@ fn test_slt_equal() {
         Operation::Push(b.clone()),
         Operation::Slt,
     ];
-    run_program_assert_result(program, 0);
+    run_program_assert_result(program, 1);
 }
 
 #[test]

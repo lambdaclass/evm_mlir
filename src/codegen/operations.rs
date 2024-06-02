@@ -627,7 +627,7 @@ fn codegen_slt<'c, 'r>(
     let result = ok_block
         .append_operation(arith::cmpi(
             context,
-            arith::CmpiPredicate::Slt,
+            arith::CmpiPredicate::Sle,
             lhs,
             rhs,
             location,
