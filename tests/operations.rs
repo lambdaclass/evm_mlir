@@ -429,14 +429,14 @@ fn test_slt_both_signed() {
     let mut a = BigUint::from(3_u8);
     a.set_bit(255, true);
     let mut  b = BigUint::from(2_u8);
-    a.set_bit(255, true);
+    b.set_bit(255, true);
     let program = vec![
         Operation::Push(a.clone()),
         Operation::Push(b.clone()),
         Operation::Slt,
     ];
 
-    run_program_assert_result(program, 0);
+    run_program_assert_result(program, 1);
 }
 
 #[test]
