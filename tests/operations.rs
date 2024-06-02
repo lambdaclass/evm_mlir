@@ -384,7 +384,7 @@ fn addmod_with_zero_denominator() {
     run_program_assert_result(program, 0);
 }
 #[test]
-fn push_push_normal_mul() {
+fn push_push_normal_not() {
     let (a) = BigUint::from(1_u8);
 
     let program = vec![Operation::Push(a.clone()), Operation::Not];

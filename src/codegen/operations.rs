@@ -1,8 +1,9 @@
 use melior::{
     dialect::{arith, cf},
-    ir::{Attribute, Block, BlockRef, Location, Region},
+    ir::{Attribute, Block, BlockRef, Location, Region,Value},
     Context as MeliorContext,
 };
+
 
 use super::context::OperationCtx;
 use crate::{
@@ -626,11 +627,12 @@ fn codegen_not<'c, 'r>(
     let one = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, 1),
+            integer_constant_from_i64(context, 1).into(),
             location,
         ))
         .result(0)?
         .into();
+
     let result = ok_block
         .append_operation(arith::xori(lhs, one, location))
         .result(0)?
