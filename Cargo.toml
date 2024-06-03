@@ -15,5 +15,8 @@ num-bigint = "0.4.5"
 tempfile = "3.10.1"
 thiserror = "1.0.57"
 
+[dev-dependencies]
+rstest = "0.21.0"
+
 [build-dependencies]
 cc = "1.0.83"
