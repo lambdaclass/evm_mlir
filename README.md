@@ -27,6 +27,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x18) XOR
 1. (0x1A) BYTE
 1. (0x16) AND
+1. (0x1B) SHL
 1. (0x1D) SAR
 1. (0x50) POP
 1. (0x56) JUMP
@@ -115,7 +116,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x14) EQ
 1. (0x17) OR
 1. (0x19) NOT
-1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x20) KECCAK256
 1. (0x30) ADDRESS
