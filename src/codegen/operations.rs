@@ -1,7 +1,6 @@
 use melior::{
     dialect::{arith, cf, ods},
-    ir::{Attribute, Block, BlockRef, Location, Region},
-    Context as MeliorContext,
+    ir::{r#type::IntegerType, Attribute, Block, BlockRef, Location, Region},
 };
 
 use super::context::OperationCtx;
@@ -9,8 +8,8 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, get_nth_from_stack,
-        integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, extend_memory,
+        get_nth_from_stack, integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -808,14 +807,11 @@ fn codegen_sar<'c, 'r>(
     let shift = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let mut max_shift: [u8; 32] = [0; 32];
-    max_shift[31] = 255;
-
     // max_shift = 255
     let max_shift = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, max_shift),
+            integer_constant_from_i64(context, 255).into(),
             location,
         ))
         .result(0)?
@@ -1152,6 +1148,7 @@ fn codegen_return<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    // TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -1186,6 +1183,13 @@ fn codegen_return<'c>(
         .result(0)
         .unwrap()
         .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
 
     op_ctx.write_result_syscall(&ok_block, offset, size, location);
 

@@ -13,6 +13,7 @@ fn main() {
     let path = args.get(1).expect("No path provided").as_str();
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
+
     // This is for intermediate files
     let output_file = PathBuf::from("output");
 

@@ -8,10 +8,25 @@ pub struct SyscallContext {
     result: Option<(usize, usize)>,
 }
 
+impl SyscallContext {
+    pub fn result(&self) -> &[u8] {
+        let (offset, size) = self.result.unwrap_or((0, 0));
+        &self.memory[offset..offset + size]
+    }
+}
+
 // Syscall implementations
 impl SyscallContext {
     fn write_result(&mut self, offset: usize, bytes_len: usize) {
         self.result = Some((offset, bytes_len));
+    }
+
+    fn extend_memory(&mut self, new_size: usize) {
+        println!("Extending memory to {new_size}");
+        if new_size > self.memory.len() {
+            // TODO: check for OOM
+            self.memory.resize(new_size, 0);
+        }
     }
 }
 
@@ -20,10 +35,16 @@ impl SyscallContext {
     pub extern "C" fn wrap_write_result(&mut self, offset: u32, bytes_len: u32) {
         self.write_result(offset as usize, bytes_len as usize);
     }
+
+    pub extern "C" fn wrap_extend_memory(&mut self, new_size: u32) -> *mut u8 {
+        self.extend_memory(new_size as usize);
+        self.memory.as_mut_ptr()
+    }
 }
 
 pub mod syscall {
     pub const WRITE_RESULT: &str = "write_result";
+    pub const EXTEND_MEMORY: &str = "extend_memory";
 }
 
 pub type MainFunc = extern "C" fn(&mut SyscallContext);
@@ -32,7 +53,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
     unsafe {
         engine.register_symbol(
             syscall::WRITE_RESULT,
-            SyscallContext::wrap_write_result as *const fn(*mut c_void, *const u8, u64) as *mut (),
-        )
+            SyscallContext::wrap_write_result as *const fn(*mut c_void, u32, u32) as *mut (),
+        );
+        engine.register_symbol(
+            syscall::EXTEND_MEMORY,
+            SyscallContext::wrap_extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
     };
 }

@@ -14,7 +14,11 @@ use melior::{
 };
 
 use crate::{
-    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    codegen::context::OperationCtx,
+    constants::{
+        MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL,
+        STACK_PTR_GLOBAL,
+    },
     errors::CodegenError,
 };
 
@@ -472,6 +476,57 @@ pub fn check_if_zero<'ctx>(
         .result(0)?;
 
     Ok(flag.into())
+}
+
+pub(crate) fn extend_memory<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    new_size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let ptr_type = pointer(context, 0);
+
+    let memory_ptr = op_ctx.extend_memory_syscall(block, new_size, location)?;
+
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        new_size,
+        memory_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let memory_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        memory_ptr,
+        memory_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(memory_ptr)
 }
 
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {

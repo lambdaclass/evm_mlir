@@ -230,6 +230,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::BYTE as u8 => Opcode::BYTE,
             x if x == Opcode::JUMPI as u8 => Opcode::JUMPI,
             x if x == Opcode::JUMP as u8 => Opcode::JUMP,
+            x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             _ => Opcode::UNUSED,
         }
     }
@@ -523,7 +524,7 @@ impl Program {
                 Opcode::AND => Operation::And,
                 Opcode::OR => Operation::Or,
                 Opcode::RETURN => Operation::Return,
-                Opcode::UNUSED => panic!("Unknown opcode {:02X}", opcode),
+                Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);
             pc += 1;

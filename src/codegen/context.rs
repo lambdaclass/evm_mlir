@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use melior::{
-    dialect::{cf, func},
+    dialect::{cf, func, llvm::r#type::pointer},
     ir::{attribute::FlatSymbolRefAttribute, Block, BlockRef, Location, Value},
     Context as MeliorContext,
 };
 
-use crate::{program::Program, syscall_handler::syscall};
+use crate::{errors::CodegenError, program::Program, syscall_handler::syscall};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationCtx<'c> {
@@ -64,5 +64,24 @@ impl<'c> OperationCtx<'c> {
             &[],
             location,
         ));
+    }
+
+    pub(crate) fn extend_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        new_size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        let ptr_type = pointer(self.mlir_context, 0);
+        let value = block
+            .append_operation(func::call(
+                self.mlir_context,
+                FlatSymbolRefAttribute::new(self.mlir_context, syscall::EXTEND_MEMORY),
+                &[self.syscall_ctx, new_size],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 }

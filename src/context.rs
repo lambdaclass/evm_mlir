@@ -35,7 +35,10 @@ use std::{
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
-    constants::{MAIN_ENTRYPOINT, MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    constants::{
+        MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+    },
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
@@ -233,6 +236,7 @@ fn compile_program(
 
     // Append setup code to be run at the start
     generate_stack_setup_code(context, module, &setup_block)?;
+    generate_memory_setup_code(context, module, &setup_block)?;
 
     declare_syscalls(context, module);
 
@@ -381,6 +385,62 @@ fn generate_stack_setup_code<'c>(
     Ok(())
 }
 
+fn generate_memory_setup_code<'c>(
+    context: &'c MeliorContext,
+    module: &'c MeliorModule,
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    // Declare the stack pointer and base pointer globals
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        MEMORY_PTR_GLOBAL,
+        ptr_type,
+        location,
+    ));
+    assert!(res.verify());
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        MEMORY_SIZE_GLOBAL,
+        uint32,
+        location,
+    ));
+    assert!(res.verify());
+
+    let zero = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        zero,
+        memory_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
 /// Create the jumptable landing block. This is the main entrypoint
 /// for JUMP and JUMPI operations.
 fn create_jumptable_landing_block(context: &MeliorContext) -> Block {
@@ -441,7 +501,6 @@ fn populate_jumptable(op_ctx: &OperationCtx) -> Result<(), CodegenError> {
 
 fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
     let location = Location::unknown(context);
-    let empty_region = Region::new();
 
     // Type declarations
     let ptr_type = pointer(context, 0);
@@ -457,7 +516,16 @@ fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
         context,
         StringAttribute::new(context, syscall::WRITE_RESULT),
         TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
-        empty_region,
+        Region::new(),
+        attributes,
+        location,
+    ));
+
+    module.body().append_operation(func::func(
+        context,
+        StringAttribute::new(context, syscall::EXTEND_MEMORY),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+        Region::new(),
         attributes,
         location,
     ));
