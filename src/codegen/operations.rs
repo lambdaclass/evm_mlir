@@ -1,7 +1,7 @@
 use melior::{
     dialect::{arith, cf, func, ods},
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        attribute::IntegerAttribute, r#type::IntegerType, attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
     },
 };
@@ -12,10 +12,9 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
-        swap_stack_elements,
+        check_if_zero, check_is_greater_than, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
+        swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -54,6 +53,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Byte => codegen_byte(op_ctx, region),
         Operation::Shr => codegen_shr(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
+        Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
@@ -1083,6 +1083,86 @@ fn codegen_mulmod<'c, 'r>(
         location,
     ));
     Ok((start_block, return_block))
+}
+
+fn codegen_shl<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+
+    // Check there's enough elements in stack
+    let mut flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let shift = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    let value_255 = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 255_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+
+    let ok_ok_block = region.append_block(Block::new(&[]));
+    let altv_block = region.append_block(Block::new(&[]));
+    // to unify the blocks after the branching
+    let empty_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_ok_block,
+        &altv_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // if shift is less than 255
+    let result = ok_ok_block
+        .append_operation(arith::shli(value, shift, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_ok_block, result)?;
+
+    ok_ok_block.append_operation(cf::br(&empty_block, &[], location));
+
+    // if shifht is grater than 255
+    let result = altv_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 0_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &altv_block, result)?;
+
+    altv_block.append_operation(cf::br(&empty_block, &[], location));
+
+    Ok((start_block, empty_block))
 }
 
 fn codegen_xor<'c, 'r>(
