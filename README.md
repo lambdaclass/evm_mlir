@@ -25,6 +25,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x0A) EXP
 1. (0x10) LT
 1. (0x13) SGT
+1. (0x14) EQ
 1. (0x15) ISZERO
 1. (0x17) OR
 1. (0x18) XOR
@@ -32,7 +33,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x16) AND
 1. (0x1D) SAR
 1. (0x50) POP
-1. (0x14) EQ
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
