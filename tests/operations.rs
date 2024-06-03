@@ -310,16 +310,18 @@ fn mod_with_stack_underflow() {
 }
 
 #[test]
-fn smod_with_negative_numerator() {
-    let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
-    let expected_result = (&num % &den).try_into().unwrap();
+fn smod_with_negative_operands() {
+    // -8 mod -3 = -2
+    let num = BigUint::from_bytes_be(&[0xff; 32]) - 7_u8; // -8
+    let den = BigUint::from_bytes_be(&[0xff; 32]) - 2_u8; // -3
+    let expected_result = 0xfe; // -2 in two's complement
 
     let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
-    run_program_assert_result(program, expected_result);
+    run_program_assert_result(program, expected_result.try_into().unwrap());
 }
 
 #[test]
-fn smod_with_positive_numerator() {
+fn smod_with_positive_operands() {
     let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
     let expected_result = (&num % &den).try_into().unwrap();
 
