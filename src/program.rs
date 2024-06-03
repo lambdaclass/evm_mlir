@@ -31,7 +31,7 @@ pub enum Opcode {
     // NOT = 0x19,
     BYTE = 0x1A,
     // SHL = 0x1B,
-    // SHR = 0x1C,
+    SHR = 0x1C,
     // SAR = 0x1D,
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
@@ -172,6 +172,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::MUL as u8 => Opcode::MUL,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::DIV as u8 => Opcode::DIV,
+            x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
             x if x == Opcode::PUSH0 as u8 => Opcode::PUSH0,
             x if x == Opcode::PUSH1 as u8 => Opcode::PUSH1,
@@ -245,6 +246,7 @@ impl Program {
                 Opcode::MUL => Operation::Mul,
                 Opcode::POP => Operation::Pop,
                 Opcode::DIV => Operation::Div,
+                Opcode::SHR => Operation::Shr,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
                 Opcode::PUSH1 => {

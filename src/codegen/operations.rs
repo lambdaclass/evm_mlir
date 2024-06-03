@@ -254,7 +254,7 @@ fn codegen_shr<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32);
+    let uint256 = IntegerType::new(context, 256);
 
     // Check there's enough elements in stack
     let mut flag = check_stack_has_at_least(context, &start_block, 2)?;
@@ -277,7 +277,7 @@ fn codegen_shr<'c, 'r>(
     let value_255 = ok_block
     .append_operation(arith::constant(
         context,
-        IntegerAttribute::new(uint32.into(), 255 as i64).into(),
+        IntegerAttribute::new(uint256.into(), 255 as i64).into(),
         location,
     ))
     .result(0)?
@@ -301,7 +301,7 @@ fn codegen_shr<'c, 'r>(
     let result = altv_block
     .append_operation(arith::constant(
         context,
-        IntegerAttribute::new(uint32.into(), 0 as i64).into(),
+        IntegerAttribute::new(uint256.into(), 0 as i64).into(),
         location,
     ))
     .result(0)?
@@ -319,7 +319,7 @@ fn codegen_shr<'c, 'r>(
         location,
     ));
 
-    return Ok((start_block, ok_block));
+    return Ok((start_block, ok_ok_block));
 }
 
 fn codegen_pop<'c, 'r>(
