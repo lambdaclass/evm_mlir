@@ -22,7 +22,7 @@ pub enum Opcode {
     SGT = 0x13,
     // EQ = 0x14,
     // ISZERO = 0x15,
-    // AND = 0x16,
+    AND = 0x16,
     // OR = 0x17,
     XOR = 0x18,
     // NOT = 0x19,
@@ -67,9 +67,9 @@ pub enum Opcode {
     // MSTORE8 = 0x53,
     // SLOAD = 0x54,
     // SSTORE = 0x55,
-    // JUMP = 0x56,
+    JUMP = 0x56,
     // JUMPI = 0x57,
-    // PC = 0x58,
+    PC = 0x58,
     // MSIZE = 0x59,
     // GAS = 0x5A,
     JUMPDEST = 0x5B,
@@ -169,6 +169,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::MUL as u8 => Opcode::MUL,
             x if x == Opcode::XOR as u8 => Opcode::XOR,
             x if x == Opcode::POP as u8 => Opcode::POP,
+            x if x == Opcode::PC as u8 => Opcode::PC,
             x if x == Opcode::DIV as u8 => Opcode::DIV,
             x if x == Opcode::MOD as u8 => Opcode::MOD,
             x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
@@ -207,6 +208,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::PUSH31 as u8 => Opcode::PUSH31,
             x if x == Opcode::PUSH32 as u8 => Opcode::PUSH32,
             x if x == Opcode::BYTE as u8 => Opcode::BYTE,
+            x if x == Opcode::JUMP as u8 => Opcode::JUMP,
             _ => Opcode::UNUSED,
         }
     }
@@ -221,6 +223,7 @@ pub enum Operation {
     Sgt,
     Xor,
     Pop,
+    PC { pc: usize },
     Lt,
     Div,
     Mod,
@@ -228,6 +231,8 @@ pub enum Operation {
     Jumpdest { pc: usize },
     Push(BigUint),
     Byte,
+    Jump,
+    And,
 }
 
 #[derive(Debug, Clone)]
@@ -251,11 +256,13 @@ impl Program {
                 Opcode::XOR => Operation::Xor,
                 Opcode::LT => Operation::Lt,
                 Opcode::POP => Operation::Pop,
+                Opcode::PC => Operation::PC { pc },
                 Opcode::DIV => Operation::Div,
                 Opcode::MOD => Operation::Mod,
                 Opcode::SGT => Operation::Sgt,
                 Opcode::GT => Operation::Gt,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
+                Opcode::JUMP => Operation::Jump,
                 Opcode::ADDMOD => Operation::Addmod,
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
                 Opcode::PUSH1 => {
@@ -450,6 +457,7 @@ impl Program {
                     Operation::Push(BigUint::from_bytes_be(x))
                 }
                 Opcode::BYTE => Operation::Byte,
+                Opcode::AND => Operation::And,
                 Opcode::UNUSED => panic!("Unknown opcode {:02X}", opcode),
             };
             operations.push(op);

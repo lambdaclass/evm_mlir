@@ -330,6 +330,84 @@ fn jumpdest() {
 }
 
 #[test]
+fn jump() {
+    // this test is equivalent to the following bytecode program
+    // the program executes sequentially until the JUMP where
+    // it jumps to the opcode in the position 7 so the PUSH1 10
+    // opcode is not executed => the return value should be equal
+    // to the first pushed value (a = 5)
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 7  // push pc
+    // [04] JUMP
+    // [05] PUSH1 10
+    // [07] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let pc: usize = 7;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jump,
+        Operation::Push(BigUint::from(b)), // this should not be executed
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, a);
+}
+
+#[test]
+fn jump_reverts_if_pc_is_wrong() {
+    // if the pc given does not correspond to a jump destination then
+    // the program should revert
+    let pc = BigUint::from(7_u8);
+    let program = vec![
+        Operation::Push(pc),
+        Operation::Jump,
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn pc_with_previous_push() {
+    let pc = 33;
+    let program = vec![
+        Operation::Push(BigUint::from(8_u8)), //
+        Operation::PC { pc },                 //
+    ];
+    run_program_assert_result(program, pc as u8)
+}
+
+#[test]
+fn pc_with_no_previous_operation() {
+    let pc = 0;
+    let program = vec![
+        Operation::PC { pc }, //
+    ];
+    run_program_assert_result(program, pc as u8)
+}
+
+#[test]
+fn test_and() {
+    let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
+    let expected_result = 0b1000_u8;
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::And];
+    run_program_assert_result(program, expected_result);
+}
+#[test]
+fn test_and_with_zero() {
+    let a = BigUint::from(0_u8);
+    let b = BigUint::from(0xFF_u8);
+    let expected_result = 0_u8;
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::And];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn and_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::And]);
+}
+
+#[test]
 fn mod_with_non_zero_result() {
     let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
     let expected_result = (&num % &den).try_into().unwrap();

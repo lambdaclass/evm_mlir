@@ -33,11 +33,50 @@ pub fn generate_code_for_op<'c>(
         Operation::Mod => codegen_mod(op_ctx, region),
         Operation::Addmod => codegen_addmod(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
+        Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
         Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Byte => codegen_byte(op_ctx, region),
+        Operation::Jump => codegen_jump(op_ctx, region),
+        Operation::And => codegen_and(op_ctx, region),
     }
+}
+
+fn codegen_and<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
+
+    let result = ok_block
+        .append_operation(arith::andi(lhs, rhs, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_gt<'c, 'r>(
@@ -761,4 +800,80 @@ fn codegen_jumpdest<'c>(
     op_ctx.register_jump_destination(pc, landing_block);
 
     Ok((landing_block, landing_block))
+}
+
+fn codegen_jump<'c, 'r: 'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    // it reverts if Counter offset is not a JUMPDEST.
+    // The error is generated even if the JUMP would not have been done
+
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let pc = stack_pop(context, &ok_block)?;
+
+    // appends operation to ok_block to jump to the `jump table block``
+    // in the jump table block the pc is checked and if its ok
+    // then it jumps to the block associated with that pc
+    op_ctx.add_jump_op(ok_block, pc, location);
+
+    // TODO: we are creating an empty block that won't ever be reached
+    // probably there's a better way to do this
+    let empty_block = region.append_block(Block::new(&[]));
+    Ok((start_block, empty_block))
+}
+
+fn codegen_pc<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+    pc: usize,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let pc_value = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, pc as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
 }
