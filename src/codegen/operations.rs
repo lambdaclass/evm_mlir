@@ -968,7 +968,7 @@ fn codegen_pop<'c, 'r>(
     // Check there's at least 1 element in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, 2)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
