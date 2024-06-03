@@ -30,7 +30,7 @@ use std::{
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
-    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL, GAS_COUNTER_GLOBAL},
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
@@ -195,11 +195,14 @@ fn compile_program(
 
     // Setup the stack, memory, etc.
     // PERF: avoid generating unneeded setup blocks
-    let setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
+    let stack_setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
+    let gas_setup_block = main_region.append_block(generate_gas_counter_block(context,module)?);
+    stack_setup_block.append_operation(cf::br(successor, gas_setup_block, location))?;
+
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
 
-    let mut last_block = setup_block;
+    let mut last_block = gas_setup_block;
 
     let mut op_ctx = OperationCtx {
         mlir_context: context,
@@ -245,6 +248,57 @@ fn compile_program(
 
     module.body().append_operation(main_func);
     Ok(())
+}
+
+fn generate_gas_counter_block<'c>(
+    context: &'c MeliorContext,
+    module: &'c MeliorModule,
+) -> Result<Block<'c>, CodegenError> {
+    let location = Location::unknown(context);
+    
+    let ptr_type = pointer(context, 0);
+
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        GAS_COUNTER_GLOBAL,
+        ptr_type,
+        location,
+    ));
+
+
+    let block = Block::new(&[]);
+    let uint256 = IntegerType::new(context, 256);
+
+    let gas_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 99999).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    
+    let gas_addr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+    
+    let res = block.append_operation(llvm::store(
+        context,
+        gas_size,
+        gas_addr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+
+    Ok(block)
 }
 
 fn generate_stack_setup_block<'c>(

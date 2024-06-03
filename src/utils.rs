@@ -18,6 +18,7 @@ use crate::{
     errors::CodegenError,
 };
 
+
 pub fn stack_pop<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
