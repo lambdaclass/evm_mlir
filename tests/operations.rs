@@ -388,7 +388,7 @@ fn xor_with_stack_underflow() {
 fn xor_out_of_gas() {
     let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
     let mut program = vec![];
-    
+
     for _ in 0..334 {
         program.push(Operation::Push(a.clone()));
         program.push(Operation::Push(b.clone()));
