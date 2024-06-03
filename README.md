@@ -20,6 +20,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x06) MOD
 1. (0x08) ADDMOD
 1. (0x10) LT
+1. (0x11) GT
 1. (0x13) SGT
 1. (0x18) XOR
 1. (0x1A) BYTE
@@ -28,7 +29,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x50) POP
 1. (0x58) PC
 1. (0x56) JUMP
-1. (0x11) GT
 1. (0x5B) JUMPDEST
 1. (0x5F) PUSH0
 1. (0x60) PUSH1
