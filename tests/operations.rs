@@ -358,8 +358,8 @@ fn sdiv_without_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Sdiv,
     ];
 
@@ -428,8 +428,8 @@ fn sdiv_with_zero_denominator() {
     let expected_result: u8 = 0_u8;
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Sdiv,
     ];
     run_program_assert_result(program, expected_result);
@@ -442,8 +442,8 @@ fn sdiv_with_zero_numerator() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Sdiv,
     ];
     run_program_assert_result(program, expected_result);
