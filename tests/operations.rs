@@ -1080,3 +1080,15 @@ fn exp_with_stack_underflow() {
     let program = vec![Operation::Exp];
     run_program_assert_revert(program);
 }
+
+#[test]
+fn sar_reverts_when_program_runs_out_of_gas() {
+    let (value, shift) = (2_u8, 1_u8);
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..1000 {
+        program.push(Operation::Push(BigUint::from(value)));
+        program.push(Operation::Push(BigUint::from(shift)));
+        program.push(Operation::Sar);
+    }
+    run_program_assert_revert(program);
+}
