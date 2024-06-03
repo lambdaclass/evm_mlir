@@ -3,7 +3,7 @@ use evm_mlir::{
     constants::REVERT_EXIT_CODE,
     program::{Operation, Program},
 };
-use num_bigint::BigUint;
+use num_bigint::{BigUint, BigInt};
 use tempfile::NamedTempFile;
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -27,6 +27,19 @@ fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
 fn run_program_assert_revert(program: Vec<Operation>) {
     // TODO: design a way to check for stack overflow
     run_program_assert_result(program, REVERT_EXIT_CODE);
+}
+
+pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
+    if value > BigInt::from(0_i8) {
+        value.to_biguint().unwrap()
+    } else {
+        let bytes = value.to_signed_bytes_be();
+        let mut buffer = vec![255_u8; 32];
+        let finish = 32;
+        let start = finish - bytes.len();
+        buffer[start..finish].copy_from_slice(&bytes);
+        BigUint::from_bytes_be(&buffer)
+    }
 }
 
 #[test]
@@ -611,12 +624,14 @@ fn mod_with_stack_underflow() {
 #[test]
 fn smod_with_negative_operands() {
     // -8 mod -3 = -2
-    let num = BigUint::from_bytes_be(&[0xff; 32]) - 7_u8; // -8
-    let den = BigUint::from_bytes_be(&[0xff; 32]) - 2_u8; // -3
-    let expected_result = 0xfe; // -2 in two's complement
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+    
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
 
     let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
-    run_program_assert_result(program, expected_result.try_into().unwrap());
+    run_program_assert_result(program, result_last_byte);
 }
 
 #[test]
