@@ -943,7 +943,7 @@ fn codegen_xor<'c, 'r>(
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
