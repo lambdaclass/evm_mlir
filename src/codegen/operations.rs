@@ -1,6 +1,9 @@
 use melior::{
+    dialect::{arith, cf, func, ods},
     dialect::{arith, cf, ods},
     ir::{r#type::IntegerType, Attribute, Block, BlockRef, Location, Region},
+    ir::{r#type::IntegerType, Attribute, Block, BlockRef, Location, Region},
+    Context as MeliorContext,
 };
 
 use super::context::OperationCtx;
@@ -8,8 +11,9 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, extend_memory,
-        get_nth_from_stack, integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, consume_gas,
+        extend_memory, get_nth_from_stack, integer_constant_from_i64, integer_constant_from_i8,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -22,6 +26,8 @@ pub fn generate_code_for_op<'c>(
     op: Operation,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     match op {
+        Operation::Stop => codegen_stop(op_ctx, region),
+        Operation::Push(x) => codegen_push(op_ctx, region, x),
         Operation::Sgt => codegen_sgt(op_ctx, region),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
@@ -30,11 +36,13 @@ pub fn generate_code_for_op<'c>(
         Operation::Div => codegen_div(op_ctx, region),
         Operation::Mod => codegen_mod(op_ctx, region),
         Operation::Addmod => codegen_addmod(op_ctx, region),
+        Operation::Mulmod => codegen_mulmod(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
+        Operation::Eq => codegen_eq(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
+        Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
-        Operation::Push(x) => codegen_push(op_ctx, region, x),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
@@ -188,6 +196,48 @@ fn codegen_and<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
+fn codegen_gt<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let rhs = stack_pop(context, &ok_block)?;
+    let lhs = stack_pop(context, &ok_block)?;
+
+    let result = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ugt,
+            lhs,
+            rhs,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
+}
+
 fn codegen_or<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -308,6 +358,48 @@ fn codegen_sgt<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
+fn codegen_eq<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
+
+    let result = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Eq,
+            lhs,
+            rhs,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
+}
+
 fn codegen_push<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -416,11 +508,18 @@ fn codegen_add<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
+    let gas_flag = consume_gas(context, &start_block, 3)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -690,17 +789,36 @@ fn codegen_addmod<'c, 'r>(
     stack_push(context, &den_zero_bloq, constant_value)?;
 
     den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    let uint256 = IntegerType::new(context, 256).into();
+    let uint257 = IntegerType::new(context, 257).into();
 
+    // extend the operands to 257 bits before the addition
+    let extended_a = den_not_zero_bloq
+        .append_operation(arith::extui(a, uint257, location))
+        .result(0)?
+        .into();
+    let extended_b = den_not_zero_bloq
+        .append_operation(arith::extui(b, uint257, location))
+        .result(0)?
+        .into();
+    let extended_den = den_not_zero_bloq
+        .append_operation(arith::extui(den, uint257, location))
+        .result(0)?
+        .into();
     let add_result = den_not_zero_bloq
-        .append_operation(arith::addi(a, b, location))
+        .append_operation(arith::addi(extended_a, extended_b, location))
         .result(0)?
         .into();
     let mod_result = den_not_zero_bloq
-        .append_operation(arith::remui(add_result, den, location))
+        .append_operation(arith::remui(add_result, extended_den, location))
+        .result(0)?
+        .into();
+    let truncated_result = den_not_zero_bloq
+        .append_operation(arith::trunci(mod_result, uint256, location))
         .result(0)?
         .into();
 
-    stack_push(context, &den_not_zero_bloq, mod_result)?;
+    stack_push(context, &den_not_zero_bloq, truncated_result)?;
 
     den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 
@@ -714,6 +832,95 @@ fn codegen_addmod<'c, 'r>(
         location,
     ));
 
+    Ok((start_block, return_block))
+}
+
+fn codegen_mulmod<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let a = stack_pop(context, &ok_block)?;
+    let b = stack_pop(context, &ok_block)?;
+    let den = stack_pop(context, &ok_block)?;
+
+    let den_is_zero = check_if_zero(context, &ok_block, &den)?;
+    let den_zero_bloq = region.append_block(Block::new(&[]));
+    let den_not_zero_bloq = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));
+
+    let constant_value = den_zero_bloq
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_zero_bloq, constant_value)?;
+
+    den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    let uint256 = IntegerType::new(context, 256).into();
+    let uint512 = IntegerType::new(context, 512).into();
+
+    // extend the operands to 512 bits before the multiplication
+    let extended_a = den_not_zero_bloq
+        .append_operation(arith::extui(a, uint512, location))
+        .result(0)?
+        .into();
+    let extended_b = den_not_zero_bloq
+        .append_operation(arith::extui(b, uint512, location))
+        .result(0)?
+        .into();
+    let extended_den = den_not_zero_bloq
+        .append_operation(arith::extui(den, uint512, location))
+        .result(0)?
+        .into();
+
+    let mul_result = den_not_zero_bloq
+        .append_operation(arith::muli(extended_a, extended_b, location))
+        .result(0)?
+        .into();
+    let mod_result = den_not_zero_bloq
+        .append_operation(arith::remui(mul_result, extended_den, location))
+        .result(0)?
+        .into();
+    let truncated_result = den_not_zero_bloq
+        .append_operation(arith::trunci(mod_result, uint256, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_not_zero_bloq, truncated_result)?;
+    den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        den_is_zero,
+        &den_zero_bloq,
+        &den_not_zero_bloq,
+        &[],
+        &[],
+        location,
+    ));
     Ok((start_block, return_block))
 }
 
@@ -1194,4 +1401,27 @@ fn codegen_return<'c>(
     op_ctx.write_result_syscall(&ok_block, offset, size, location);
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_stop<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let zero = start_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i8(context, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    start_block.append_operation(func::r#return(&[zero], location));
+    let empty_block = region.append_block(Block::new(&[]));
+
+    Ok((start_block, empty_block))
 }

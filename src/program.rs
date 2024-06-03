@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 
 #[derive(Debug)]
 pub enum Opcode {
-    // STOP = 0x00,
+    STOP = 0x00,
     ADD = 0x01,
     MUL = 0x02,
     SUB = 0x03,
@@ -11,16 +11,16 @@ pub enum Opcode {
     MOD = 0x06,
     // SMOD = 0x07,
     ADDMOD = 0x08,
-    // MULMOD = 0x09,
+    MULMOD = 0x09,
     EXP = 0x0A,
     // SIGNEXTEND = 0x0B,
 
     // unused 0x0C-0x0F
     LT = 0x10,
-    // GT = 0x11,
+    GT = 0x11,
     // SLT = 0x12,
     SGT = 0x13,
-    // EQ = 0x14,
+    EQ = 0x14,
     ISZERO = 0x15,
     AND = 0x16,
     OR = 0x17,
@@ -168,6 +168,7 @@ pub enum Opcode {
 impl From<u8> for Opcode {
     fn from(opcode: u8) -> Opcode {
         match opcode {
+            x if x == Opcode::STOP as u8 => Opcode::STOP,
             x if x == Opcode::ADD as u8 => Opcode::ADD,
             x if x == Opcode::MUL as u8 => Opcode::MUL,
             x if x == Opcode::XOR as u8 => Opcode::XOR,
@@ -177,6 +178,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::MOD as u8 => Opcode::MOD,
             x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
             x if x == Opcode::ADDMOD as u8 => Opcode::ADDMOD,
+            x if x == Opcode::MULMOD as u8 => Opcode::MULMOD,
             x if x == Opcode::PUSH0 as u8 => Opcode::PUSH0,
             x if x == Opcode::PUSH1 as u8 => Opcode::PUSH1,
             x if x == Opcode::PUSH2 as u8 => Opcode::PUSH2,
@@ -238,10 +240,12 @@ impl From<u8> for Opcode {
 
 #[derive(Debug, Clone)]
 pub enum Operation {
+    Stop,
     Add,
     Sub,
     Mul,
     Addmod,
+    Mulmod,
     Sgt,
     Xor,
     Pop,
@@ -251,6 +255,8 @@ pub enum Operation {
     IsZero,
     Mod,
     Exp,
+    Eq,
+    Gt,
     Jumpdest { pc: usize },
     Push(BigUint),
     Sar,
@@ -279,6 +285,7 @@ impl Program {
                 break;
             };
             let op = match Opcode::from(opcode) {
+                Opcode::STOP => Operation::Stop,
                 Opcode::ADD => Operation::Add,
                 Opcode::SUB => Operation::Sub,
                 Opcode::MUL => Operation::Mul,
@@ -291,9 +298,12 @@ impl Program {
                 Opcode::MOD => Operation::Mod,
                 Opcode::SGT => Operation::Sgt,
                 Opcode::EXP => Operation::Exp,
+                Opcode::EQ => Operation::Eq,
+                Opcode::GT => Operation::Gt,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
                 Opcode::JUMP => Operation::Jump,
                 Opcode::ADDMOD => Operation::Addmod,
+                Opcode::MULMOD => Operation::Mulmod,
                 Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
                 Opcode::PUSH1 => {
                     pc += 1;

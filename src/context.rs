@@ -36,7 +36,7 @@ use std::{
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
     constants::{
-        MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        GAS_COUNTER_GLOBAL, MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
         STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
@@ -238,6 +238,7 @@ fn compile_program(
     // Append setup code to be run at the start
     generate_stack_setup_code(context, module, &setup_block)?;
     generate_memory_setup_code(context, module, &setup_block)?;
+    generate_gas_counter_setup_code(context, module, &setup_block)?;
 
     declare_syscalls(context, module);
 
@@ -282,6 +283,59 @@ fn compile_program(
     return_block.append_operation(func::r#return(&[exit_code], location));
 
     module.body().append_operation(main_func);
+    Ok(())
+}
+
+fn generate_gas_counter_setup_code<'c>(
+    context: &'c MeliorContext,
+    module: &'c MeliorModule,
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        GAS_COUNTER_GLOBAL,
+        ptr_type,
+        location,
+    ));
+
+    assert!(res.verify());
+
+    let uint256 = IntegerType::new(context, 256);
+
+    let initial_gas = 999_i64;
+
+    let gas_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), initial_gas).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let gas_addr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        gas_size,
+        gas_addr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    assert!(res.verify());
+
     Ok(())
 }
 

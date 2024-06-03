@@ -534,6 +534,31 @@ fn jumpdest() {
 }
 
 #[test]
+fn test_eq_true() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Eq,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_eq_false() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Eq,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_eq_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Eq]);
+}
+
+#[test]
 fn test_or() {
     let a = BigUint::from(0b1010_u8);
     let b = BigUint::from(0b1110_u8);
@@ -801,6 +826,102 @@ fn addmod_with_zero_denominator() {
 }
 
 #[test]
+fn addmod_with_overflowing_add() {
+    let (a, b, den) = (
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from(1_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, ((a + b) % den).try_into().unwrap());
+}
+
+#[test]
+fn test_gt_less_than() {
+    let a = BigUint::from(9_u8);
+    let b = BigUint::from(8_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_gt_greater_than() {
+    let a = BigUint::from(8_u8);
+    let b = BigUint::from(9_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_gt_equal() {
+    let a = BigUint::from(10_u8);
+    let b = BigUint::from(10_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn gt_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Gt]);
+}
+
+#[test]
+fn mulmod_with_non_zero_result() {
+    let (a, b, den) = (
+        BigUint::from(13_u8),
+        BigUint::from(30_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Mulmod,
+    ];
+    run_program_assert_result(program, ((a * b) % den).try_into().unwrap());
+}
+
+#[test]
+fn mulmod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Mulmod]);
+}
+
+#[test]
+fn mulmod_with_zero_denominator() {
+    let program = vec![
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(31_u8)),
+        Operation::Push(BigUint::from(11_u8)),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn mulmod_with_overflow() {
+    let (a, b, den) = (
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Mulmod,
+    ];
+    run_program_assert_result(program, ((a * b) % den).try_into().unwrap());
+}
+
+#[test]
 fn test_sgt_positive_greater_than() {
     let a = BigUint::from(2_u8);
     let b = BigUint::from(1_u8);
@@ -908,6 +1029,25 @@ fn test_lt_equal() {
 fn test_lt_stack_underflow() {
     let program = vec![Operation::Lt];
     run_program_assert_revert(program);
+}
+
+#[test]
+fn test_gas_with_add_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Add);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn stop() {
+    // the push operation should not be executed
+    let program = vec![Operation::Stop, Operation::Push(BigUint::from(10_u8))];
+    run_program_assert_result(program, 0);
 }
 
 #[test]
