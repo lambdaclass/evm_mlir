@@ -16,8 +16,8 @@ use melior::{
 use crate::{
     codegen::context::OperationCtx,
     constants::{
-        MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL,
-        STACK_PTR_GLOBAL,
+        MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, REVERT_EXIT_CODE,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
 };
@@ -425,17 +425,20 @@ pub fn check_stack_has_at_least<'ctx>(
 }
 
 pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: create only one revert block and use it for all revert operations
+    // TODO: return result via write_result syscall
     let location = Location::unknown(context);
+    let uint8 = IntegerType::new(context, 8);
+
     let revert_block = Block::new(&[]);
 
-    // let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
+    let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
 
-    // let exit_code = revert_block
-    //     .append_operation(arith::constant(context, constant_value, location))
-    //     .result(0)?;
+    let exit_code = revert_block
+        .append_operation(arith::constant(context, constant_value, location))
+        .result(0)?
+        .into();
 
-    revert_block.append_operation(func::r#return(&[], location));
+    revert_block.append_operation(func::r#return(&[exit_code], location));
     Ok(revert_block)
 }
 

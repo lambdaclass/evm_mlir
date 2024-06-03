@@ -43,7 +43,7 @@ use crate::{
     module::MLIRModule,
     program::{Operation, Program},
     syscall_handler::syscall,
-    utils::{generate_revert_block, llvm_mlir},
+    utils::{generate_revert_block, llvm_mlir, stack_pop},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -207,12 +207,13 @@ fn compile_program(
 ) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
+    let uint8 = IntegerType::new(context, 8).into();
 
     // Build the main function
     let main_func = func::func(
         context,
         StringAttribute::new(context, MAIN_ENTRYPOINT),
-        TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[]).into()),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint8]).into()),
         Region::new(),
         &[
             (
@@ -270,29 +271,15 @@ fn compile_program(
 
     // Setup return operation
     // This returns the last element of the stack
-    // TODO: handle case where stack is empty
-    // let stack_top = stack_pop(context, &return_block)?;
+    // TODO: this should return nothing
+    let stack_top = stack_pop(context, &return_block)?;
     // Truncate the value to 8 bits.
     // NOTE: this is due to amd64 using two registers (128 bits) for return values.
-    // let exit_code = return_block
-    //     .append_operation(arith::trunci(stack_top, uint8.into(), location))
-    //     .result(0)?;
-    // let constant_42 = return_block
-    //     .append_operation(arith::constant(
-    //         context,
-    //         IntegerAttribute::new(uint8.into(), 42).into(),
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
-    // return_block.append_operation(llvm::store(
-    //     context,
-    //     constant_42,
-    //     return_ptr,
-    //     location,
-    //     LoadStoreOptions::default(),
-    // ));
-    return_block.append_operation(func::r#return(&[], location));
+    let exit_code = return_block
+        .append_operation(arith::trunci(stack_top, uint8, location))
+        .result(0)?
+        .into();
+    return_block.append_operation(func::r#return(&[exit_code], location));
 
     module.body().append_operation(main_func);
     Ok(())
@@ -414,7 +401,7 @@ fn generate_memory_setup_code<'c>(
     let zero = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), 0).into(),
+            IntegerAttribute::new(uint32, 0).into(),
             location,
         ))
         .result(0)?
