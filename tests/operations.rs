@@ -317,7 +317,7 @@ fn signextend_one_byte_negative_value() {
     /*
     Since we are constrained by the output size u8, in order to check that the result
     was correctly sign extended (completed with 1s), we have to divide by 2 so we can check
-    that the first byte is 0x3F = [1, 1, 1, 1, 1, 1, 1, 1]
+    that the first byte is 0xFF = [1, 1, 1, 1, 1, 1, 1, 1]
     */
     let value = BigUint::from(0xFF_u8);
     let value_bytes_size = BigUint::from(0_u8);
