@@ -4,6 +4,7 @@ use evm_mlir::{
     program::{Operation, Program},
 };
 use num_bigint::{BigInt, BigUint};
+use rstest::rstest;
 use tempfile::NamedTempFile;
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -83,6 +84,63 @@ fn push_fill_stack() {
 fn push_stack_overflow() {
     // Push 1025 times
     let program = vec![Operation::Push(BigUint::from(88_u8)); 1025];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn dup1_once() {
+    let program = vec![
+        Operation::Push(BigUint::from(10_u8)),
+        Operation::Push(BigUint::from(31_u8)),
+        Operation::Dup(1),
+        Operation::Pop,
+    ];
+
+    run_program_assert_result(program, 31);
+}
+
+#[test]
+fn dup2_once() {
+    let program = vec![
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Push(BigUint::from(5_u8)),
+        Operation::Push(BigUint::from(6_u8)),
+        Operation::Dup(2),
+    ];
+
+    run_program_assert_result(program, 5);
+}
+
+#[rstest]
+#[case(1)]
+#[case(2)]
+#[case(3)]
+#[case(4)]
+#[case(5)]
+#[case(6)]
+#[case(7)]
+#[case(8)]
+#[case(9)]
+#[case(10)]
+#[case(11)]
+#[case(12)]
+#[case(13)]
+#[case(14)]
+#[case(15)]
+#[case(16)]
+fn dup_nth(#[case] nth: u8) {
+    let iter = (0..16u8).rev().map(|x| Operation::Push(BigUint::from(x)));
+    let mut program = Vec::from_iter(iter);
+
+    program.push(Operation::Dup(nth.into()));
+
+    run_program_assert_result(program, nth - 1);
+}
+
+#[test]
+fn dup_with_stack_underflow() {
+    let program = vec![Operation::Dup(1)];
+
     run_program_assert_revert(program);
 }
 
@@ -361,6 +419,24 @@ fn pop_with_stack_underflow() {
 }
 
 #[test]
+fn push_push_sar() {
+    let (value, shift) = (2_u8, 1_u8);
+    let program = vec![
+        Operation::Push(BigUint::from(value)),
+        Operation::Push(BigUint::from(shift)),
+        Operation::Sar,
+    ];
+    let expected_result = value >> shift;
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sar_with_stack_underflow() {
+    let program = vec![Operation::Sar];
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_byte() {
     let mut value: [u8; 32] = [0; 32];
     let desired_byte = 0xff;
@@ -379,6 +455,70 @@ fn push_push_byte() {
 fn byte_with_stack_underflow() {
     let program = vec![Operation::Byte];
     run_program_assert_revert(program);
+}
+
+#[test]
+fn sar_with_negative_value_preserves_sign() {
+    // in this example the the value to be shifted is a 256 bit number
+    // where the most significative bit is 1 cand the rest of the bits are 0.
+    // i.e,  value = 1000..0000
+    //
+    // if we shift this value 255 positions to the right, given that
+    // the sar operation preserves the sign, the result must be a number
+    // in which every bit is 1
+    // i.e, result = 1111..1111
+    //
+    // given that the program results is a u8, the result is then truncated
+    // to the less 8 significative bits, i.e  result = 0b11111111.
+    //
+    // this same example can be visualized in the evm playground in the following link
+    // https://www.evm.codes/playground?fork=cancun&unit=Wei&codeType=Mnemonic&code='%2F%2F%20Example%201z32%200x8yyyz8%20255wSAR'~0000000zwPUSHy~~~w%5Cn%01wyz~_
+
+    let mut value: [u8; 32] = [0; 32];
+    value[0] = 0b10000000;
+    let value = BigUint::from_bytes_be(&value);
+
+    let shift: u8 = 255;
+    let program = vec![
+        Operation::Push(value),
+        Operation::Push(BigUint::from(shift)),
+        Operation::Sar,
+    ];
+    let expected_result = 0b11111111;
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sar_with_positive_value_preserves_sign() {
+    let mut value: [u8; 32] = [0xff; 32];
+    value[0] = 0;
+    let value = BigUint::from_bytes_be(&value);
+
+    let shift: u8 = 255;
+    let program = vec![
+        Operation::Push(value),
+        Operation::Push(BigUint::from(shift)),
+        Operation::Sar,
+    ];
+    let expected_result = 0;
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sar_with_shift_out_of_bounds() {
+    // even if the shift is larger than 255 the SAR operation should
+    // work the same.
+
+    let value = BigUint::from_bytes_be(&[0xff; 32]);
+    let shift: usize = 1024;
+    let program = vec![
+        Operation::Push(value),
+        Operation::Push(BigUint::from(shift)),
+        Operation::Sar,
+    ];
+    // in this case the expected result is 0xff because of the sign extension
+    let expected_result = 0xff;
+    run_program_assert_result(program, expected_result);
 }
 
 #[test]
@@ -404,6 +544,50 @@ fn jumpdest() {
         Operation::Jumpdest { pc: 34 },
     ];
     run_program_assert_result(program, expected)
+}
+
+#[test]
+fn test_eq_true() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Eq,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_eq_false() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Eq,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_eq_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Eq]);
+}
+
+#[test]
+fn test_or() {
+    let a = BigUint::from(0b1010_u8);
+    let b = BigUint::from(0b1110_u8);
+    let expected = 0b1110_u8;
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Or,
+    ];
+    run_program_assert_result(program, expected);
+}
+
+#[test]
+fn test_or_with_stack_underflow() {
+    let program = vec![Operation::Or];
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -689,6 +873,102 @@ fn addmod_with_zero_denominator() {
 }
 
 #[test]
+fn addmod_with_overflowing_add() {
+    let (a, b, den) = (
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from(1_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, ((a + b) % den).try_into().unwrap());
+}
+
+#[test]
+fn test_gt_less_than() {
+    let a = BigUint::from(9_u8);
+    let b = BigUint::from(8_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_gt_greater_than() {
+    let a = BigUint::from(8_u8);
+    let b = BigUint::from(9_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_gt_equal() {
+    let a = BigUint::from(10_u8);
+    let b = BigUint::from(10_u8);
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::Gt];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn gt_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Gt]);
+}
+
+#[test]
+fn mulmod_with_non_zero_result() {
+    let (a, b, den) = (
+        BigUint::from(13_u8),
+        BigUint::from(30_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Mulmod,
+    ];
+    run_program_assert_result(program, ((a * b) % den).try_into().unwrap());
+}
+
+#[test]
+fn mulmod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Mulmod]);
+}
+
+#[test]
+fn mulmod_with_zero_denominator() {
+    let program = vec![
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(31_u8)),
+        Operation::Push(BigUint::from(11_u8)),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn mulmod_with_overflow() {
+    let (a, b, den) = (
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Mulmod,
+    ];
+    run_program_assert_result(program, ((a * b) % den).try_into().unwrap());
+}
+
+#[test]
 fn test_sgt_positive_greater_than() {
     let a = BigUint::from(2_u8);
     let b = BigUint::from(1_u8);
@@ -795,5 +1075,65 @@ fn test_lt_equal() {
 #[test]
 fn test_lt_stack_underflow() {
     let program = vec![Operation::Lt];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn test_gas_with_add_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Add);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn stop() {
+    // the push operation should not be executed
+    let program = vec![Operation::Stop, Operation::Push(BigUint::from(10_u8))];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn push_push_exp() {
+    let (a, b) = (BigUint::from(2_u8), BigUint::from(3_u8));
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Exp,
+    ];
+
+    run_program_assert_result(program, (a.pow(b.try_into().unwrap())).try_into().unwrap());
+}
+
+#[test]
+fn exp_with_overflow_should_wrap() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(256_u16);
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Exp,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn exp_with_stack_underflow() {
+    let program = vec![Operation::Exp];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn pop_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..1000 {
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Pop);
+    }
     run_program_assert_revert(program);
 }
