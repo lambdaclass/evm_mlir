@@ -324,7 +324,7 @@ pub fn check_stack_has_at_least<'ctx>(
     Ok(flag.into())
 }
 
-// Generates code for checking if lhs > rhs
+// Generates code for checking if lhs < rhs
 pub fn check_is_greater_than<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -333,14 +333,15 @@ pub fn check_is_greater_than<'ctx>(
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
 
-    let flag = block.append_operation(arith::cmpi(
-        context,
-        arith::CmpiPredicate::Ugt,
-        lhs,
-        rhs,
-        location,
-    ))
-    .result(0)?;
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ugt,
+            rhs,
+            lhs,
+            location,
+        ))
+        .result(0)?;
 
     Ok(flag.into())
 }

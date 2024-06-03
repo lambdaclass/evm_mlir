@@ -1,6 +1,9 @@
 use melior::{
     dialect::{arith, cf},
-    ir::{attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location, Region, Value},
+    ir::{
+        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        Region,
+    },
     Context as MeliorContext,
 };
 
@@ -9,7 +12,9 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_denominator_is_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, generate_revert_block, integer_constant_from_i64, stack_pop, stack_push
+        check_denominator_is_zero, check_is_greater_than, check_stack_has_at_least,
+        check_stack_has_space_for, generate_revert_block, integer_constant_from_i64, stack_pop,
+        stack_push,
     },
 };
 use num_bigint::BigUint;
@@ -275,39 +280,20 @@ fn codegen_shr<'c, 'r>(
     let value = stack_pop(context, &ok_block)?;
 
     let value_255 = ok_block
-    .append_operation(arith::constant(
-        context,
-        IntegerAttribute::new(uint256.into(), 255 as i64).into(),
-        location,
-    ))
-    .result(0)?
-    .into();
-
-    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
-
-    // if shift is less than 255
-    let ok_ok_block = region.append_block(Block::new(&[]));
-
-    let result = ok_ok_block
-        .append_operation(arith::shrui(value, shift, location))
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 255_i64).into(),
+            location,
+        ))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_ok_block, result)?;
+    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
 
-    // if shifht is grater than 255
+    let ok_ok_block = region.append_block(Block::new(&[]));
     let altv_block = region.append_block(Block::new(&[]));
-
-    let result = altv_block
-    .append_operation(arith::constant(
-        context,
-        IntegerAttribute::new(uint256.into(), 0 as i64).into(),
-        location,
-    ))
-    .result(0)?
-    .into();
-
-    stack_push(context, &altv_block, result)?;
+    // to unify the blocks after the branching
+    let empty_block = region.append_block(Block::new(&[]));
 
     ok_block.append_operation(cf::cond_br(
         context,
@@ -319,7 +305,31 @@ fn codegen_shr<'c, 'r>(
         location,
     ));
 
-    return Ok((start_block, ok_ok_block));
+    // if shift is less than 255
+    let result = ok_ok_block
+        .append_operation(arith::shrui(value, shift, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_ok_block, result)?;
+
+    ok_ok_block.append_operation(cf::br(&empty_block, &[], location));
+
+    // if shifht is grater than 255
+    let result = altv_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 0_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &altv_block, result)?;
+
+    altv_block.append_operation(cf::br(&empty_block, &[], location));
+
+    Ok((start_block, empty_block))
 }
 
 fn codegen_pop<'c, 'r>(

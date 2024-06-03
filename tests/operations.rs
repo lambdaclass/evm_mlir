@@ -249,10 +249,26 @@ fn push_push_shr() {
     let program = vec![
         Operation::Push(BigUint::from(32_u8)),
         Operation::Push(BigUint::from(2_u8)),
-        Operation::Shr
+        Operation::Shr,
     ];
 
-    run_program_assert_result(program, 4);
+    run_program_assert_result(program, 8);
+}
+
+#[test]
+fn shift_bigger_than_256() {
+    let program = vec![
+        Operation::Push(BigUint::from(255_u8)),
+        Operation::Push(BigUint::from(256_u16)),
+        Operation::Shr,
+    ];
+
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn shr_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Shr]);
 }
 
 #[test]
