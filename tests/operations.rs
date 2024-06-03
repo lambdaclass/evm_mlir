@@ -30,8 +30,8 @@ fn run_program_assert_revert(program: Vec<Operation>) {
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
-    if value > BigInt::from(0_i8) {
-        value.to_biguint().unwrap()
+    if value > BigInt::ZERO {
+        value.magnitude().clone()
     } else {
         let bytes = value.to_signed_bytes_be();
         let mut buffer = vec![255_u8; 32];
