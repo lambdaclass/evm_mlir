@@ -274,8 +274,8 @@ fn div_without_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
 
@@ -297,9 +297,9 @@ fn div_signed_division() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
-        Operation::Div,     //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Div,     // <No collapse>
     ];
     run_program_assert_result(program, expected_result);
 }
@@ -311,8 +311,8 @@ fn div_with_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -325,8 +325,8 @@ fn div_with_zero_denominator() {
     let expected_result: u8 = 0_u8;
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -339,8 +339,8 @@ fn div_with_zero_numerator() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -381,9 +381,9 @@ fn sdiv_signed_division_1() {
     let expected_result: u8 = 252_u8;
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
-        Operation::Sdiv,    //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,    // <No collapse>
     ];
 
     run_program_assert_result(program, expected_result);
@@ -400,9 +400,9 @@ fn sdiv_signed_division_2() {
     let b_biguint = biguint_256_from_bigint(b);
 
     let program = vec![
-        Operation::Push(b_biguint), //
-        Operation::Push(a_biguint), //
-        Operation::Sdiv,            //
+        Operation::Push(b_biguint), // <No collapse>
+        Operation::Push(a_biguint), // <No collapse>
+        Operation::Sdiv,            // <No collapse>
     ];
     run_program_assert_result(program, expected_result);
 }
@@ -414,8 +414,8 @@ fn sdiv_with_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Sdiv,
     ];
     run_program_assert_result(program, expected_result);
@@ -842,8 +842,8 @@ fn jumpi_does_not_revert_if_pc_is_wrong_but_branch_is_not_taken() {
 fn pc_with_previous_push() {
     let pc = 33;
     let program = vec![
-        Operation::Push(BigUint::from(8_u8)), //
-        Operation::PC { pc },                 //
+        Operation::Push(BigUint::from(8_u8)), // <No collapse>
+        Operation::PC { pc },                 // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
@@ -852,7 +852,7 @@ fn pc_with_previous_push() {
 fn pc_with_no_previous_operation() {
     let pc = 0;
     let program = vec![
-        Operation::PC { pc }, //
+        Operation::PC { pc }, // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
