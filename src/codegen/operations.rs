@@ -883,7 +883,7 @@ fn codegen_byte<'c, 'r>(
     let constant_max_shift_in_bits = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, MAX_SHIFT).into(),
+            integer_constant_from_i64(context, MAX_SHIFT * BITS_PER_BYTE).into(),
             location,
         ))
         .result(0)?
