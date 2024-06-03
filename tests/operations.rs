@@ -426,8 +426,8 @@ fn test_slt_signed_less_than() {
 }
 #[test]
 fn test_slt_both_signed() {
-    let  a = BigUint::from((!3_u8 + 1 )as u8);//-3
-    let   b = BigUint::from((!2_u8 + 1 ) as u8 );//-2
+    let  a = BigUint::from(!3_u8 + 1 );//-3
+    let   b = BigUint::from(!2_u8 + 1 ) ;//-2
  
     let program = vec![
         Operation::Push(a.clone()),
