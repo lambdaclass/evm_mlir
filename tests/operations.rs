@@ -839,6 +839,19 @@ fn smod_with_zero_denominator() {
 fn smod_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Smod]);
 }
+
+#[test]
+fn smod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Smod);
+    }
+    run_program_assert_revert(program);
+}
+
 #[test]
 fn addmod_with_non_zero_result() {
     let (a, b, den) = (
