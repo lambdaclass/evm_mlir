@@ -1,8 +1,4 @@
-use evm_mlir::{
-    compile_binary,
-    program::{self, Program},
-};
-use melior::ir::Operation;
+use evm_mlir::{compile_binary, program::Program};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
