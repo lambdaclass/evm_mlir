@@ -11,6 +11,7 @@ use crate::{
     utils::{
         check_if_zero, check_stack_has_at_least, check_stack_has_space_for,
         integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
+        consume_gas,
     },
 };
 use num_bigint::BigUint;
@@ -239,11 +240,23 @@ fn codegen_add<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
+    let gas_flag = consume_gas(context, &start_block, 3)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(
+            gas_flag,
+            flag,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -258,6 +271,7 @@ fn codegen_add<'c, 'r>(
         .append_operation(arith::addi(lhs, rhs, location))
         .result(0)?
         .into();
+
 
     stack_push(context, &ok_block, result)?;
 

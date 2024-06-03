@@ -652,3 +652,14 @@ fn test_lt_stack_underflow() {
     let program = vec![Operation::Lt];
     run_program_assert_revert(program);
 }
+
+#[test]
+fn test_gas_with_add_should_revert(){
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(3_u8)),
+        Operation::Add,
+    ];
+    run_program_assert_revert(program);
+}

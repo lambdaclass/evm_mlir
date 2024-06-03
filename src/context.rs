@@ -265,11 +265,13 @@ fn generate_gas_counter_block<'c>(
         ptr_type,
         location,
     ));
+    println!("GAS COUNTER GLOBAL: {:?}", res);
+    assert!(res.verify());
 
     let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
 
-    let initial_gas = 99999_i64;
+    let initial_gas = 3_i64;
     
     let gas_size = block
         .append_operation(arith::constant(
@@ -279,6 +281,9 @@ fn generate_gas_counter_block<'c>(
         ))
         .result(0)?
         .into();
+    
+
+    println!("GAS SIZE: {:?}", gas_size);
 
     
     let gas_addr = block
@@ -289,6 +294,8 @@ fn generate_gas_counter_block<'c>(
             location,
         ))
         .result(0)?;
+
+    println!("GAS ADDR: {:?}", gas_addr);
     
     let res = block.append_operation(llvm::store(
         context,
@@ -297,6 +304,10 @@ fn generate_gas_counter_block<'c>(
         location,
         LoadStoreOptions::default(),
     ));
+
+    println!("GAS STORE: {:?}", res);
+
+    assert!(res.verify());
 
     Ok(block)
 }

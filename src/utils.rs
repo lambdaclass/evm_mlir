@@ -18,7 +18,7 @@ use crate::{
     errors::CodegenError,
 };
 
-
+/// Returns true if there is enough Gas
 pub fn consume_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -67,7 +67,7 @@ pub fn consume_gas<'ctx>(
             location
         )
     ).result(0)?;
-    
+
     // Subtract gas from gas counter
     let new_gas_counter = block
         .append_operation(arith::subi(
@@ -76,6 +76,7 @@ pub fn consume_gas<'ctx>(
             location,
         ))
         .result(0)?;
+
 
     // Store new gas counter
     let res = block.append_operation(llvm::store(
@@ -405,6 +406,7 @@ pub fn check_stack_has_space_for<'ctx>(
 }
 
 /// Generates code for checking if the stack has enough space for `element_count` more elements.
+/// Returns true if there are at least `element_count` elements in the stack.
 pub fn check_stack_has_at_least<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
