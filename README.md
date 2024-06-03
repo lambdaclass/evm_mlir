@@ -27,9 +27,11 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x16) AND
 1. (0x1D) SAR
 1. (0x50) POP
-1. (0x58) PC
 1. (0x56) JUMP
+1. (0x57) JUMPI
+1. (0x58) PC
 1. (0x5B) JUMPDEST
+1. (0x15) ISZERO
 1. (0x5F) PUSH0
 1. (0x60) PUSH1
 1. (0x61) PUSH2
@@ -63,6 +65,22 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x7D) PUSH30
 1. (0x7E) PUSH31
 1. (0x7F) PUSH32
+1. (0x90) SWAP1
+1. (0x91) SWAP2
+1. (0x92) SWAP3
+1. (0x93) SWAP4
+1. (0x94) SWAP5
+1. (0x95) SWAP6
+1. (0x96) SWAP7
+1. (0x97) SWAP8
+1. (0x98) SWAP9
+1. (0x99) SWAP10
+1. (0x9A) SWAP11
+1. (0x9B) SWAP12
+1. (0x9C) SWAP13
+1. (0x9D) SWAP14
+1. (0x9E) SWAP15
+1. (0x9F) SWAP16
 
 </details>
 
@@ -117,7 +135,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x53) MSTORE8
 1. (0x54) SLOAD
 1. (0x55) SSTORE
-1. (0x57) JUMPI
 1. (0x59) MSIZE
 1. (0x5A) GAS
 1. (0x5C) TLOAD
@@ -139,22 +156,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x8D) DUP14
 1. (0x8E) DUP15
 1. (0x8F) DUP16
-1. (0x90) SWAP1
-1. (0x91) SWAP2
-1. (0x92) SWAP3
-1. (0x93) SWAP4
-1. (0x94) SWAP5
-1. (0x95) SWAP6
-1. (0x96) SWAP7
-1. (0x97) SWAP8
-1. (0x98) SWAP9
-1. (0x99) SWAP10
-1. (0x9A) SWAP11
-1. (0x9B) SWAP12
-1. (0x9C) SWAP13
-1. (0x9D) SWAP14
-1. (0x9E) SWAP15
-1. (0x9F) SWAP16
 1. (0xA0) LOG0
 1. (0xA1) LOG1
 1. (0xA2) LOG2

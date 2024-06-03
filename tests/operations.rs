@@ -74,6 +74,70 @@ fn push_stack_overflow() {
 }
 
 #[test]
+fn swap_first() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Swap(1),
+    ];
+
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn swap_16_and_get_the_swaped_one() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(3_u8)),
+        Operation::Swap(16),
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+    ];
+
+    run_program_assert_result(program, 3);
+}
+
+#[test]
+fn swap_stack_underflow() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Swap(2),
+    ];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
@@ -330,6 +394,48 @@ fn jumpdest() {
 }
 
 #[test]
+fn jumpi_with_true_condition() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 1  // push condition
+    // [04] PUSH1 9  // push pc
+    // [06] JUMPI
+    // [07] PUSH1 10
+    // [09] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let condition: BigUint = BigUint::from(1_u8);
+    let pc: usize = 9;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(condition),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(b)), // this should not be executed
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, a);
+}
+
+#[test]
+fn test_iszero_true() {
+    let program = vec![Operation::Push(BigUint::from(0_u8)), Operation::IsZero];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_iszero_false() {
+    let program = vec![Operation::Push(BigUint::from(1_u8)), Operation::IsZero];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_iszero_stack_underflow() {
+    let program = vec![Operation::IsZero];
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn jump() {
     // this test is equivalent to the following bytecode program
     // the program executes sequentially until the JUMP where
@@ -355,6 +461,45 @@ fn jump() {
 }
 
 #[test]
+fn jumpi_with_false_condition() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 0  // push condition
+    // [04] PUSH1 9  // push pc
+    // [06] JUMPI
+    // [07] PUSH1 10
+    // [09] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let condition: BigUint = BigUint::from(0_u8);
+    let pc: usize = 9;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(condition),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(b)),
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, b);
+}
+
+#[test]
+fn jumpi_reverts_if_pc_is_wrong() {
+    // if the pc given does not correspond to a jump destination then
+    // the program should revert
+    let pc = BigUint::from(7_u8);
+    let condition = BigUint::from(1_u8);
+    let program = vec![
+        Operation::Push(condition),
+        Operation::Push(pc),
+        Operation::Jumpi,
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn jump_reverts_if_pc_is_wrong() {
     // if the pc given does not correspond to a jump destination then
     // the program should revert
@@ -365,6 +510,23 @@ fn jump_reverts_if_pc_is_wrong() {
         Operation::Jumpdest { pc: 83 },
     ];
     run_program_assert_revert(program);
+}
+
+#[test]
+fn jumpi_does_not_revert_if_pc_is_wrong_but_branch_is_not_taken() {
+    // if the pc given does not correspond to a jump destination
+    // but the branch is not taken then the program should not revert
+    let pc = BigUint::from(7_u8);
+    let condition = BigUint::from(0_u8);
+    let a = 10_u8;
+    let program = vec![
+        Operation::Push(condition),
+        Operation::Push(pc),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(a)),
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_result(program, a);
 }
 
 #[test]
