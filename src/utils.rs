@@ -6,6 +6,7 @@ use melior::{
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        operation::OperationResult,
         r#type::IntegerType,
         Block, Location, Value,
     },
@@ -141,6 +142,101 @@ pub fn stack_push<'ctx>(
         context,
         new_stack_ptr.into(),
         stack_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
+// Returns a copy of the nth value of the stack along with its stack's address
+pub fn get_nth_from_stack<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    nth: u32,
+) -> Result<(Value<'ctx, 'ctx>, OperationResult<'ctx, 'ctx>), CodegenError> {
+    debug_assert!(nth < MAX_STACK_SIZE as u32);
+    let uint256 = IntegerType::new(context, 256);
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    // Decrement stack pointer
+    let nth_stack_ptr = block
+        .append_operation(llvm::get_element_ptr(
+            context,
+            stack_ptr.into(),
+            DenseI32ArrayAttribute::new(context, &[-(nth as i32)]),
+            uint256.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load value from top of stack
+    let value = block
+        .append_operation(llvm::load(
+            context,
+            nth_stack_ptr.into(),
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok((value, nth_stack_ptr))
+}
+
+pub fn swap_stack_elements<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    position_1: u32,
+    position_2: u32,
+) -> Result<(), CodegenError> {
+    debug_assert!(position_1 < MAX_STACK_SIZE as u32);
+    debug_assert!(position_2 < MAX_STACK_SIZE as u32);
+    let location = Location::unknown(context);
+
+    let (first_element, first_elem_address) = get_nth_from_stack(context, block, position_1)?;
+    let (nth_element, nth_elem_address) = get_nth_from_stack(context, block, position_2)?;
+
+    // Store element in position 1 into position 2
+    let res = block.append_operation(llvm::store(
+        context,
+        first_element,
+        nth_elem_address.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    // Store element in position 2 into position 1
+    let res = block.append_operation(llvm::store(
+        context,
+        nth_element,
+        first_elem_address.into(),
         location,
         LoadStoreOptions::default(),
     ));

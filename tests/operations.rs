@@ -74,6 +74,70 @@ fn push_stack_overflow() {
 }
 
 #[test]
+fn swap_first() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Swap(1),
+    ];
+
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn swap_16_and_get_the_swaped_one() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(3_u8)),
+        Operation::Swap(16),
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+        Operation::Pop,
+    ];
+
+    run_program_assert_result(program, 3);
+}
+
+#[test]
+fn swap_stack_underflow() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Swap(2),
+    ];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
@@ -83,6 +147,48 @@ fn push_push_add() {
         Operation::Add,
     ];
     run_program_assert_result(program, (a + b).try_into().unwrap());
+}
+
+#[test]
+fn push_push_sub() {
+    let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sub,
+    ];
+    run_program_assert_result(program, 20);
+}
+
+#[test]
+fn substraction_wraps_the_result() {
+    let (a, b) = (BigUint::from(10_u8), BigUint::from(0_u8));
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sub,
+    ];
+
+    let result = 0_u8.wrapping_sub(10);
+
+    run_program_assert_result(program, result);
+}
+
+#[test]
+fn sub_add_wrapping() {
+    let a = (BigUint::from(1_u8) << 256) - 1_u8;
+
+    let program = vec![
+        Operation::Push(a),
+        Operation::Push(BigUint::from(10_u8)),
+        Operation::Add,
+        Operation::Push(BigUint::from(10_u8)),
+        Operation::Sub,
+    ];
+
+    run_program_assert_result(program, 1);
 }
 
 #[test]
@@ -203,6 +309,23 @@ fn mul_with_stack_underflow() {
 }
 
 #[test]
+fn push_push_xor() {
+    let program = vec![
+        Operation::Push(BigUint::from(10_u8)),
+        Operation::Push(BigUint::from(5_u8)),
+        Operation::Xor,
+    ];
+
+    run_program_assert_result(program, 15);
+}
+
+#[test]
+fn xor_with_stack_underflow() {
+    let program = vec![Operation::Xor];
+
+    run_program_assert_revert(program);
+}
+#[test]
 fn push_push_pop() {
     // Push two values to the stack and then pop once
     // The program result should be equal to the first
@@ -268,6 +391,182 @@ fn jumpdest() {
         Operation::Jumpdest { pc: 34 },
     ];
     run_program_assert_result(program, expected)
+}
+
+#[test]
+fn jumpi_with_true_condition() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 1  // push condition
+    // [04] PUSH1 9  // push pc
+    // [06] JUMPI
+    // [07] PUSH1 10
+    // [09] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let condition: BigUint = BigUint::from(1_u8);
+    let pc: usize = 9;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(condition),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(b)), // this should not be executed
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, a);
+}
+
+#[test]
+fn test_iszero_true() {
+    let program = vec![Operation::Push(BigUint::from(0_u8)), Operation::IsZero];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_iszero_false() {
+    let program = vec![Operation::Push(BigUint::from(1_u8)), Operation::IsZero];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_iszero_stack_underflow() {
+    let program = vec![Operation::IsZero];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn jump() {
+    // this test is equivalent to the following bytecode program
+    // the program executes sequentially until the JUMP where
+    // it jumps to the opcode in the position 7 so the PUSH1 10
+    // opcode is not executed => the return value should be equal
+    // to the first pushed value (a = 5)
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 7  // push pc
+    // [04] JUMP
+    // [05] PUSH1 10
+    // [07] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let pc: usize = 7;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jump,
+        Operation::Push(BigUint::from(b)), // this should not be executed
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, a);
+}
+
+#[test]
+fn jumpi_with_false_condition() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 5
+    // [02] PUSH1 0  // push condition
+    // [04] PUSH1 9  // push pc
+    // [06] JUMPI
+    // [07] PUSH1 10
+    // [09] JUMPDEST
+    let (a, b) = (5_u8, 10_u8);
+    let condition: BigUint = BigUint::from(0_u8);
+    let pc: usize = 9;
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(condition),
+        Operation::Push(BigUint::from(pc as u8)),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(b)),
+        Operation::Jumpdest { pc },
+    ];
+    run_program_assert_result(program, b);
+}
+
+#[test]
+fn jumpi_reverts_if_pc_is_wrong() {
+    // if the pc given does not correspond to a jump destination then
+    // the program should revert
+    let pc = BigUint::from(7_u8);
+    let condition = BigUint::from(1_u8);
+    let program = vec![
+        Operation::Push(condition),
+        Operation::Push(pc),
+        Operation::Jumpi,
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn jump_reverts_if_pc_is_wrong() {
+    // if the pc given does not correspond to a jump destination then
+    // the program should revert
+    let pc = BigUint::from(7_u8);
+    let program = vec![
+        Operation::Push(pc),
+        Operation::Jump,
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn jumpi_does_not_revert_if_pc_is_wrong_but_branch_is_not_taken() {
+    // if the pc given does not correspond to a jump destination
+    // but the branch is not taken then the program should not revert
+    let pc = BigUint::from(7_u8);
+    let condition = BigUint::from(0_u8);
+    let a = 10_u8;
+    let program = vec![
+        Operation::Push(condition),
+        Operation::Push(pc),
+        Operation::Jumpi,
+        Operation::Push(BigUint::from(a)),
+        Operation::Jumpdest { pc: 83 },
+    ];
+    run_program_assert_result(program, a);
+}
+
+#[test]
+fn pc_with_previous_push() {
+    let pc = 33;
+    let program = vec![
+        Operation::Push(BigUint::from(8_u8)), //
+        Operation::PC { pc },                 //
+    ];
+    run_program_assert_result(program, pc as u8)
+}
+
+#[test]
+fn pc_with_no_previous_operation() {
+    let pc = 0;
+    let program = vec![
+        Operation::PC { pc }, //
+    ];
+    run_program_assert_result(program, pc as u8)
+}
+
+#[test]
+fn test_and() {
+    let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
+    let expected_result = 0b1000_u8;
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::And];
+    run_program_assert_result(program, expected_result);
+}
+#[test]
+fn test_and_with_zero() {
+    let a = BigUint::from(0_u8);
+    let b = BigUint::from(0xFF_u8);
+    let expected_result = 0_u8;
+    let program = vec![Operation::Push(a), Operation::Push(b), Operation::And];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn and_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::And]);
 }
 
 #[test]
@@ -340,4 +639,146 @@ fn smod_with_zero_denominator() {
 #[test]
 fn smod_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Smod]);
+}
+#[test]
+fn addmod_with_non_zero_result() {
+    let (a, b, den) = (
+        BigUint::from(13_u8),
+        BigUint::from(30_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, ((a + b) % den).try_into().unwrap());
+}
+
+#[test]
+fn addmod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Addmod]);
+}
+
+#[test]
+fn addmod_with_zero_denominator() {
+    let program = vec![
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(31_u8)),
+        Operation::Push(BigUint::from(11_u8)),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_sgt_positive_greater_than() {
+    let a = BigUint::from(2_u8);
+    let b = BigUint::from(1_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_sgt_positive_less_than() {
+    let a = BigUint::from(0_u8);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_sgt_signed_less_than() {
+    let mut a = BigUint::from(3_u8);
+    a.set_bit(255, true);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_sgt_signed_greater_than() {
+    let a = BigUint::from(2_u8);
+    let mut b = BigUint::from(3_u8);
+    b.set_bit(255, true);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_sgt_equal() {
+    let a = BigUint::from(2_u8);
+    let b = BigUint::from(2_u8);
+
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_sgt_stack_underflow() {
+    let program = vec![Operation::Sgt];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn test_lt_false() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Lt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_lt_true() {
+    let program = vec![
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Lt,
+    ];
+    run_program_assert_result(program, 1);
+}
+
+#[test]
+fn test_lt_equal() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Lt,
+    ];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn test_lt_stack_underflow() {
+    let program = vec![Operation::Lt];
+    run_program_assert_revert(program);
 }
