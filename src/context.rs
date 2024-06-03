@@ -17,7 +17,7 @@ use melior::{
         DialectRegistry,
     },
     ir::{
-        attribute::{DenseI32ArrayAttribute, IntegerAttribute, StringAttribute, TypeAttribute},
+        attribute::{FlatSymbolRefAttribute, IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
         Attribute, Block, Identifier, Location, Module as MeliorModule, Region, Value,
@@ -39,7 +39,7 @@ use crate::{
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
-    syscall_handler::SyscallHandlerCallbacks,
+    syscall_handler::syscall,
     utils::{generate_revert_block, llvm_mlir},
 };
 
@@ -248,33 +248,6 @@ fn compile_program(
         .result(0)?
         .into();
 
-    let write_result_syscall_ptr = setup_block
-        .append_operation(llvm::get_element_ptr(
-            context,
-            callback_ptr,
-            DenseI32ArrayAttribute::new(
-                context,
-                &[SyscallHandlerCallbacks::WRITE_RESULT.try_into().unwrap()],
-            )
-            .into(),
-            ptr_type,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let write_result_syscall = setup_block
-        .append_operation(llvm::load(
-            context,
-            write_result_syscall_ptr,
-            ptr_type,
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
     let array_size = setup_block
         .append_operation(arith::constant(
             context,
@@ -307,18 +280,33 @@ fn compile_program(
         .append_operation(arith::constant(
             context,
             // TODO: this should be usize
-            IntegerAttribute::new(uint64.into(), 42).into(),
+            IntegerAttribute::new(uint64.into(), 1).into(),
             location,
         ))
         .result(0)?
         .into();
 
-    // TODO: check if we have to load the ptr first
-    setup_block.append_operation(
-        OperationBuilder::new("llvm.call", location)
-            .add_operands(&[write_result_syscall, context_ptr, ptr, array_size_value])
-            .build()?,
-    );
+    module.body().append_operation(func::func(
+        context,
+        StringAttribute::new(context, syscall::WRITE_RESULT),
+        TypeAttribute::new(
+            FunctionType::new(context, &[ptr_type, ptr_type, uint64.into()], &[]).into(),
+        ),
+        Region::new(),
+        &[(
+            Identifier::new(context, "sym_visibility"),
+            StringAttribute::new(context, "private").into(),
+        )],
+        location,
+    ));
+
+    setup_block.append_operation(func::call(
+        context,
+        FlatSymbolRefAttribute::new(context, syscall::WRITE_RESULT),
+        &[context_ptr, ptr, array_size_value],
+        &[],
+        location,
+    ));
 
     // stack_push(context, &setup_block, argument).unwrap();
 
