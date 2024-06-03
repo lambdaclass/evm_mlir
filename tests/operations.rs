@@ -654,12 +654,13 @@ fn test_lt_stack_underflow() {
 }
 
 #[test]
-fn test_gas_with_add_should_revert(){
-    let program = vec![
-        Operation::Push(BigUint::from(1_u8)),
-        Operation::Push(BigUint::from(2_u8)),
-        Operation::Push(BigUint::from(3_u8)),
-        Operation::Add,
-    ];
+fn test_gas_with_add_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Add);
+    }
     run_program_assert_revert(program);
 }

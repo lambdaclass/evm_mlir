@@ -14,7 +14,10 @@ use melior::{
 };
 
 use crate::{
-    constants::{MAX_STACK_SIZE, REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,GAS_COUNTER_GLOBAL},
+    constants::{
+        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL,
+        STACK_PTR_GLOBAL,
+    },
     errors::CodegenError,
 };
 
@@ -46,7 +49,8 @@ pub fn consume_gas<'ctx>(
             location,
             LoadStoreOptions::default(),
         ))
-        .result(0)?.into();
+        .result(0)?
+        .into();
 
     let gas_value = block
         .append_operation(arith::constant(
@@ -58,28 +62,23 @@ pub fn consume_gas<'ctx>(
         .into();
 
     // Check that gas_counter >= gas_value
-    let flag = block.append_operation(
-        arith::cmpi(
-            context, 
-            arith::CmpiPredicate::Sge, 
-            gas_counter, 
-            gas_value, 
-            location
-        )
-    ).result(0)?;
-
-    // Subtract gas from gas counter
-    let new_gas_counter = block
-        .append_operation(arith::subi(
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Sge,
             gas_counter,
             gas_value,
             location,
         ))
         .result(0)?;
 
+    // Subtract gas from gas counter
+    let new_gas_counter = block
+        .append_operation(arith::subi(gas_counter, gas_value, location))
+        .result(0)?;
 
     // Store new gas counter
-    let res = block.append_operation(llvm::store(
+    let _res = block.append_operation(llvm::store(
         context,
         new_gas_counter.into(),
         gas_counter_ptr.into(),

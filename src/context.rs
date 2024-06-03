@@ -30,7 +30,7 @@ use std::{
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
-    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL, GAS_COUNTER_GLOBAL},
+    constants::{GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
@@ -196,7 +196,7 @@ fn compile_program(
     // Setup the stack, memory, etc.
     // PERF: avoid generating unneeded setup blocks
     let stack_setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
-    let gas_setup_block = main_region.append_block(generate_gas_counter_block(context,module)?);
+    let gas_setup_block = main_region.append_block(generate_gas_counter_block(context, module)?);
     stack_setup_block.append_operation(cf::br(&gas_setup_block, &[], location));
 
     let revert_block = main_region.append_block(generate_revert_block(context)?);
@@ -255,7 +255,7 @@ fn generate_gas_counter_block<'c>(
     module: &'c MeliorModule,
 ) -> Result<Block<'c>, CodegenError> {
     let location = Location::unknown(context);
-    
+
     let ptr_type = pointer(context, 0);
 
     let body = module.body();
@@ -265,14 +265,14 @@ fn generate_gas_counter_block<'c>(
         ptr_type,
         location,
     ));
-    println!("GAS COUNTER GLOBAL: {:?}", res);
+
     assert!(res.verify());
 
     let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
 
-    let initial_gas = 3_i64;
-    
+    let initial_gas = 999_i64;
+
     let gas_size = block
         .append_operation(arith::constant(
             context,
@@ -281,11 +281,7 @@ fn generate_gas_counter_block<'c>(
         ))
         .result(0)?
         .into();
-    
 
-    println!("GAS SIZE: {:?}", gas_size);
-
-    
     let gas_addr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -295,8 +291,6 @@ fn generate_gas_counter_block<'c>(
         ))
         .result(0)?;
 
-    println!("GAS ADDR: {:?}", gas_addr);
-    
     let res = block.append_operation(llvm::store(
         context,
         gas_size,
@@ -304,8 +298,6 @@ fn generate_gas_counter_block<'c>(
         location,
         LoadStoreOptions::default(),
     ));
-
-    println!("GAS STORE: {:?}", res);
 
     assert!(res.verify());
 

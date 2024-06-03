@@ -9,9 +9,8 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, consume_gas,
         integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
-        consume_gas,
     },
 };
 use num_bigint::BigUint;
@@ -243,14 +242,9 @@ fn codegen_add<'c, 'r>(
     let gas_flag = consume_gas(context, &start_block, 3)?;
 
     let condition = start_block
-        .append_operation(arith::andi(
-            gas_flag,
-            flag,
-            location,
-        ))
+        .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
         .into();
-
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -271,7 +265,6 @@ fn codegen_add<'c, 'r>(
         .append_operation(arith::addi(lhs, rhs, location))
         .result(0)?
         .into();
-
 
     stack_push(context, &ok_block, result)?;
 
