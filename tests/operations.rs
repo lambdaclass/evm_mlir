@@ -855,6 +855,23 @@ fn addmod_with_overflowing_add() {
 }
 
 #[test]
+fn addmod_reverts_when_program_runs_out_of_gas() {
+    let (a, b, den) = (
+        BigUint::from(5_u8),
+        BigUint::from(10_u8),
+        BigUint::from(2_u8),
+    );
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(den));
+        program.push(Operation::Push(b));
+        program.push(Operation::Push(a));
+        program.push(Operation::Addmod);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn test_gt_less_than() {
     let a = BigUint::from(9_u8);
     let b = BigUint::from(8_u8);
