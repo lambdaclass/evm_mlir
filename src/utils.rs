@@ -23,7 +23,7 @@ pub fn consume_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
     gas: i64,
-) -> Result<(), CodegenError> {
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
@@ -86,7 +86,7 @@ pub fn consume_gas<'ctx>(
         LoadStoreOptions::default(),
     ));
 
-    Ok(flag)
+    Ok(flag.into())
 }
 
 pub fn stack_pop<'ctx>(

@@ -269,10 +269,12 @@ fn generate_gas_counter_block<'c>(
     let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
 
+    let initial_gas = 99999_i64;
+    
     let gas_size = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 99999).into(),
+            IntegerAttribute::new(uint256.into(), initial_gas).into(),
             location,
         ))
         .result(0)?
@@ -295,7 +297,6 @@ fn generate_gas_counter_block<'c>(
         location,
         LoadStoreOptions::default(),
     ));
-
 
     Ok(block)
 }
