@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf},
+    dialect::{arith, cf, ods},
     ir::{Attribute, Block, BlockRef, Location, Region},
     Context as MeliorContext,
 };
@@ -10,7 +10,8 @@ use crate::{
     program::Operation,
     utils::{
         check_denominator_is_zero, check_stack_has_at_least, check_stack_has_space_for,
-        generate_revert_block, integer_constant_from_i64, stack_pop, stack_push,
+        constant_value_from_i64, generate_revert_block, integer_constant_from_i64, stack_pop,
+        stack_push,
     },
 };
 use num_bigint::BigUint;
@@ -463,8 +464,78 @@ fn codegen_jumpdest<'c>(
 }
 
 fn codegen_signextend<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let byte_size = stack_pop(context, &ok_block)?;
+    let value_to_extend = stack_pop(context, &ok_block)?;
+
+    // Constant definition
+    let max_byte_size = constant_value_from_i64(context, &ok_block, 31)?;
+    let bits_per_byte = constant_value_from_i64(context, &ok_block, 8)?;
+    let sign_bit_position_on_byte = constant_value_from_i64(context, &ok_block, 7)?;
+    let max_bits = constant_value_from_i64(context, &ok_block, 255)?;
+
+    // byte_size = min(max_byte_size, byte_size)
+    let byte_size = ok_block
+        .append_operation(arith::minui(byte_size, max_byte_size, location))
+        .result(0)?
+        .into();
+
+    // bits_to_shift = max_bits - byte_size * bits_per_byte + sign_bit_position_on_byte
+    let byte_number_in_bits = ok_block
+        .append_operation(arith::muli(byte_size, bits_per_byte, location))
+        .result(0)?
+        .into();
+
+    let value_size_in_bits = ok_block
+        .append_operation(arith::addi(
+            byte_number_in_bits,
+            sign_bit_position_on_byte,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let bits_to_shift = ok_block
+        .append_operation(arith::subi(max_bits, value_size_in_bits, location))
+        .result(0)?
+        .into();
+
+    // value_to_extend << bits_to_shift
+    let left_shifted_value = ok_block
+        .append_operation(ods::llvm::shl(context, value_to_extend, bits_to_shift, location).into())
+        .result(0)?
+        .into();
+
+    // value_to_extend >> bits_to_shift  (sign extended)
+    let result = ok_block
+        .append_operation(
+            ods::llvm::ashr(context, left_shifted_value, bits_to_shift, location).into(),
+        )
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
 }

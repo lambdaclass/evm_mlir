@@ -439,3 +439,20 @@ pub mod llvm_mlir {
             .expect("valid operation")
     }
 }
+
+pub fn constant_value_from_i64<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    Ok(block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value).into(),
+            location,
+        ))
+        .result(0)?
+        .into())
+}
