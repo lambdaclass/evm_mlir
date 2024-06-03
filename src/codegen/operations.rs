@@ -1,6 +1,6 @@
 use melior::{
     dialect::{arith, cf},
-    ir::{Attribute, Block, BlockRef, Location, Region,Value},
+    ir::{Attribute, Block, BlockRef, Location, Region},
     Context as MeliorContext,
 };
 
