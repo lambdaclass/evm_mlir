@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use melior::{
-    dialect::cf,
-    ir::{BlockRef, Location, Value},
+    dialect::{cf, func},
+    ir::{attribute::FlatSymbolRefAttribute, Block, BlockRef, Location, Value},
     Context as MeliorContext,
 };
 
-use crate::program::Program;
+use crate::{program::Program, syscall_handler::syscall};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationCtx<'c> {
@@ -14,6 +14,8 @@ pub(crate) struct OperationCtx<'c> {
     pub mlir_context: &'c MeliorContext,
     /// The program IR.
     pub program: &'c Program,
+    /// The syscall context to be passed to syscalls.
+    pub syscall_ctx: Value<'c, 'c>,
     /// Reference to the revert block.
     /// This block takes care of reverts.
     pub revert_block: BlockRef<'c, 'c>,
@@ -43,5 +45,24 @@ impl<'c> OperationCtx<'c> {
     ) {
         let op = block.append_operation(cf::br(&self.jumptable_block, &[pc_to_jump_to], location));
         assert!(op.verify());
+    }
+}
+
+// Syscall MLIR wrappers
+impl<'c> OperationCtx<'c> {
+    pub(crate) fn write_result_syscall(
+        &self,
+        block: &Block,
+        offset: Value,
+        size: Value,
+        location: Location,
+    ) {
+        block.append_operation(func::call(
+            self.mlir_context,
+            FlatSymbolRefAttribute::new(self.mlir_context, syscall::WRITE_RESULT),
+            &[self.syscall_ctx, offset, size],
+            &[],
+            location,
+        ));
     }
 }

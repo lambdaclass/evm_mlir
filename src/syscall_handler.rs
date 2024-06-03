@@ -1,38 +1,38 @@
-pub struct SyscallHandler {
-    pub result: Vec<u8>,
+use std::ffi::c_void;
+
+use melior::ExecutionEngine;
+
+#[derive(Debug, Default)]
+pub struct SyscallContext {
+    pub memory: Vec<u8>,
+    result: Option<(usize, usize)>,
 }
 
-impl SyscallHandler {
-    fn write_result(&mut self, bytes: &[u8]) {
-        self.result.extend_from_slice(bytes);
+// Syscall implementations
+impl SyscallContext {
+    fn write_result(&mut self, offset: usize, bytes_len: usize) {
+        self.result = Some((offset, bytes_len));
     }
 }
 
-#[repr(C)]
-pub struct SyscallContext<'a> {
-    self_ptr: &'a mut SyscallHandler,
-}
-
-impl<'a> SyscallContext<'a> {
-    pub fn new(self_ptr: &'a mut SyscallHandler) -> Self {
-        Self { self_ptr }
-    }
-}
-
-impl<'a> SyscallContext<'a> {
-    pub extern "C" fn wrap_write_result(
-        ptr: &mut SyscallHandler,
-        bytes_ptr: *const u8,
-        bytes_len: u64,
-    ) {
-        // TODO: verify safety
-        let bytes = unsafe { std::slice::from_raw_parts(bytes_ptr, bytes_len as usize) };
-        ptr.write_result(bytes);
+// Syscall C wrappers
+impl SyscallContext {
+    pub extern "C" fn wrap_write_result(&mut self, offset: u32, bytes_len: u32) {
+        self.write_result(offset as usize, bytes_len as usize);
     }
 }
 
 pub mod syscall {
-    pub const WRITE_RESULT: &'static str = "write_result";
+    pub const WRITE_RESULT: &str = "write_result";
 }
 
 pub type MainFunc = extern "C" fn(&mut SyscallContext);
+
+pub fn register_syscalls(engine: &ExecutionEngine) {
+    unsafe {
+        engine.register_symbol(
+            syscall::WRITE_RESULT,
+            SyscallContext::wrap_write_result as *const fn(*mut c_void, *const u8, u64) as *mut (),
+        )
+    };
+}

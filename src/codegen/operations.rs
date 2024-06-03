@@ -46,6 +46,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::And => codegen_and(op_ctx, region),
         Operation::Or => codegen_or(op_ctx, region),
+        Operation::Return => codegen_return(op_ctx, region),
     }
 }
 
@@ -871,18 +872,13 @@ fn codegen_byte<'c, 'r>(
     let offset = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    const BITS_PER_BYTE: u8 = 8;
-    const MAX_SHIFT: u8 = 31;
-    let mut bits_per_byte: [u8; 32] = [0; 32];
-    bits_per_byte[31] = BITS_PER_BYTE;
-
-    let mut max_shift_in_bits: [u8; 32] = [0; 32];
-    max_shift_in_bits[31] = MAX_SHIFT * BITS_PER_BYTE;
+    const BITS_PER_BYTE: i64 = 8;
+    const MAX_SHIFT: i64 = 31;
 
     let constant_bits_per_byte = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, bits_per_byte),
+            integer_constant_from_i64(context, BITS_PER_BYTE).into(),
             location,
         ))
         .result(0)?
@@ -891,7 +887,7 @@ fn codegen_byte<'c, 'r>(
     let constant_max_shift_in_bits = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, max_shift_in_bits),
+            integer_constant_from_i64(context, MAX_SHIFT).into(),
             location,
         ))
         .result(0)?
@@ -929,7 +925,7 @@ fn codegen_byte<'c, 'r>(
     let zero = out_of_bounds_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, [0; 32]),
+            integer_constant_from_i64(context, 0).into(),
             location,
         ))
         .result(0)?
@@ -979,13 +975,10 @@ fn codegen_byte<'c, 'r>(
         .result(0)?
         .into();
 
-    let mut mask: [u8; 32] = [0; 32];
-    mask[31] = 0xff;
-
     let mask = offset_ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, mask),
+            integer_constant_from_i64(context, 0xff).into(),
             location,
         ))
         .result(0)?
@@ -1002,12 +995,6 @@ fn codegen_byte<'c, 'r>(
     offset_ok_block.append_operation(cf::br(&end_block, &[], location));
 
     Ok((start_block, end_block))
-}
-
-fn integer_constant(context: &MeliorContext, value: [u8; 32]) -> Attribute {
-    let str_value = BigUint::from_bytes_be(&value).to_string();
-    // TODO: should we handle this error?
-    Attribute::parse(context, &format!("{str_value} : i256")).unwrap()
 }
 
 fn codegen_jumpdest<'c>(
@@ -1157,6 +1144,50 @@ fn codegen_pc<'c>(
         .into();
 
     stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_return<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let uint32 = IntegerType::new(context, 32);
+
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, location);
 
     Ok((start_block, ok_block))
 }

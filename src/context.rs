@@ -17,7 +17,7 @@ use melior::{
         DialectRegistry,
     },
     ir::{
-        attribute::{FlatSymbolRefAttribute, IntegerAttribute, StringAttribute, TypeAttribute},
+        attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
         Attribute, Block, Identifier, Location, Module as MeliorModule, Region, Value,
@@ -35,7 +35,7 @@ use std::{
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
-    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    constants::{MAIN_ENTRYPOINT, MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
@@ -203,15 +203,12 @@ fn compile_program(
     program: &Program,
 ) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
-
-    let uint8 = IntegerType::new(context, 8);
-    let uint64 = IntegerType::new(context, 64);
     let ptr_type = pointer(context, 0);
 
     // Build the main function
     let main_func = func::func(
         context,
-        StringAttribute::new(context, "main"),
+        StringAttribute::new(context, MAIN_ENTRYPOINT),
         TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[]).into()),
         Region::new(),
         &[
@@ -231,94 +228,28 @@ fn compile_program(
 
     // Setup the stack, memory, etc.
     // PERF: avoid generating unneeded setup blocks
-    let setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
+    let setup_block = main_region.append_block(Block::new(&[]));
+    let syscall_ctx = setup_block.add_argument(ptr_type, location);
+
+    // Append setup code to be run at the start
+    generate_stack_setup_code(context, module, &setup_block)?;
+
+    declare_syscalls(context, module);
+
+    // Generate helper blocks
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
-
-    let callback_ptr = setup_block.add_argument(ptr_type, location);
-
-    let context_ptr = setup_block
-        .append_operation(llvm::load(
-            context,
-            callback_ptr,
-            ptr_type,
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    let array_size = setup_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint8.into(), 42).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let ptr = setup_block
-        .append_operation(llvm::alloca(
-            context,
-            array_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint8.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    setup_block.append_operation(llvm::store(
-        context,
-        array_size,
-        ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-
-    let array_size_value = setup_block
-        .append_operation(arith::constant(
-            context,
-            // TODO: this should be usize
-            IntegerAttribute::new(uint64.into(), 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    module.body().append_operation(func::func(
-        context,
-        StringAttribute::new(context, syscall::WRITE_RESULT),
-        TypeAttribute::new(
-            FunctionType::new(context, &[ptr_type, ptr_type, uint64.into()], &[]).into(),
-        ),
-        Region::new(),
-        &[(
-            Identifier::new(context, "sym_visibility"),
-            StringAttribute::new(context, "private").into(),
-        )],
-        location,
-    ));
-
-    setup_block.append_operation(func::call(
-        context,
-        FlatSymbolRefAttribute::new(context, syscall::WRITE_RESULT),
-        &[context_ptr, ptr, array_size_value],
-        &[],
-        location,
-    ));
-
-    // stack_push(context, &setup_block, argument).unwrap();
-
-    let mut last_block = setup_block;
 
     let mut op_ctx = OperationCtx {
         mlir_context: context,
         program,
+        syscall_ctx,
         revert_block,
         jumptable_block,
         jumpdest_blocks: Default::default(),
     };
+
+    let mut last_block = setup_block;
 
     // Generate code for the program
     for op in &op_ctx.program.operations {
@@ -363,10 +294,11 @@ fn compile_program(
     Ok(())
 }
 
-fn generate_stack_setup_block<'c>(
+fn generate_stack_setup_code<'c>(
     context: &'c MeliorContext,
     module: &'c MeliorModule,
-) -> Result<Block<'c>, CodegenError> {
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
@@ -387,7 +319,6 @@ fn generate_stack_setup_block<'c>(
     ));
     assert!(res.verify());
 
-    let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
 
     // Allocate stack memory
@@ -447,7 +378,7 @@ fn generate_stack_setup_block<'c>(
     ));
     assert!(res.verify());
 
-    Ok(block)
+    Ok(())
 }
 
 /// Create the jumptable landing block. This is the main entrypoint
@@ -506,4 +437,28 @@ fn populate_jumptable(op_ctx: &OperationCtx) -> Result<(), CodegenError> {
     assert!(op.verify());
 
     Ok(())
+}
+
+fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
+    let location = Location::unknown(context);
+    let empty_region = Region::new();
+
+    // Type declarations
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let attributes = &[(
+        Identifier::new(context, "sym_visibility"),
+        StringAttribute::new(context, "private").into(),
+    )];
+
+    // Syscall declarations
+    module.body().append_operation(func::func(
+        context,
+        StringAttribute::new(context, syscall::WRITE_RESULT),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
+        empty_region,
+        attributes,
+        location,
+    ));
 }

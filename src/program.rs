@@ -153,7 +153,7 @@ pub enum Opcode {
     // CREATE = 0xF0,
     // CALL = 0xF1,
     // CALLCODE = 0xF2,
-    // RETURN = 0xF3,
+    RETURN = 0xF3,
     // DELEGATECALL = 0xF4,
     // CREATE2 = 0xF5,
     // unused 0xF6-0xF9
@@ -260,6 +260,7 @@ pub enum Operation {
     Jumpi,
     Jump,
     And,
+    Return,
 }
 
 #[derive(Debug, Clone)]
@@ -521,6 +522,7 @@ impl Program {
                 Opcode::JUMPI => Operation::Jumpi,
                 Opcode::AND => Operation::And,
                 Opcode::OR => Operation::Or,
+                Opcode::RETURN => Operation::Return,
                 Opcode::UNUSED => panic!("Unknown opcode {:02X}", opcode),
             };
             operations.push(op);

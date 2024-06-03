@@ -14,7 +14,7 @@ use melior::{
 };
 
 use crate::{
-    constants::{MAX_STACK_SIZE, REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    constants::{MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
     errors::CodegenError,
 };
 
@@ -423,7 +423,6 @@ pub fn check_stack_has_at_least<'ctx>(
 pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
     // TODO: create only one revert block and use it for all revert operations
     let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
     let revert_block = Block::new(&[]);
 
     // let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
