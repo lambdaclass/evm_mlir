@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf},
+    dialect::{arith, cf, ods},
     ir::{Attribute, Block, BlockRef, Location, Region},
     Context as MeliorContext,
 };
@@ -198,7 +198,7 @@ fn codegen_sdiv<'c, 'r>(
 
     // Denominator is not zero path
     let result = den_not_zero_bloq
-        .append_operation(arith::divsi(num, den, location))
+        .append_operation(ods::llvm::sdiv(context, num, den, location).into())
         .result(0)?
         .into();
 
