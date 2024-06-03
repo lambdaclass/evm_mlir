@@ -3,7 +3,7 @@ use evm_mlir::{
     constants::REVERT_EXIT_CODE,
     program::{Operation, Program},
 };
-use num_bigint::{BigUint, BigInt};
+use num_bigint::{BigInt, BigUint};
 use tempfile::NamedTempFile;
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -30,8 +30,8 @@ fn run_program_assert_revert(program: Vec<Operation>) {
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
-    if value > BigInt::from(0_i8) {
-        value.to_biguint().unwrap()
+    if value > BigInt::ZERO {
+        value.magnitude().clone()
     } else {
         let bytes = value.to_signed_bytes_be();
         let mut buffer = vec![255_u8; 32];
@@ -626,7 +626,7 @@ fn smod_with_negative_operands() {
     // -8 mod -3 = -2
     let num = biguint_256_from_bigint(BigInt::from(-8_i8));
     let den = biguint_256_from_bigint(BigInt::from(-3_i8));
-    
+
     let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
     let result_last_byte = expected_result.to_bytes_be()[31];
 
