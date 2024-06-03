@@ -19,6 +19,8 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x04) DIV
 1. (0x06) MOD
 1. (0x08) ADDMOD
+1. (0x13) SGT
+1. (0x18) XOR
 1. (0x1A) BYTE
 1. (0x50) POP
 1. (0x11) GT
@@ -71,12 +73,10 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x0B) SIGNEXTEND
 1. (0x10) LT
 1. (0x12) SLT
-1. (0x13) SGT
 1. (0x14) EQ
 1. (0x15) ISZERO
 1. (0x16) AND
 1. (0x17) OR
-1. (0x18) XOR
 1. (0x19) NOT
 1. (0x1B) SHL
 1. (0x1C) SHR
