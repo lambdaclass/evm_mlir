@@ -29,6 +29,19 @@ fn run_program_assert_revert(program: Vec<Operation>) {
     run_program_assert_result(program, REVERT_EXIT_CODE);
 }
 
+pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
+    if value > BigInt::from(0_i8) {
+        value.to_biguint().unwrap()
+    } else {
+        let bytes = value.to_signed_bytes_be();
+        let mut buffer = vec![255_u8; 32];
+        let finish = 32;
+        let start = finish - bytes.len();
+        buffer[start..finish].copy_from_slice(&bytes);
+        BigUint::from_bytes_be(&buffer)
+    }
+}
+
 #[test]
 fn push_once() {
     let value = BigUint::from(5_u8);
@@ -201,7 +214,6 @@ fn sdiv_signed_division_1() {
     //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0]
     //If we take the lowest byte
     //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
-    //let expected_result = (&a / &b).try_into().unwrap();
     let expected_result: u8 = 252_u8;
 
     let program = vec![
@@ -209,6 +221,7 @@ fn sdiv_signed_division_1() {
         Operation::Push(a), //
         Operation::Sdiv,    //
     ];
+
     run_program_assert_result(program, expected_result);
 }
 
@@ -217,10 +230,10 @@ fn sdiv_signed_division_2() {
     let a = BigInt::from(-2_i8);
     let b = BigInt::from(-1_i8);
 
-    let a_biguint = BigUint::from_bytes_be(&a.to_bytes_be().1);
-    let b_biguint = BigUint::from_bytes_be(&b.to_bytes_be().1);
-
     let expected_result: u8 = (&a / &b).try_into().unwrap();
+
+    let a_biguint = biguint_256_from_bigint(a);
+    let b_biguint = biguint_256_from_bigint(b);
 
     let program = vec![
         Operation::Push(b_biguint), //
