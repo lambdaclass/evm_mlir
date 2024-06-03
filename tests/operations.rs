@@ -35,7 +35,7 @@ fn push_once() {
     let value = BigUint::from(5_u8);
 
     // For PUSH0
-    let program = vec![Operation::Push(BigUint::ZERO)];
+    let program = vec![Operation::Push0];
     run_program_assert_result(program, 0);
 
     // For PUSH1, ... , PUSH32
@@ -59,12 +59,12 @@ fn push_twice() {
 }
 
 #[test]
-fn push_fill_stack() {
+fn push_reverts_without_gas() {
     let stack_top = BigUint::from(88_u8);
 
     // Push 1024 times
     let program = vec![Operation::Push(stack_top.clone()); 1024];
-    run_program_assert_result(program, stack_top.try_into().unwrap());
+    run_program_assert_revert(program);
 }
 
 #[test]
