@@ -197,7 +197,7 @@ fn compile_program(
     // PERF: avoid generating unneeded setup blocks
     let stack_setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
     let gas_setup_block = main_region.append_block(generate_gas_counter_block(context,module)?);
-    stack_setup_block.append_operation(cf::br(successor, gas_setup_block, location))?;
+    stack_setup_block.append_operation(cf::br(&gas_setup_block, &[], location));
 
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
@@ -265,7 +265,6 @@ fn generate_gas_counter_block<'c>(
         ptr_type,
         location,
     ));
-
 
     let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
