@@ -1095,10 +1095,10 @@ fn signextend_one_byte_negative_value() {
     let expected_result = 0xFF_u8;
 
     let program = vec![
-        Operation::Push(denominator),      //
-        Operation::Push(value),            //
-        Operation::Push(value_bytes_size), //
-        Operation::Signextend,             //
+        Operation::Push(denominator),      // <No collapse>
+        Operation::Push(value),            // <No collapse>
+        Operation::Push(value_bytes_size), // <No collapse>
+        Operation::Signextend,             // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -1118,10 +1118,10 @@ fn signextend_one_byte_positive_value() {
     let expected_result = 0x3F_u8;
 
     let program = vec![
-        Operation::Push(denominator),      //
-        Operation::Push(value),            //
-        Operation::Push(value_bytes_size), //
-        Operation::Signextend,             //
+        Operation::Push(denominator),      // <No collapse>
+        Operation::Push(value),            // <No collapse>
+        Operation::Push(value_bytes_size), // <No collapse>
+        Operation::Signextend,             // <No collapse>
         Operation::Div,
     ];
 
@@ -1131,5 +1131,20 @@ fn signextend_one_byte_positive_value() {
 #[test]
 fn signextend_with_stack_underflow() {
     let program = vec![Operation::Signextend];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn signextend_gas_should_revert() {
+    let value = BigUint::from(0x7F_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let mut program = vec![];
+
+    for _ in 0..200 {
+        program.push(Operation::Push(value.clone()));
+        program.push(Operation::Push(value_bytes_size.clone()));
+        program.push(Operation::Signextend);
+    }
+
     run_program_assert_revert(program);
 }
