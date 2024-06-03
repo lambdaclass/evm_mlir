@@ -934,6 +934,18 @@ fn mulmod_with_overflow() {
 }
 
 #[test]
+fn mulmod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Mulmod);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn test_sgt_positive_greater_than() {
     let a = BigUint::from(2_u8);
     let b = BigUint::from(1_u8);
