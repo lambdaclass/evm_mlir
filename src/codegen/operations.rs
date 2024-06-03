@@ -1,6 +1,9 @@
 use melior::{
     dialect::{arith, cf, ods},
-    ir::{attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location, Region},
+    ir::{
+        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        Region,
+    },
     Context as MeliorContext,
 };
 
@@ -9,7 +12,8 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, get_nth_from_stack, integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        get_nth_from_stack, integer_constant_from_i64, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;

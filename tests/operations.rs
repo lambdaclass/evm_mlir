@@ -136,7 +136,7 @@ fn push_push_shl() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
         Operation::Push(BigUint::from(4_u8)),
-        Operation::Shl
+        Operation::Shl,
     ];
 
     run_program_assert_result(program, 16);
@@ -147,7 +147,7 @@ fn shl_shift_grater_than_255() {
     let program = vec![
         Operation::Push(BigUint::from(2_u8)),
         Operation::Push(BigUint::from(256_u16)),
-        Operation::Shl
+        Operation::Shl,
     ];
 
     run_program_assert_result(program, 0);
