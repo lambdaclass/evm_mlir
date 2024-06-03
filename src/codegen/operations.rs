@@ -786,17 +786,36 @@ fn codegen_addmod<'c, 'r>(
     stack_push(context, &den_zero_bloq, constant_value)?;
 
     den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    let uint256 = IntegerType::new(context, 256).into();
+    let uint257 = IntegerType::new(context, 257).into();
 
+    // extend the operands to 257 bits before the addition
+    let extended_a = den_not_zero_bloq
+        .append_operation(arith::extui(a, uint257, location))
+        .result(0)?
+        .into();
+    let extended_b = den_not_zero_bloq
+        .append_operation(arith::extui(b, uint257, location))
+        .result(0)?
+        .into();
+    let extended_den = den_not_zero_bloq
+        .append_operation(arith::extui(den, uint257, location))
+        .result(0)?
+        .into();
     let add_result = den_not_zero_bloq
-        .append_operation(arith::addi(a, b, location))
+        .append_operation(arith::addi(extended_a, extended_b, location))
         .result(0)?
         .into();
     let mod_result = den_not_zero_bloq
-        .append_operation(arith::remui(add_result, den, location))
+        .append_operation(arith::remui(add_result, extended_den, location))
+        .result(0)?
+        .into();
+    let truncated_result = den_not_zero_bloq
+        .append_operation(arith::trunci(mod_result, uint256, location))
         .result(0)?
         .into();
 
-    stack_push(context, &den_not_zero_bloq, mod_result)?;
+    stack_push(context, &den_not_zero_bloq, truncated_result)?;
 
     den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
 

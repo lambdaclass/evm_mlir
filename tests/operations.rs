@@ -826,6 +826,23 @@ fn addmod_with_zero_denominator() {
 }
 
 #[test]
+fn addmod_with_overflowing_add() {
+    let (a, b, den) = (
+        BigUint::from_bytes_be(&[0xff; 32]),
+        BigUint::from(1_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Addmod,
+    ];
+    run_program_assert_result(program, ((a + b) % den).try_into().unwrap());
+}
+
+#[test]
 fn test_gt_less_than() {
     let a = BigUint::from(9_u8);
     let b = BigUint::from(8_u8);
