@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith, cf, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
-        llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods,
+        llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, llvm::{self, r#type::pointer, LoadStoreOptions}, ods,
     },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
@@ -16,10 +16,7 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
-        swap_stack_elements,
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, llvm_mlir, stack_pop, stack_push, swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -1856,7 +1853,7 @@ fn codegen_msize<'c>(
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, memory_size)?;
+    stack_push(context, &ok_&ok_block, memory_size)?;
 
     Ok((start_block, ok_block))
 }
