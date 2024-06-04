@@ -1090,3 +1090,17 @@ fn pop_reverts_when_program_runs_out_of_gas() {
     }
     run_program_assert_revert(program);
 }
+
+#[test]
+fn byte_reverts_when_program_runs_out_of_gas() {
+    let value: [u8; 32] = [0xff; 32];
+    let value: BigUint = BigUint::from_bytes_be(&value);
+    let offset = BigUint::from(16_u8);
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..500 {
+        program.push(Operation::Push(value.clone()));
+        program.push(Operation::Push(offset.clone()));
+        program.push(Operation::Byte);
+    }
+    run_program_assert_revert(program);
+}
