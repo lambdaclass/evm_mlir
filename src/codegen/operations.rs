@@ -1317,11 +1317,28 @@ fn codegen_jumpdest<'c>(
     pc: usize,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     let landing_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough gas to compute the operation
+    let gas_flag = consume_gas(context, &landing_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    landing_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     // Register jumpdest block in context
     op_ctx.register_jump_destination(pc, landing_block);
 
-    Ok((landing_block, landing_block))
+    Ok((landing_block, ok_block))
 }
 
 fn codegen_jumpi<'c, 'r: 'c>(
