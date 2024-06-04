@@ -1,28 +1,51 @@
 use evm_mlir::{
-    compile_binary,
+    constants::MAIN_ENTRYPOINT,
     constants::REVERT_EXIT_CODE,
+    context::Context,
     program::{Operation, Program},
+    syscall::{register_syscalls, MainFunc, SyscallContext},
 };
+use melior::ExecutionEngine;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
-fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
+fn run_program_assert_result_with_gas(
+    operations: Vec<Operation>,
+    expected_result: u8,
+    initial_gas: u64,
+) {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
         .into_temp_path();
 
-    compile_binary(&program, &output_file).expect("failed to compile program");
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
 
-    assert!(output_file.exists(), "output file does not exist");
+    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
+    register_syscalls(&engine);
 
-    let mut res = std::process::Command::new(&output_file)
-        .spawn()
-        .expect("spawn process failed");
-    let output = res.wait().expect("wait for process failed");
+    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
+    let fptr = engine.lookup(&function_name);
+    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
 
-    assert_eq!(output.code().expect("no exit code"), expected_result.into());
+    let mut context = SyscallContext::default();
+
+    let result = main_fn(&mut context, initial_gas);
+
+    assert_eq!(result, expected_result);
+}
+
+fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
+    run_program_assert_result_with_gas(operations, expected_result, 1e7 as _);
+}
+
+fn run_program_assert_reverts_with_gas(program: Vec<Operation>, initial_gas: u64) {
+    // TODO: design a way to check for stack overflow
+    run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, initial_gas);
 }
 
 fn run_program_assert_revert(program: Vec<Operation>) {
@@ -1250,14 +1273,18 @@ fn test_lt_stack_underflow() {
 
 #[test]
 fn test_gas_with_add_should_revert() {
-    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
-    let mut program = vec![];
-    for _ in 0..334 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Add);
-    }
-    run_program_assert_revert(program);
+    let x = BigUint::from(1_u8);
+
+    // TODO: update when PUSH costs gas
+    let program = vec![
+        Operation::Push(x.clone()),
+        Operation::Push(x.clone()),
+        Operation::Add,
+    ];
+    let needed_gas = 3;
+    let expected_result = 2;
+    run_program_assert_result_with_gas(program.clone(), expected_result, needed_gas);
+    run_program_assert_reverts_with_gas(program, needed_gas - 1);
 }
 
 #[test]
@@ -1312,12 +1339,17 @@ fn sar_reverts_when_program_runs_out_of_gas() {
 
 #[test]
 fn pop_reverts_when_program_runs_out_of_gas() {
-    let mut program: Vec<Operation> = vec![];
-    for _i in 0..1000 {
-        program.push(Operation::Push(BigUint::from(1_u8)));
-        program.push(Operation::Pop);
-    }
-    run_program_assert_revert(program);
+    // TODO: update when push costs gas
+    let program: Vec<Operation> = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Pop,
+    ];
+
+    let needed_gas = 2;
+    let expected_result = 1;
+    run_program_assert_result_with_gas(program.clone(), expected_result, needed_gas);
+    run_program_assert_reverts_with_gas(program, needed_gas - 1);
 }
 
 #[test]
