@@ -1525,6 +1525,19 @@ fn slt_equal() {
 }
 
 #[test]
+fn slt_gas_should_revert() {
+    let mut program = vec![];
+
+    program.push(Operation::Push(BigUint::ZERO));
+    for _ in 0..334 {
+        program.push(Operation::Push(BigUint::ZERO));
+        program.push(Operation::Slt);
+    }
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn slt_stack_underflow() {
     let program = vec![Operation::Slt];
     run_program_assert_revert(program);
