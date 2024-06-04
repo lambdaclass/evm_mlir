@@ -195,8 +195,7 @@ pub fn link_binary(
     let output_filename = output_filename.as_ref().to_string_lossy().to_string();
 
     let args: Vec<_> = {
-        #[cfg(target_os = "macos")]
-        {
+        if cfg!(target_os = "macos") {
             let mut args = vec![
                 "-L/usr/local/lib",
                 "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib",
@@ -207,9 +206,7 @@ pub fn link_binary(
             args.extend(&["-o", &output_filename, "-lSystem"]);
 
             args
-        }
-        #[cfg(target_os = "linux")]
-        {
+        } else if cfg!(target_os = "linux") {
             let (scrt1, crti, crtn) = {
                 if Path::new("/usr/lib64/Scrt1.o").exists() {
                     (
@@ -254,9 +251,7 @@ pub fn link_binary(
             args.extend(objects.iter().map(|x| x.as_str()));
 
             args
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        {
+        } else {
             unimplemented!()
         }
     };
@@ -296,8 +291,7 @@ pub fn link_shared_lib(
     let output_filename = output_filename.to_string_lossy().to_string();
 
     let args: Vec<_> = {
-        #[cfg(target_os = "macos")]
-        {
+        if cfg!(target_os = "macos") {
             let mut args = vec![
                 "-demangle",
                 "-no_deduplicate",
@@ -312,9 +306,7 @@ pub fn link_shared_lib(
             args.extend(&["-o", &output_filename, "-lSystem"]);
 
             args
-        }
-        #[cfg(target_os = "linux")]
-        {
+        } else if cfg!(target_os = "linux") {
             let mut args = vec!["--hash-style=gnu", "--eh-frame-hdr", "-shared"];
 
             args.extend(&["-o", &output_filename]);
@@ -324,9 +316,7 @@ pub fn link_shared_lib(
             args.extend(objects.iter().map(|x| x.as_str()));
 
             args
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-        {
+        } else {
             unimplemented!()
         }
     };
