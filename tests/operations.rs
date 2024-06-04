@@ -954,6 +954,13 @@ fn pc_gas_should_revert() {
 }
 
 #[test]
+fn check_initial_memory_size() {
+    let program = vec![Operation::Msize];
+
+    run_program_assert_result(program, 0)
+}
+
+#[test]
 fn test_and() {
     let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
     let expected_result = 0b1000_u8;

@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf, func, ods},
+    dialect::{arith, cf, func, llvm::{self, r#type::pointer, LoadStoreOptions}, ods},
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -12,10 +12,7 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
-        swap_stack_elements,
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push, swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -57,7 +54,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
-        Operation::Msize => todo!(),
+        Operation::Msize => codegen_msize(op_ctx, region),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
@@ -1661,7 +1658,7 @@ fn codegen_msize<'c>(
     .result(0)?
     .into();
 
-    stack_push(context, block, memory_size)?;
+    stack_push(context, &ok_block, memory_size)?;
 
     Ok((start_block, ok_block))
 }
