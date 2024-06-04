@@ -196,6 +196,20 @@ fn swap_stack_underflow() {
 }
 
 #[test]
+fn swap_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Swap(1));
+    }
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
