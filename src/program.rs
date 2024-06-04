@@ -149,7 +149,7 @@ pub enum Opcode {
     // CREATE = 0xF0,
     // CALL = 0xF1,
     // CALLCODE = 0xF2,
-    // RETURN = 0xF3,
+    RETURN = 0xF3,
     // DELEGATECALL = 0xF4,
     // CREATE2 = 0xF5,
     // unused 0xF6-0xF9
@@ -257,6 +257,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::SWAP14 as u8 => Opcode::SWAP14,
             x if x == Opcode::SWAP15 as u8 => Opcode::SWAP15,
             x if x == Opcode::SWAP16 as u8 => Opcode::SWAP16,
+            x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             _ => Opcode::UNUSED,
         }
     }
@@ -295,6 +296,7 @@ pub enum Operation {
     Push(BigUint),
     Dup(u32),
     Swap(u32),
+    Return,
 }
 
 #[derive(Debug, Clone)]
@@ -564,7 +566,8 @@ impl Program {
                 Opcode::SWAP14 => Operation::Swap(14),
                 Opcode::SWAP15 => Operation::Swap(15),
                 Opcode::SWAP16 => Operation::Swap(16),
-                Opcode::UNUSED => panic!("Unknown opcode {:02X}", opcode),
+                Opcode::RETURN => Operation::Return,
+                Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);
             pc += 1;
