@@ -71,7 +71,7 @@ fn push_once() {
     let value = BigUint::from(5_u8);
 
     // For PUSH0
-    let program = vec![Operation::Push(BigUint::ZERO)];
+    let program = vec![Operation::Push0];
     run_program_assert_result(program, 0);
 
     // For PUSH1, ... , PUSH32
@@ -95,12 +95,22 @@ fn push_twice() {
 }
 
 #[test]
+#[ignore]
 fn push_fill_stack() {
     let stack_top = BigUint::from(88_u8);
 
     // Push 1024 times
     let program = vec![Operation::Push(stack_top.clone()); 1024];
     run_program_assert_result(program, stack_top.try_into().unwrap());
+}
+
+#[test]
+fn push_reverts_without_gas() {
+    let stack_top = BigUint::from(88_u8);
+
+    // Push 1024 times
+    let program = vec![Operation::Push(stack_top.clone()); 1024];
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -1009,6 +1019,78 @@ fn mod_reverts_when_program_runs_out_of_gas() {
 }
 
 #[test]
+fn smod_with_negative_operands() {
+    // -8 mod -3 = -2
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, result_last_byte);
+}
+
+#[test]
+fn smod_with_negative_denominator() {
+    // 8 mod -3 = 2
+    let num = BigUint::from(8_u8);
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+
+    let expected_result = BigUint::from(2_u8);
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, expected_result.try_into().unwrap());
+}
+
+#[test]
+fn smod_with_negative_numerator() {
+    // -8 mod 3 = -2
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = BigUint::from(3_u8);
+
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, result_last_byte);
+}
+
+#[test]
+fn smod_with_positive_operands() {
+    let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
+    let expected_result = (&num % &den).try_into().unwrap();
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn smod_with_zero_denominator() {
+    let (num, den) = (BigUint::from(10_u8), BigUint::from(0_u8));
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn smod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::SMod]);
+}
+
+#[test]
+fn smod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::SMod);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn addmod_with_non_zero_result() {
     let (a, b, den) = (
         BigUint::from(13_u8),
@@ -1429,15 +1511,12 @@ fn signextend_gas_should_revert() {
 #[test]
 #[ignore]
 fn gas_get_starting_value() {
-    //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
-    //not taking it into consideration for calculation. That will change in the future and this
-    //test will have to be updated.
-    //
-    //We also have to divide the result in order for it to be contained in just one byte, which is
+    //We have to divide the result in order for it to be contained in just one byte, which is
     //the u8 result size.
     const GAS_OP_COST: i64 = 2;
+    const PUSH_GAS_COST: i64 = 3;
 
-    let gas_after_op = (999 - GAS_OP_COST) as u64;
+    let gas_after_op = (999 - GAS_OP_COST - PUSH_GAS_COST) as u64;
     let denominator = BigUint::from(4_u8);
     let expected_result = BigUint::from(gas_after_op) / &denominator;
 
@@ -1453,15 +1532,13 @@ fn gas_get_starting_value() {
 #[test]
 #[ignore]
 fn gas_value_after_add_op() {
-    //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
-    //not taking it into consideration for calculation. That will change in the future and this
-    //test will have to be updated.
-
     const ADD_OP_COST: i64 = 3;
+    const PUSH_GAS_COST: i64 = 3;
     const GAS_OP_COST: i64 = 2;
 
     let iterations = 50;
-    let expected_result = 999 - ADD_OP_COST * iterations - GAS_OP_COST;
+    let expected_result =
+        999 - PUSH_GAS_COST - (ADD_OP_COST + PUSH_GAS_COST) * iterations - GAS_OP_COST;
 
     let mut program = vec![];
     program.push(Operation::Push(BigUint::from(1_u8)));
