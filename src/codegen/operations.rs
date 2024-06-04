@@ -4,7 +4,6 @@ use melior::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
     },
-    Context as MeliorContext,
 };
 
 use super::context::OperationCtx;
@@ -13,7 +12,7 @@ use crate::{
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, get_nth_from_stack, get_remaining_gas,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
     },
@@ -59,6 +58,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Push(x) => codegen_push(op_ctx, region, x),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
+        Operation::Return => codegen_return(op_ctx, region),
     }
 }
 
@@ -1197,14 +1197,11 @@ fn codegen_sar<'c, 'r>(
     let shift = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let mut max_shift: [u8; 32] = [0; 32];
-    max_shift[31] = 255;
-
     // max_shift = 255
     let max_shift = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, max_shift),
+            integer_constant_from_i64(context, 255).into(),
             location,
         ))
         .result(0)?
@@ -1343,13 +1340,10 @@ fn codegen_byte<'c, 'r>(
         .result(0)?
         .into();
 
-    let mut mask: [u8; 32] = [0; 32];
-    mask[31] = 0xff;
-
     let mask = offset_ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, mask),
+            integer_constant_from_i64(context, 0xff).into(),
             location,
         ))
         .result(0)?
@@ -1366,12 +1360,6 @@ fn codegen_byte<'c, 'r>(
     offset_ok_block.append_operation(cf::br(&end_block, &[], location));
 
     Ok((start_block, end_block))
-}
-
-fn integer_constant(context: &MeliorContext, value: [u8; 32]) -> Attribute {
-    let str_value = BigUint::from_bytes_be(&value).to_string();
-    // TODO: should we handle this error?
-    Attribute::parse(context, &format!("{str_value} : i256")).unwrap()
 }
 
 fn codegen_jumpdest<'c>(
@@ -1538,6 +1526,60 @@ fn codegen_pc<'c>(
         .into();
 
     stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_return<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    // TODO: compute gas cost for memory expansion
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let uint32 = IntegerType::new(context, 32);
+
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
+    // If any of them were bigger than a u32, we would have ran out of gas before here.
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, location);
 
     Ok((start_block, ok_block))
 }
