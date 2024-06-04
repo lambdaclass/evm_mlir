@@ -184,6 +184,20 @@ fn shl_with_stack_underflow() {
 }
 
 #[test]
+fn shl_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Shl);
+    }
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn swap_first() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
