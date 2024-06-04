@@ -15,9 +15,9 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-       
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
+        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -1224,11 +1224,18 @@ fn codegen_shr<'c, 'r>(
     // Check there's enough elements in stack
     let mut flag = check_stack_has_at_least(context, &start_block, 2)?;
 
+    let gas_flag = consume_gas(context, &start_block, 3)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -1275,7 +1282,7 @@ fn codegen_shr<'c, 'r>(
 
     ok_ok_block.append_operation(cf::br(&empty_block, &[], location));
 
-    // if shifht is grater than 255
+    // if shift is greater than 255
     let result = altv_block
         .append_operation(arith::constant(
             context,
