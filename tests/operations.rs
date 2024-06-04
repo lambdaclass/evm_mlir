@@ -1574,15 +1574,15 @@ fn gas_without_enough_gas_revert() {
 }
 
 #[test]
-fn byte_reverts_when_program_runs_out_of_gas() {
+fn byte_gas_cost() {
     let value: [u8; 32] = [0xff; 32];
-    let value: BigUint = BigUint::from_bytes_be(&value);
     let offset = BigUint::from(16_u8);
-    let mut program: Vec<Operation> = vec![];
-    for _i in 0..500 {
-        program.push(Operation::Push(value.clone()));
-        program.push(Operation::Push(offset.clone()));
-        program.push(Operation::Byte);
-    }
-    run_program_assert_revert(program);
+    let program: Vec<Operation> = vec![
+        Operation::Push(BigUint::from_bytes_be(&value)),
+        Operation::Push(offset),
+        Operation::Byte,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::BYTE;
+    let expected_result = 0xff;
+    run_program_assert_result_with_gas(program, expected_result, needed_gas as _);
 }
