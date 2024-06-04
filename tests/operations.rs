@@ -339,6 +339,20 @@ fn div_with_stack_underflow() {
 }
 
 #[test]
+fn div_gas_should_revert() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let mut program = vec![];
+
+    for _ in 0..200 {
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Div);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_normal_mul() {
     let (a, b) = (BigUint::from(2_u8), BigUint::from(42_u8));
 
