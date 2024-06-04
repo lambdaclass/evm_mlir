@@ -6,7 +6,7 @@ use melior::{
     Context as MeliorContext,
 };
 
-use crate::{errors::CodegenError, program::Program, syscall::{self, ExecutionResult}};
+use crate::{errors::CodegenError, program::Program, syscall::{self}};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationCtx<'c> {
@@ -55,28 +55,11 @@ impl<'c> OperationCtx<'c> {
         block: &Block,
         offset: Value,
         size: Value,
-        location: Location,
-    ) {
-        syscall::mlir::write_result_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            offset,
-            size,
-            location,
-        )
-    }
-
-    pub(crate) fn write_revert_result(
-        &self,
-        block: &Block,
-        offset: Value,
-        size: Value,
         gas: Value,
         reason: Value,
         location: Location,
     ) {
-        syscall::mlir::write_revert_result_syscall(
+        syscall::mlir::write_result_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,

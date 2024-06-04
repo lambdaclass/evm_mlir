@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::{default, ffi::c_void};
+use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
@@ -32,7 +32,7 @@ pub enum ExecutionResult {
 }
 
 impl ExecutionResult {
-    fn to_u8(self) -> u8 {
+    pub fn to_u8(self) -> u8 {
         match self {
             ExecutionResult::Continue => 0,
             ExecutionResult::Revert => 1,
@@ -41,7 +41,7 @@ impl ExecutionResult {
         }
     }
 
-    fn from_u8(value: u8) -> Self {
+    pub fn from_u8(value: u8) -> Self {
         match value {
             0 => ExecutionResult::Continue,
             1 => ExecutionResult::Revert,
@@ -82,11 +82,7 @@ impl SyscallContext {
 /// Note that each function is marked as `extern "C"`, which is necessary for the
 /// function to be callable from the generated code.
 impl SyscallContext {
-    pub extern "C" fn write_result(&mut self, offset: u32, bytes_len: u32) {
-        self.result = Some((offset as usize, bytes_len as usize));
-    }
-
-    pub extern "C" fn store_revert_result(&mut self, offset: u32, bytes_len: u32, remaining_gas: u64, execution_result: u8) {
+    pub extern "C" fn write_result(&mut self, offset: u32, bytes_len: u32,remaining_gas: u64,execution_result: u8) {
         self.result = Some((offset as usize, bytes_len as usize));
         self.gas_remaining = Some(remaining_gas);
         self.execution_result = ExecutionResult::from_u8(execution_result);
@@ -124,11 +120,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
     unsafe {
         engine.register_symbol(
             symbols::WRITE_RESULT,
-            SyscallContext::write_result as *const fn(*mut c_void, u32, u32) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::REVERT_RESULT,
-            SyscallContext::store_revert_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
+            SyscallContext::write_result as *const fn(*mut c_void, u32, u32,u64,u8) as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -151,7 +143,7 @@ pub(crate) mod mlir {
 
     use crate::errors::CodegenError;
 
-    use super::{symbols, ExecutionResult};
+    use super::symbols;
 
     pub(crate) fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
         let location = Location::unknown(context);
@@ -171,16 +163,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::WRITE_RESULT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
-            Region::new(),
-            attributes,
-            location,
-        ));
-
-        module.body().append_operation(func::func(
-            context,
-            StringAttribute::new(context, symbols::REVERT_RESULT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32, uint64,uint8], &[]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32,uint64,uint8], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -203,37 +186,19 @@ pub(crate) mod mlir {
         block: &Block,
         offset: Value,
         size: Value,
+        gas: Value,
+        reason: Value,
         location: Location,
     ) {
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),
-            &[syscall_ctx, offset, size],
+            &[syscall_ctx, offset, size, gas, reason],
             &[],
             location,
         ));
     }
-
-    /// Stores the revert values in the syscall context
-    pub(crate) fn write_revert_result_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &Block,
-        offset: Value,
-        size: Value,
-        remaining_gas: Value,
-        execution_result:Value,
-        location: Location,
-    ) {
-       block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::REVERT_RESULT),
-            &[syscall_ctx, offset,size,remaining_gas,execution_result],
-            &[],
-            location,
-        )); 
-    }
-    
+   
     /// Extends the memory segment of the syscall context.
     /// Returns a pointer to the start of the memory segment.
     pub(crate) fn extend_memory_syscall<'c>(

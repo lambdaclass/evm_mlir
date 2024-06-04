@@ -1502,7 +1502,18 @@ fn codegen_return<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, location);
+    let reamining_gas = get_remaining_gas(context, &ok_block)?;
+    let reason = ExecutionResult::Continue.to_u8();
+    let reason = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, reason as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas, reason, location);
 
     Ok((start_block, ok_block))
 }
@@ -1564,15 +1575,18 @@ fn codegen_revert<'c>(
     extend_memory(op_ctx, &ok_block, required_size)?;
 
     
-    //op_ctx.write_result_syscall(&ok_block, offset, size, location);
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-
-    let reason = ok_block
-        .append_operation(arith::constant(context, integer_constant_from_i64(context,20).into(), location))
+    let reason = ExecutionResult::Revert.to_u8();
+    let reason = ok_block 
+        .append_operation(arith::constant(context, integer_constant_from_i64(context,reason as i64).into(), location))
         .result(0)?
         .into();
 
-    op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, reason, location);
+    //op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, reason, location);
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas,reason,location);
+
+    ok_block.append_operation(func::r#return(&[], location));
 
     Ok((start_block, ok_block))
 
