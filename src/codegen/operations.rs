@@ -17,9 +17,7 @@ use crate::{
         integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
     },
-    errors::CodegenError, program::Operation, syscall::ExecutionResult, utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements
-    }
+    syscall::ExecutionResult,
 };
 use num_bigint::BigUint;
 
@@ -64,13 +62,6 @@ pub fn generate_code_for_op<'c>(
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
-        Operation::Byte => codegen_byte(op_ctx, region),
-        Operation::Exp => codegen_exp(op_ctx, region),
-        Operation::Jumpi => codegen_jumpi(op_ctx, region),
-        Operation::IsZero => codegen_iszero(op_ctx, region),
-        Operation::Jump => codegen_jump(op_ctx, region),
-        Operation::And => codegen_and(op_ctx, region),
-        Operation::Or => codegen_or(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
     }
@@ -1353,23 +1344,6 @@ fn codegen_byte<'c, 'r>(
     let constant_bits_per_byte = constant_value_from_i64(context, &ok_block, BITS_PER_BYTE as i64)?;
     let constant_max_shift_in_bits =
         constant_value_from_i64(context, &ok_block, (MAX_SHIFT * BITS_PER_BYTE) as i64)?;
-    let constant_bits_per_byte = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, BITS_PER_BYTE).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_max_shift_in_bits = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, MAX_SHIFT * BITS_PER_BYTE).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
 
     let offset_in_bits = ok_block
         .append_operation(arith::muli(offset, constant_bits_per_byte, location))
@@ -1401,14 +1375,6 @@ fn codegen_byte<'c, 'r>(
     ));
 
     let zero_constant_value = constant_value_from_i64(context, &out_of_bounds_block, 0_i64)?;
-    let zero = out_of_bounds_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
 
     // push zero to the stack
     stack_push(context, &out_of_bounds_block, zero_constant_value)?;
@@ -1789,59 +1755,6 @@ fn codegen_revert<'c>(
 
 } 
 
-fn codegen_return<'c>(
-    op_ctx: &mut OperationCtx<'c>,
-    region: &'c Region<'c>,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
-    // TODO: compute gas cost for memory expansion
-    let context = op_ctx.mlir_context;
-    let location = Location::unknown(context);
-
-    let uint32 = IntegerType::new(context, 32);
-
-    let start_block = region.append_block(Block::new(&[]));
-    let ok_block = region.append_block(Block::new(&[]));
-
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
-
-    start_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &ok_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    let offset_u256 = stack_pop(context, &ok_block)?;
-    let size_u256 = stack_pop(context, &ok_block)?;
-
-    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
-    // If any of them were bigger than a u32, we would have ran out of gas before here.
-    let offset = ok_block
-        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let size = ok_block
-        .append_operation(arith::trunci(size_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
-        .result(0)?
-        .into();
-
-    extend_memory(op_ctx, &ok_block, required_size)?;
-
-    op_ctx.write_result_syscall(&ok_block, offset, size, location);
-
-    Ok((start_block, ok_block))
-}
 
 fn codegen_stop<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
