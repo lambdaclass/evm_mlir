@@ -34,7 +34,7 @@ pub mod context;
 pub mod errors;
 pub mod module;
 pub mod program;
-pub mod syscall_handler;
+pub mod syscall;
 pub mod utils;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
@@ -45,7 +45,6 @@ pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathB
 
 /// Converts a module to an object.
 /// The object will be written to the specified target path.
-/// TODO: error handling
 ///
 /// Returns the path to the object.
 // TODO: pass options to the function

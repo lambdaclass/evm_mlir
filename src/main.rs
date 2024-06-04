@@ -4,7 +4,7 @@ use evm_mlir::{
     constants::MAIN_ENTRYPOINT,
     context::Context,
     program::Program,
-    syscall_handler::{register_syscalls, MainFunc, SyscallContext},
+    syscall::{register_syscalls, MainFunc, SyscallContext},
 };
 use melior::ExecutionEngine;
 

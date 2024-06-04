@@ -550,6 +550,7 @@ pub fn check_if_zero<'ctx>(
     Ok(flag.into())
 }
 
+///
 pub(crate) fn extend_memory<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,

@@ -6,7 +6,7 @@ use melior::{
     Context as MeliorContext,
 };
 
-use crate::{errors::CodegenError, program::Program, syscall_handler::syscall};
+use crate::{errors::CodegenError, program::Program, syscall};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationCtx<'c> {
@@ -76,7 +76,7 @@ impl<'c> OperationCtx<'c> {
         let value = block
             .append_operation(func::call(
                 self.mlir_context,
-                FlatSymbolRefAttribute::new(self.mlir_context, syscall::EXTEND_MEMORY),
+                FlatSymbolRefAttribute::new(self.mlir_context, syscall::symbols::EXTEND_MEMORY),
                 &[self.syscall_ctx, new_size],
                 &[ptr_type],
                 location,

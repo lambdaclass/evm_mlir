@@ -42,7 +42,7 @@ use crate::{
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
-    syscall_handler::syscall,
+    syscall,
     utils::{generate_revert_block, llvm_mlir, stack_pop},
 };
 
@@ -240,7 +240,7 @@ fn compile_program(
     generate_memory_setup_code(context, module, &setup_block)?;
     generate_gas_counter_setup_code(context, module, &setup_block)?;
 
-    declare_syscalls(context, module);
+    syscall::mlir::declare_syscalls(context, module);
 
     // Generate helper blocks
     let revert_block = main_region.append_block(generate_revert_block(context)?);
@@ -538,36 +538,4 @@ fn populate_jumptable(op_ctx: &OperationCtx) -> Result<(), CodegenError> {
     assert!(op.verify());
 
     Ok(())
-}
-
-fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
-    let location = Location::unknown(context);
-
-    // Type declarations
-    let ptr_type = pointer(context, 0);
-    let uint32 = IntegerType::new(context, 32).into();
-
-    let attributes = &[(
-        Identifier::new(context, "sym_visibility"),
-        StringAttribute::new(context, "private").into(),
-    )];
-
-    // Syscall declarations
-    module.body().append_operation(func::func(
-        context,
-        StringAttribute::new(context, syscall::WRITE_RESULT),
-        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
-        Region::new(),
-        attributes,
-        location,
-    ));
-
-    module.body().append_operation(func::func(
-        context,
-        StringAttribute::new(context, syscall::EXTEND_MEMORY),
-        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
-        Region::new(),
-        attributes,
-        location,
-    ));
 }
