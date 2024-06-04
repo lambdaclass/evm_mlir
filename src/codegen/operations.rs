@@ -1383,6 +1383,8 @@ fn codegen_return<'c>(
     let offset_u256 = stack_pop(context, &ok_block)?;
     let size_u256 = stack_pop(context, &ok_block)?;
 
+    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
+    // If any of them were bigger than a u32, we would have ran out of gas before here.
     let offset = ok_block
         .append_operation(arith::trunci(offset_u256, uint32.into(), location))
         .result(0)
