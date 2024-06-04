@@ -624,6 +624,7 @@ pub(crate) fn extend_memory<'c>(
     Ok(memory_ptr)
 }
 
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)

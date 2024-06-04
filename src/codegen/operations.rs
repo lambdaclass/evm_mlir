@@ -8,13 +8,11 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    errors::CodegenError,
-    program::Operation,
-    utils::{
+    errors::CodegenError, program::Operation, syscall::ExecutionResult, utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         consume_gas, extend_memory, get_nth_from_stack, integer_constant_from_i64,
         integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements,
-    },
+    }
 };
 use num_bigint::BigUint;
 
@@ -1510,6 +1508,71 @@ fn codegen_return<'c>(
 
     Ok((start_block, ok_block))
 }
+
+// Stop the current context execution, revert the state changes 
+// (see STATICCALL for a list of state changing opcodes) and 
+// return the unused gas to the caller. It also reverts the gas refund to i
+// ts value before the current context. If the execution is stopped with REVERT, 
+// the value 0 is put on the stack of the calling context, which continues to execute normally. 
+// The return data of the calling context is set as the given 
+// chunk of memory of this context.
+fn codegen_revert<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError>{
+    //TODO: compute gas cost for memory expansion
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let uint32 = IntegerType::new(context, 32);
+
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
+    // If any of them were bigger than a u32, we would have ran out of gas before here.
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+
+    
+    //op_ctx.write_result_syscall(&ok_block, offset, size, location);
+    let reamining_gas = "???";
+    op_ctx.write_revert_result(&ok_block, offset, size, gas, ExecutionResult::Revert, location);
+
+    Ok((start_block, ok_block))
+
+} 
 
 fn codegen_stop<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
