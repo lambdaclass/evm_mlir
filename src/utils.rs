@@ -572,7 +572,7 @@ pub fn check_if_zero<'ctx>(
     Ok(flag.into())
 }
 
-///
+/// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
 pub(crate) fn extend_memory<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
