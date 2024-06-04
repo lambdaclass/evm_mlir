@@ -1599,8 +1599,91 @@ fn codegen_mstore<'c, 'r>(
 }
 
 fn codegen_mstore8<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    // truncate value to the least significative byte of the 32-byte value
+    let value = ok_block
+        .append_operation(arith::trunci(
+            value,
+            r#IntegerType::new(context, 8).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let value_width_in_bytes = 1;
+
+    // truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // required_size = offset + size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    // maybe we could check if there is already enough memory before extending it
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+    // memory_destination = memory_ptr + offset
+    let memory_destination = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            ptr_type,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(llvm::store(
+        context,
+        value,
+        memory_destination,
+        location,
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
+    Ok((start_block, ok_block))
 }
