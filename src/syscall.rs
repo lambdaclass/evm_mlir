@@ -20,7 +20,7 @@ use std::ffi::c_void;
 use melior::ExecutionEngine;
 
 /// Function type for the main entrypoint of the generated code
-pub type MainFunc = extern "C" fn(&mut SyscallContext);
+pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
 #[derive(Debug,Default)]
 pub enum ExecutionResult {

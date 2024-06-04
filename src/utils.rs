@@ -58,10 +58,11 @@ pub fn get_remaining_gas<'ctx>(
 pub fn consume_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    gas: i64,
+    amount: i64,
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64).into();
 
     // Get address of gas counter global
     let gas_counter_ptr = block
@@ -78,7 +79,7 @@ pub fn consume_gas<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            IntegerType::new(context, 256).into(),
+            uint64,
             location,
             LoadStoreOptions::default(),
         ))
@@ -88,7 +89,7 @@ pub fn consume_gas<'ctx>(
     let gas_value = block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, gas).into(),
+            IntegerAttribute::new(uint64, amount).into(),
             location,
         ))
         .result(0)?
