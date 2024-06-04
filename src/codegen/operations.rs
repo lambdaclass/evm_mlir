@@ -28,6 +28,8 @@ pub fn generate_code_for_op<'c>(
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     match op {
         Operation::Stop => codegen_stop(op_ctx, region),
+        Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
+        Operation::Push(x) => codegen_push(op_ctx, region, x, false),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
@@ -55,7 +57,6 @@ pub fn generate_code_for_op<'c>(
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
-        Operation::Push(x) => codegen_push(op_ctx, region, x),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),
@@ -409,6 +410,7 @@ fn codegen_push<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
     value_to_push: BigUint,
+    is_zero: bool,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -416,12 +418,18 @@ fn codegen_push<'c, 'r>(
 
     // Check there's enough space in stack
     let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_cost = if is_zero { 2 } else { 3 };
+    let gas_flag = consume_gas(context, &start_block, gas_cost)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
