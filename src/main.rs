@@ -9,11 +9,24 @@ use evm_mlir::{
 use melior::ExecutionEngine;
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let path = args.get(1).expect("No path provided").as_str();
-    let bytecode = std::fs::read(path).expect("Could not read file");
-    let program = Program::from_bytecode(&bytecode);
-
+    use evm_mlir::program::Operation;
+    // let args: Vec<String> = std::env::args().collect();
+    // let path = args.get(1).expect("No path provided").as_str();
+    // let bytecode = std::fs::read(path).expect("Could not read file");
+    let value: u8 = 0xaa;
+    let offset = 0_u8;
+    let value2: u8 = 0xbb;
+    let offset2 = 1_u8;
+    use num_bigint::BigUint;
+    let program: Program = vec![
+        Operation::Push(BigUint::from(value)),
+        Operation::Push(BigUint::from(offset)),
+        Operation::Mstore,
+        Operation::Push(BigUint::from(value2)),
+        Operation::Push(BigUint::from(offset2)),
+        Operation::Mstore,
+    ]
+    .into();
     // This is for intermediate files
     let output_file = PathBuf::from("output");
 
@@ -32,4 +45,12 @@ fn main() {
     let mut context = SyscallContext::default();
 
     main_fn(&mut context);
+    let memory = context.memory;
+    for byte in memory {
+        if byte == 00 {
+            println!("byte = 00");
+        } else {
+            println!("byte = {:X}", byte);
+        }
+    }
 }

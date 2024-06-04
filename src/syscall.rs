@@ -27,7 +27,7 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext);
 pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
     /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
     /// It's [`None`] in case there's no return data
     result: Option<(usize, usize)>,
