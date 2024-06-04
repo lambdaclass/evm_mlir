@@ -36,8 +36,8 @@ use std::{
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
     constants::{
-        GAS_COUNTER_GLOBAL, MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        GAS_COUNTER_GLOBAL, INITIAL_GAS, MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL,
+        MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
     module::MLIRModule,
@@ -306,12 +306,10 @@ fn generate_gas_counter_setup_code<'c>(
 
     let uint256 = IntegerType::new(context, 256);
 
-    let initial_gas = 999_i64;
-
     let gas_size = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), initial_gas).into(),
+            IntegerAttribute::new(uint256.into(), INITIAL_GAS).into(),
             location,
         ))
         .result(0)?
