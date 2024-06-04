@@ -1091,7 +1091,6 @@ fn pop_reverts_when_program_runs_out_of_gas() {
     run_program_assert_revert(program);
 }
 
-
 #[test]
 fn and_reverts_when_program_runs_out_of_gas() {
     let mut program: Vec<Operation> = vec![];
@@ -1099,6 +1098,71 @@ fn and_reverts_when_program_runs_out_of_gas() {
         program.push(Operation::Push(BigUint::from(0_u8)));
         program.push(Operation::Push(BigUint::from(1_u8)));
         program.push(Operation::And);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn exp_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..100 {
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Exp);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn lt_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..334 {
+        program.push(Operation::Push(BigUint::from(0_u8)));
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Lt);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn sgt_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..334 {
+        program.push(Operation::Push(BigUint::from(0_u8)));
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Sgt);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn eq_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..334 {
+        program.push(Operation::Push(BigUint::from(0_u8)));
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Eq);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn iszero_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..334 {
+        program.push(Operation::Push(BigUint::from(0_u8)));
+        program.push(Operation::IsZero);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn or_reverts_when_program_runs_out_of_gas() {
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..334 {
+        program.push(Operation::Push(BigUint::from(0_u8)));
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Or);
     }
     run_program_assert_revert(program);
 }
