@@ -1090,3 +1090,19 @@ fn pop_reverts_when_program_runs_out_of_gas() {
     }
     run_program_assert_revert(program);
 }
+
+#[test]
+fn jump_reverts_when_program_runs_out_of_gas() {
+    // this test is equivalent to the following bytecode program
+    // it is basically a GOTO 0
+    //
+    // [00] JUMPDEST
+    // [01] PUSH1 0
+    // [03] JUMP
+    let program = vec![
+        Operation::Jumpdest { pc: 0 },
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Jump,
+    ];
+    run_program_assert_revert(program);
+}
