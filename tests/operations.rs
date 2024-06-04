@@ -381,6 +381,33 @@ fn mul_with_stack_underflow() {
 }
 
 #[test]
+fn push_push_shr() {
+    let program = vec![
+        Operation::Push(BigUint::from(32_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Shr,
+    ];
+
+    run_program_assert_result(program, 8);
+}
+
+#[test]
+fn shift_bigger_than_256() {
+    let program = vec![
+        Operation::Push(BigUint::from(255_u8)),
+        Operation::Push(BigUint::from(256_u16)),
+        Operation::Shr,
+    ];
+
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn shr_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Shr]);
+}
+
+#[test]
 fn push_push_xor() {
     let program = vec![
         Operation::Push(BigUint::from(10_u8)),
@@ -397,6 +424,7 @@ fn xor_with_stack_underflow() {
 
     run_program_assert_revert(program);
 }
+
 #[test]
 fn push_push_pop() {
     // Push two values to the stack and then pop once
