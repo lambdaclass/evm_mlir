@@ -17,27 +17,16 @@ impl SyscallContext {
 
 // Syscall implementations
 impl SyscallContext {
-    fn write_result(&mut self, offset: usize, bytes_len: usize) {
-        self.result = Some((offset, bytes_len));
+    pub extern "C" fn wrap_write_result(&mut self, offset: u32, bytes_len: u32) {
+        self.result = Some((offset as usize, bytes_len as usize));
     }
 
-    fn extend_memory(&mut self, new_size: usize) {
-        println!("Extending memory to {new_size}");
+    pub extern "C" fn wrap_extend_memory(&mut self, new_size: u32) -> *mut u8 {
+        let new_size = new_size as usize;
         if new_size > self.memory.len() {
             // TODO: check for OOM
             self.memory.resize(new_size, 0);
         }
-    }
-}
-
-// Syscall C wrappers
-impl SyscallContext {
-    pub extern "C" fn wrap_write_result(&mut self, offset: u32, bytes_len: u32) {
-        self.write_result(offset as usize, bytes_len as usize);
-    }
-
-    pub extern "C" fn wrap_extend_memory(&mut self, new_size: u32) -> *mut u8 {
-        self.extend_memory(new_size as usize);
         self.memory.as_mut_ptr()
     }
 }
