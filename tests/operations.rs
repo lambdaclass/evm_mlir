@@ -1,11 +1,10 @@
 use evm_mlir::{
-    constants::{gas_cost, MAIN_ENTRYPOINT, REVERT_EXIT_CODE},
+    constants::{gas_cost, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
     syscall::SyscallContext,
 };
-use melior::ExecutionEngine;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
