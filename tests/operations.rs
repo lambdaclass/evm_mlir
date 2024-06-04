@@ -576,6 +576,15 @@ fn jumpdest() {
 }
 
 #[test]
+fn jumpdest_gas_should_revert() {
+    let mut program = vec![];
+    for i in 0..1000 {
+        program.push(Operation::Jumpdest { pc: i });
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn test_eq_true() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
