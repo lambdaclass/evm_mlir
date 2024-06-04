@@ -41,6 +41,7 @@ pub fn generate_code_for_op<'c>(
         Operation::SignExtend => codegen_signextend(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
         Operation::Gt => codegen_gt(op_ctx, region),
+        Operation::Slt => codegen_slt(op_ctx, region),
         Operation::Sgt => codegen_sgt(op_ctx, region),
         Operation::Eq => codegen_eq(op_ctx, region),
         Operation::IsZero => codegen_iszero(op_ctx, region),
@@ -1678,4 +1679,11 @@ fn codegen_gas<'c, 'r>(
     stack_push(context, &ok_block, gas)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_slt<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
