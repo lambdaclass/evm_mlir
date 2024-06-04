@@ -367,6 +367,18 @@ fn mul_with_stack_underflow() {
 }
 
 #[test]
+fn mul_gas_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..200 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Mul);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_xor() {
     let program = vec![
         Operation::Push(BigUint::from(10_u8)),

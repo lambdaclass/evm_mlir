@@ -649,13 +649,20 @@ fn codegen_mul<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // Check there's enough gas to compute the operation
+    let gas_flag = consume_gas(context, &start_block, 5)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
