@@ -1,6 +1,6 @@
 use evm_mlir::{
     compile_binary,
-    constants::REVERT_EXIT_CODE,
+    constants::{INITIAL_GAS, REVERT_EXIT_CODE},
     program::{Operation, Program},
 };
 use num_bigint::{BigInt, BigUint};
@@ -1399,5 +1399,61 @@ fn signextend_gas_should_revert() {
         program.push(Operation::SignExtend);
     }
 
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn gas_get_starting_value() {
+    //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
+    //not taking it into consideration for calculation. That will change in the future and this
+    //test will have to be updated.
+    //
+    //We also have to divide the result in order for it to be contained in just one byte, which is
+    //the u8 result size.
+    const GAS_OP_COST: i64 = 2;
+
+    let gas_after_op = (INITIAL_GAS - GAS_OP_COST) as u64;
+    let denominator = BigUint::from(4_u8);
+    let expected_result = BigUint::from(gas_after_op) / &denominator;
+
+    let program = vec![
+        Operation::Push(denominator), // <No collapse>
+        Operation::Gas,               // <No collapse>
+        Operation::Div,               // <No collapse>
+    ];
+
+    run_program_assert_result(program, expected_result.try_into().unwrap());
+}
+
+#[test]
+fn gas_value_after_add_op() {
+    //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
+    //not taking it into consideration for calculation. That will change in the future and this
+    //test will have to be updated.
+
+    const ADD_OP_COST: i64 = 3;
+    const GAS_OP_COST: i64 = 2;
+
+    let iterations = 50;
+    let expected_result = INITIAL_GAS - ADD_OP_COST * iterations - GAS_OP_COST;
+
+    let mut program = vec![];
+    program.push(Operation::Push(BigUint::from(1_u8)));
+    for _ in 0..iterations {
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Add);
+    }
+
+    program.push(Operation::Gas);
+
+    run_program_assert_result(program, expected_result as u8);
+}
+
+#[test]
+fn gas_without_enough_gas_revert() {
+    let mut program = vec![];
+    for _ in 0..500 {
+        program.push(Operation::Gas);
+    }
     run_program_assert_revert(program);
 }
