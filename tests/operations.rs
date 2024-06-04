@@ -725,11 +725,16 @@ fn jumpdest() {
 
 #[test]
 fn jumpdest_gas_should_revert() {
-    let mut program = vec![];
-    for i in 0..1000 {
-        program.push(Operation::Jumpdest { pc: i });
-    }
-    run_program_assert_revert(program);
+    let x = 5_u8;
+    let program = vec![
+        Operation::Push(BigUint::from(x)),
+        Operation::Jumpdest { pc: 0 },
+        Operation::Jumpdest { pc: 1 },
+        Operation::Jumpdest { pc: 2 },
+    ];
+    let needed_gas = 3;
+    run_program_assert_result_with_gas(program.clone(), x, needed_gas);
+    run_program_assert_reverts_with_gas(program, needed_gas - 1);
 }
 
 #[test]
@@ -1273,16 +1278,16 @@ fn test_lt_stack_underflow() {
 
 #[test]
 fn test_gas_with_add_should_revert() {
-    let x = BigUint::from(1_u8);
+    let x = 1_u8;
 
     // TODO: update when PUSH costs gas
     let program = vec![
-        Operation::Push(x.clone()),
-        Operation::Push(x.clone()),
+        Operation::Push(BigUint::from(x)),
+        Operation::Push(BigUint::from(x)),
         Operation::Add,
     ];
     let needed_gas = 3;
-    let expected_result = 2;
+    let expected_result = x + x;
     run_program_assert_result_with_gas(program.clone(), expected_result, needed_gas);
     run_program_assert_reverts_with_gas(program, needed_gas - 1);
 }
@@ -1339,15 +1344,15 @@ fn sar_reverts_when_program_runs_out_of_gas() {
 
 #[test]
 fn pop_reverts_when_program_runs_out_of_gas() {
+    let expected_result = 1;
     // TODO: update when push costs gas
     let program: Vec<Operation> = vec![
-        Operation::Push(BigUint::from(1_u8)),
-        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(expected_result)),
+        Operation::Push(BigUint::from(expected_result + 1)),
         Operation::Pop,
     ];
 
     let needed_gas = 2;
-    let expected_result = 1;
     run_program_assert_result_with_gas(program.clone(), expected_result, needed_gas);
     run_program_assert_reverts_with_gas(program, needed_gas - 1);
 }
