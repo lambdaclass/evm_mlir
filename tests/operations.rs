@@ -1123,7 +1123,6 @@ fn pop_reverts_when_program_runs_out_of_gas() {
 fn mstore() {
     let value: [u8; 32] = [0xaa; 32];
     let offset = 0_u8;
-    let size = 32_u8;
     let program = vec![
         Operation::Push(BigUint::from_bytes_be(&value)),
         Operation::Push(BigUint::from(offset)),
