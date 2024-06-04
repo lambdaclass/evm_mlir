@@ -53,11 +53,20 @@ impl SyscallContext {
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
-        if new_size > self.memory.len() {
-            // TODO: check for OOM
-            self.memory.resize(new_size, 0);
+        if new_size <= self.memory.len() {
+            return self.memory.as_mut_ptr();
         }
-        self.memory.as_mut_ptr()
+        match self.memory.try_reserve(new_size - self.memory.len()) {
+            Ok(()) => {
+                self.memory.resize(new_size, 0);
+                self.memory.as_mut_ptr()
+            }
+            // TODO: use tracing here
+            Err(err) => {
+                eprintln!("Failed to reserve memory: {err}");
+                std::ptr::null_mut()
+            }
+        }
     }
 }
 
