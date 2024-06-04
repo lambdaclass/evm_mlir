@@ -59,6 +59,16 @@ fn push_twice() {
 }
 
 #[test]
+#[ignore]
+fn push_fill_stack() {
+    let stack_top = BigUint::from(88_u8);
+
+    // Push 1024 times
+    let program = vec![Operation::Push(stack_top.clone()); 1024];
+    run_program_assert_result(program, stack_top.try_into().unwrap());
+}
+
+#[test]
 fn push_reverts_without_gas() {
     let stack_top = BigUint::from(88_u8);
 
