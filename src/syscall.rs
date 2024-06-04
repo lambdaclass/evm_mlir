@@ -190,7 +190,7 @@ pub(crate) mod mlir {
     }
 
     /// Stores the revert values in the syscall context
-    pub(crate) fn write_revert_result<'c>(
+    pub(crate) fn write_revert_result_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &Block,
