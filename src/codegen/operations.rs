@@ -57,6 +57,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
+        Operation::Msize => todo!(),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
