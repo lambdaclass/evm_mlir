@@ -1278,8 +1278,7 @@ fn codegen_jumpi<'c, 'r: 'c>(
         .result(0)?
         .into();
 
-    // compare  condition > 0  to convert condition from u256 to 1-bit signless integer
-    // TODO: change this maybe using arith::trunci
+    // compare  condition != 0  to convert condition from u256 to 1-bit signless integer
     let condition = ok_block
         .append_operation(arith::cmpi(
             context,
