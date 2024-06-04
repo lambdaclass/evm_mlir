@@ -44,6 +44,7 @@ pub fn generate_code_for_op<'c>(
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
         Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
+        Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
@@ -1494,4 +1495,11 @@ fn codegen_stop<'c, 'r>(
     let empty_block = region.append_block(Block::new(&[]));
 
     Ok((start_block, empty_block))
+}
+
+fn codegen_gas<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
