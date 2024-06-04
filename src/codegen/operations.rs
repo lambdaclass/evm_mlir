@@ -4,7 +4,6 @@ use melior::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
     },
-    Context as MeliorContext,
 };
 
 use super::context::OperationCtx;
