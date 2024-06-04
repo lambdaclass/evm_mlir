@@ -1,8 +1,8 @@
 //! # Module implementing syscalls for the EVM
 //!
-//! The syscalls implemented here are to be exposed to the generated code,
-//! for example, via [`register_syscalls`]. Each syscall implements functionality
-//! that's not possible to implement in the EVM itself, such as interacting with
+//! The syscalls implemented here are to be exposed to the generated code
+//! via [`register_syscalls`]. Each syscall implements functionality that's
+//! not possible to implement in the generated code, such as interacting with
 //! the storage, or just difficult, like allocating memory in the heap
 //! ([`SyscallContext::extend_memory`]).
 //!
@@ -12,7 +12,9 @@
 //! struct (see [`SyscallContext::write_result`] for an example). After that, the syscall
 //! should be registered in the [`register_syscalls`] function, which will make it available
 //! to the generated code. Afterwards, the syscall should be declared in
-//! [`mlir::declare_syscalls`]. This will make the syscall available inside the MLIR code.
+//! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
+//! Finally, the function can be called from the MLIR code like a normal function (see
+//! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
 use melior::ExecutionEngine;
@@ -33,7 +35,7 @@ pub struct SyscallContext {
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
-    pub fn result(&self) -> &[u8] {
+    pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
         let (offset, size) = self.result.unwrap_or((0, 0));
         &self.memory[offset..offset + size]
@@ -85,12 +87,14 @@ pub(crate) mod mlir {
     use melior::{
         dialect::{func, llvm::r#type::pointer},
         ir::{
-            attribute::{StringAttribute, TypeAttribute},
+            attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
             r#type::{FunctionType, IntegerType},
-            Identifier, Location, Module as MeliorModule, Region,
+            Block, Identifier, Location, Module as MeliorModule, Region, Value,
         },
         Context as MeliorContext,
     };
+
+    use crate::errors::CodegenError;
 
     use super::symbols;
 
@@ -124,5 +128,45 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+    }
+
+    /// Stores the return values in the syscall context
+    pub(crate) fn write_result_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &Block,
+        offset: Value,
+        size: Value,
+        location: Location,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),
+            &[syscall_ctx, offset, size],
+            &[],
+            location,
+        ));
+    }
+
+    /// Extends the memory segment of the syscall context.
+    /// Returns a pointer to the start of the memory segment.
+    pub(crate) fn extend_memory_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        new_size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::EXTEND_MEMORY),
+                &[syscall_ctx, new_size],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 }

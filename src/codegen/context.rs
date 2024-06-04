@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use melior::{
-    dialect::{cf, func, llvm::r#type::pointer},
-    ir::{attribute::FlatSymbolRefAttribute, Block, BlockRef, Location, Value},
+    dialect::cf,
+    ir::{Block, BlockRef, Location, Value},
     Context as MeliorContext,
 };
 
@@ -57,13 +57,14 @@ impl<'c> OperationCtx<'c> {
         size: Value,
         location: Location,
     ) {
-        block.append_operation(func::call(
+        syscall::mlir::write_result_syscall(
             self.mlir_context,
-            FlatSymbolRefAttribute::new(self.mlir_context, syscall::WRITE_RESULT),
-            &[self.syscall_ctx, offset, size],
-            &[],
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
             location,
-        ));
+        )
     }
 
     pub(crate) fn extend_memory_syscall(
@@ -72,16 +73,12 @@ impl<'c> OperationCtx<'c> {
         new_size: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
-        let ptr_type = pointer(self.mlir_context, 0);
-        let value = block
-            .append_operation(func::call(
-                self.mlir_context,
-                FlatSymbolRefAttribute::new(self.mlir_context, syscall::symbols::EXTEND_MEMORY),
-                &[self.syscall_ctx, new_size],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
+        syscall::mlir::extend_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            new_size,
+            location,
+        )
     }
 }
