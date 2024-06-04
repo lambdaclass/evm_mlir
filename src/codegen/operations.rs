@@ -9,9 +9,7 @@ use melior::{
 use super::context::OperationCtx;
 use crate::{
     errors::CodegenError, program::Operation, syscall::ExecutionResult, utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        consume_gas, extend_memory, get_nth_from_stack, integer_constant_from_i64,
-        integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements,
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements
     }
 };
 use num_bigint::BigUint;
@@ -1567,8 +1565,8 @@ fn codegen_revert<'c>(
 
     
     //op_ctx.write_result_syscall(&ok_block, offset, size, location);
-    let reamining_gas = "???";
-    op_ctx.write_revert_result(&ok_block, offset, size, gas, ExecutionResult::Revert, location);
+    let reamining_gas = get_remaining_gas(context, &ok_block)?;
+    op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, ExecutionResult::Revert, location);
 
     Ok((start_block, ok_block))
 
