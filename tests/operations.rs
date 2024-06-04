@@ -1443,3 +1443,89 @@ fn gas_without_enough_gas_revert() {
     }
     run_program_assert_revert(program);
 }
+
+#[test]
+fn slt_positive_less_than() {
+    let a = BigInt::from(1_u8);
+    let b = BigInt::from(2_u8);
+
+    let expected_result = (&a < &b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_positive_greater_than() {
+    let a = BigInt::from(2_u8);
+    let b = BigInt::from(1_u8);
+
+    let expected_result = (&a < &b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_negative_less_than() {
+    let a = BigInt::from(-3_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result = (&a < &b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_negative_greater_than() {
+    let a = BigInt::from(0_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result = (&a < &b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_equal() {
+    let a = BigInt::from(-4_i8);
+    let b = BigInt::from(-4_i8);
+
+    let expected_result = (&a < &b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_stack_underflow() {
+    let program = vec![Operation::Slt];
+    run_program_assert_revert(program);
+}
