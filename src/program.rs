@@ -192,6 +192,8 @@ impl From<u8> for Opcode {
             x if x == Opcode::JUMPI as u8 => Opcode::JUMPI,
             x if x == Opcode::PC as u8 => Opcode::PC,
             x if x == Opcode::GAS as u8 => Opcode::GAS,
+            x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
+            x if x == Opcode::PUSH0 as u8 => Opcode::PUSH0,
             x if x == Opcode::PUSH1 as u8 => Opcode::PUSH1,
             x if x == Opcode::PUSH2 as u8 => Opcode::PUSH2,
             x if x == Opcode::PUSH3 as u8 => Opcode::PUSH3,
