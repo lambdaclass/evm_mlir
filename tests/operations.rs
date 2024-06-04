@@ -250,6 +250,18 @@ fn sub_add_wrapping() {
 }
 
 #[test]
+fn sub_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Sub);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn add_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Add]);
 }

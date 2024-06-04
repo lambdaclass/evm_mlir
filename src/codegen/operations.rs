@@ -550,7 +550,10 @@ fn codegen_sub<'c, 'r>(
 
     let gas_flag = consume_gas(context, &start_block, 3)?;
 
-    let ocndition = start_block.append_operation(arith::andi(gas_flag, flag, location));
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
