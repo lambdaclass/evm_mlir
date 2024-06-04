@@ -1663,13 +1663,19 @@ fn codegen_pc<'c>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, 2)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
