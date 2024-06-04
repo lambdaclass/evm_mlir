@@ -55,6 +55,7 @@ pub fn generate_code_for_op<'c>(
         Operation::And => codegen_and(op_ctx, region),
         Operation::Or => codegen_or(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
+        Operation::Mstore => codegen_mstore(op_ctx, region),
     }
 }
 
@@ -1514,4 +1515,11 @@ fn codegen_stop<'c, 'r>(
     let empty_block = region.append_block(Block::new(&[]));
 
     Ok((start_block, empty_block))
+}
+
+fn codegen_mstore<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
