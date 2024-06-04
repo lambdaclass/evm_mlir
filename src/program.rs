@@ -63,7 +63,7 @@ pub enum Opcode {
     POP = 0x50,
     // MLOAD = 0x51,
     MSTORE = 0x52,
-    // MSTORE8 = 0x53,
+    MSTORE8 = 0x53,
     // SLOAD = 0x54,
     // SSTORE = 0x55,
     // JUMP = 0x56,
@@ -271,6 +271,7 @@ pub enum Operation {
     And,
     Return,
     Mstore,
+    Mstore8,
 }
 
 #[derive(Debug, Clone)]
@@ -539,6 +540,7 @@ impl Program {
                 Opcode::OR => Operation::Or,
                 Opcode::RETURN => Operation::Return,
                 Opcode::MSTORE => Operation::Mstore,
+                Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);

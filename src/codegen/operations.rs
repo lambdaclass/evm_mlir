@@ -56,6 +56,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Or => codegen_or(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
+        Operation::Mstore8 => codegen_mstore8(op_ctx, region),
     }
 }
 
@@ -1518,6 +1519,13 @@ fn codegen_stop<'c, 'r>(
 }
 
 fn codegen_mstore<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
+}
+
+fn codegen_mstore8<'c, 'r>(
     _op_ctx: &mut OperationCtx<'c>,
     _region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
