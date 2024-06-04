@@ -13,8 +13,8 @@ use crate::{
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        consume_gas, get_nth_from_stack, integer_constant_from_i64, integer_constant_from_i8,
-        stack_pop, stack_push, swap_stack_elements,
+        consume_gas, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
+        integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1498,8 +1498,39 @@ fn codegen_stop<'c, 'r>(
 }
 
 fn codegen_gas<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's at least space for one element in the stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    // Check there's enough gas to compute the operation
+    let gas_flag = consume_gas(context, &start_block, 2)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gas = get_remaining_gas(context, &ok_block)?;
+
+    stack_push(context, &ok_block, gas)?;
+
+    Ok((start_block, ok_block))
 }
