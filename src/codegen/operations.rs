@@ -221,7 +221,7 @@ fn codegen_gt<'c, 'r>(
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
-        .into();    
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
