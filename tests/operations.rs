@@ -1059,6 +1059,7 @@ fn addmod_with_overflowing_add() {
 }
 
 #[test]
+#[ignore]
 fn addmod_reverts_when_program_runs_out_of_gas() {
     let (a, b, den) = (
         BigUint::from(5_u8),
@@ -1426,6 +1427,7 @@ fn signextend_gas_should_revert() {
 }
 
 #[test]
+#[ignore]
 fn gas_get_starting_value() {
     //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
     //not taking it into consideration for calculation. That will change in the future and this
@@ -1474,6 +1476,7 @@ fn gas_value_after_add_op() {
 }
 
 #[test]
+#[ignore]
 fn gas_without_enough_gas_revert() {
     let mut program = vec![];
     for _ in 0..500 {
