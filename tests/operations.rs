@@ -3,7 +3,7 @@ use evm_mlir::{
     constants::REVERT_EXIT_CODE,
     program::{Operation, Program},
 };
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
@@ -28,6 +28,19 @@ fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
 fn run_program_assert_revert(program: Vec<Operation>) {
     // TODO: design a way to check for stack overflow
     run_program_assert_result(program, REVERT_EXIT_CODE);
+}
+
+pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
+    if value > BigInt::ZERO {
+        value.magnitude().clone()
+    } else {
+        let bytes = value.to_signed_bytes_be();
+        let mut buffer = vec![255_u8; 32];
+        let finish = 32;
+        let start = finish - bytes.len();
+        buffer[start..finish].copy_from_slice(&bytes);
+        BigUint::from_bytes_be(&buffer)
+    }
 }
 
 #[test]
@@ -272,8 +285,8 @@ fn div_without_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
 
@@ -295,9 +308,9 @@ fn div_signed_division() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
-        Operation::Div,     //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Div,     // <No collapse>
     ];
     run_program_assert_result(program, expected_result);
 }
@@ -309,8 +322,8 @@ fn div_with_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -323,8 +336,8 @@ fn div_with_zero_denominator() {
     let expected_result: u8 = 0_u8;
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -337,8 +350,8 @@ fn div_with_zero_numerator() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -347,6 +360,118 @@ fn div_with_zero_numerator() {
 #[test]
 fn div_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Div]);
+}
+
+#[test]
+fn sdiv_without_remainder() {
+    let (a, b) = (BigUint::from(20_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_1() {
+    // a = [1, 0, 0, 0, .... , 0, 0, 0, 0] == 1 << 255
+    let mut a = BigUint::from(0_u8);
+    a.set_bit(255, true);
+    // b = [0, 0, 1, 0, .... , 0, 0, 0, 0] == 1 << 253
+    let mut b = BigUint::from(0_u8);
+    b.set_bit(253, true);
+
+    //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0]
+    //If we take the lowest byte
+    //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
+    let expected_result: u8 = 252_u8;
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,    // <No collapse>
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_2() {
+    let a = BigInt::from(-2_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result: u8 = (&a / &b).try_into().unwrap();
+
+    let a_biguint = biguint_256_from_bigint(a);
+    let b_biguint = biguint_256_from_bigint(b);
+
+    let program = vec![
+        Operation::Push(b_biguint), // <No collapse>
+        Operation::Push(a_biguint), // <No collapse>
+        Operation::Sdiv,            // <No collapse>
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_remainder() {
+    let (a, b) = (BigUint::from(21_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_denominator() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(0_u8));
+
+    let expected_result: u8 = 0_u8;
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_numerator() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_gas_should_revert() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let mut program = vec![];
+
+    for _ in 0..200 {
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Sdiv);
+    }
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -765,8 +890,8 @@ fn jumpi_does_not_revert_if_pc_is_wrong_but_branch_is_not_taken() {
 fn pc_with_previous_push() {
     let pc = 33;
     let program = vec![
-        Operation::Push(BigUint::from(8_u8)), //
-        Operation::PC { pc },                 //
+        Operation::Push(BigUint::from(8_u8)), // <No collapse>
+        Operation::PC { pc },                 // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
@@ -775,7 +900,7 @@ fn pc_with_previous_push() {
 fn pc_with_no_previous_operation() {
     let pc = 0;
     let program = vec![
-        Operation::PC { pc }, //
+        Operation::PC { pc }, // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
