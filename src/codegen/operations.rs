@@ -8,7 +8,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::gas_cost,
+    constants::{gas_cost, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
     errors::CodegenError,
     program::Operation,
     utils::{
@@ -1611,6 +1611,57 @@ fn codegen_pc<'c>(
         .into();
 
     stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_msize<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256).into();
+
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        stack_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Get address of memory size global
+    let memory_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load memory size
+    let memory_size = ok_block
+    .append_operation(llvm::load(
+        context,
+        memory_ptr.into(),
+        uint256,
+        location,
+        LoadStoreOptions::default(),
+    ))
+    .result(0)?
+    .into();
+
+    stack_push(context, block, memory_size)?;
 
     Ok((start_block, ok_block))
 }
