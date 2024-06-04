@@ -1153,7 +1153,7 @@ fn gas_get_starting_value() {
 
 #[test]
 fn gas_value_after_add_op() {
-    //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
+    //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
     //not taking it into consideration for calculation. That will change in the future and this
     //test will have to be updated.
 
