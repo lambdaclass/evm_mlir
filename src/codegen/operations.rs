@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf, func, llvm, llvm::LoadStoreOptions, ods},
+    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -1525,6 +1525,8 @@ fn codegen_mstore<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
@@ -1546,15 +1548,23 @@ fn codegen_mstore<'c, 'r>(
 
     let value_width_in_bytes = 32;
 
+    // truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
     let size = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, value_width_in_bytes).into(),
+            IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
             location,
         ))
         .result(0)?
         .into();
 
+    // required_size = offset + size
     let required_size = ok_block
         .append_operation(arith::addi(offset, size, location))
         .result(0)?
@@ -1563,8 +1573,16 @@ fn codegen_mstore<'c, 'r>(
     // maybe we could check if there is already enough memory before extending it
     let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
+    // memory_destination = memory_ptr + offset
     let memory_destination = ok_block
-        .append_operation(arith::addi(memory_ptr, offset, location))
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            ptr_type,
+            ptr_type,
+            location,
+        ))
         .result(0)?
         .into();
 
@@ -1573,7 +1591,8 @@ fn codegen_mstore<'c, 'r>(
         value,
         memory_destination,
         location,
-        LoadStoreOptions::default(),
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
     Ok((start_block, ok_block))
