@@ -132,6 +132,17 @@ fn dup_with_stack_underflow() {
 }
 
 #[test]
+fn dup_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Dup(1));
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn swap_first() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
