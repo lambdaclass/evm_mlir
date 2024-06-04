@@ -1912,3 +1912,15 @@ fn jump_with_gas_cost() {
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
     run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
+
+#[test]
+fn mload_with_stack_underflow() {
+    let program = vec![Operation::Mload];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mload_with_zero_address() {
+    let program = vec![Operation::Push(BigUint::from(0_u8)), Operation::Mload];
+    run_program_assert_revert(program);
+}

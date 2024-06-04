@@ -56,6 +56,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
+        Operation::Mload => todo!(),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
