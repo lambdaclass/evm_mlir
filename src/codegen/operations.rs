@@ -609,7 +609,7 @@ fn codegen_not<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -623,18 +623,29 @@ fn codegen_not<'c, 'r>(
         location,
     ));
 
+    let mut mask: [u8; 32] = [0; 32];
+   mask[31] = 0xff;
     let lhs = stack_pop(context, &ok_block)?;
-    let one = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    // let one = ok_block
+    //     .append_operation(arith::constant(
+    //         context,
+    //         integer_constant_from_i64(context, 1).into(),
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+    let mask = ok_block
+    .append_operation(arith::constant(
+        context,
+        integer_constant(context, mask),
+        location,
+    ))
+    .result(0)?
+    .into();
+
 
     let result = ok_block
-        .append_operation(arith::xori(lhs, one, location))
+        .append_operation(arith::xori(lhs, mask, location))
         .result(0)?
         .into();
 
