@@ -10,14 +10,11 @@ pub enum Opcode {
     // SDIV = 0x05,
     MOD = 0x06,
     // SMOD = 0x07,
-    // ADDMOD = 0x08,
-    // MULMOD = 0x09,
     // EXP = 0x0A,
     SIGNEXTEND = 0x0B,
     ADDMOD = 0x08,
     MULMOD = 0x09,
     EXP = 0x0A,
-    // SIGNEXTEND = 0x0B,
 
     // unused 0x0C-0x0F
     LT = 0x10,
@@ -75,7 +72,6 @@ pub enum Opcode {
     JUMPI = 0x57,
     // PC = 0x58,
     JUMP = 0x56,
-    // JUMPI = 0x57,
     PC = 0x58,
     // MSIZE = 0x59,
     // GAS = 0x5A,
