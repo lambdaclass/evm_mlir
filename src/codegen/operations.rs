@@ -37,6 +37,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Addmod => codegen_addmod(op_ctx, region),
         Operation::Mulmod => codegen_mulmod(op_ctx, region),
         Operation::Exp => codegen_exp(op_ctx, region),
+        Operation::SignExtend => codegen_signextend(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
         Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Sgt => codegen_sgt(op_ctx, region),
@@ -1559,4 +1560,88 @@ fn codegen_stop<'c, 'r>(
     let empty_block = region.append_block(Block::new(&[]));
 
     Ok((start_block, empty_block))
+}
+
+fn codegen_signextend<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, 5)?;
+
+    // Check there's enough gas to perform the operation
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let byte_size = stack_pop(context, &ok_block)?;
+    let value_to_extend = stack_pop(context, &ok_block)?;
+
+    // Constant definition
+    let max_byte_size = constant_value_from_i64(context, &ok_block, 31)?;
+    let bits_per_byte = constant_value_from_i64(context, &ok_block, 8)?;
+    let sign_bit_position_on_byte = constant_value_from_i64(context, &ok_block, 7)?;
+    let max_bits = constant_value_from_i64(context, &ok_block, 255)?;
+
+    // byte_size = min(max_byte_size, byte_size)
+    let byte_size = ok_block
+        .append_operation(arith::minui(byte_size, max_byte_size, location))
+        .result(0)?
+        .into();
+
+    // bits_to_shift = max_bits - byte_size * bits_per_byte + sign_bit_position_on_byte
+    let byte_number_in_bits = ok_block
+        .append_operation(arith::muli(byte_size, bits_per_byte, location))
+        .result(0)?
+        .into();
+
+    let value_size_in_bits = ok_block
+        .append_operation(arith::addi(
+            byte_number_in_bits,
+            sign_bit_position_on_byte,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let bits_to_shift = ok_block
+        .append_operation(arith::subi(max_bits, value_size_in_bits, location))
+        .result(0)?
+        .into();
+
+    // value_to_extend << bits_to_shift
+    let left_shifted_value = ok_block
+        .append_operation(ods::llvm::shl(context, value_to_extend, bits_to_shift, location).into())
+        .result(0)?
+        .into();
+
+    // value_to_extend >> bits_to_shift  (sign extended)
+    let result = ok_block
+        .append_operation(
+            ods::llvm::ashr(context, left_shifted_value, bits_to_shift, location).into(),
+        )
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
 }
