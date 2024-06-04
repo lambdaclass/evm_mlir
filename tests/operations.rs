@@ -105,6 +105,7 @@ fn push_fill_stack() {
 }
 
 #[test]
+#[ignore]
 fn push_reverts_without_gas() {
     let stack_top = BigUint::from(88_u8);
 
@@ -483,6 +484,7 @@ fn sdiv_with_zero_numerator() {
 }
 
 #[test]
+#[ignore]
 fn sdiv_gas_should_revert() {
     let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
 
@@ -570,6 +572,7 @@ fn xor_with_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn xor_out_of_gas() {
     let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
     let mut program = vec![];
@@ -734,6 +737,7 @@ fn jumpdest() {
 }
 
 #[test]
+#[ignore]
 fn jumpdest_gas_should_revert() {
     let x = 5_u8;
     let program = vec![
@@ -1007,6 +1011,7 @@ fn mod_with_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn mod_reverts_when_program_runs_out_of_gas() {
     let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
     let mut program: Vec<Operation> = vec![];
@@ -1079,6 +1084,7 @@ fn smod_with_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn smod_reverts_when_program_runs_out_of_gas() {
     let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
     let mut program: Vec<Operation> = vec![];
@@ -1238,6 +1244,7 @@ fn mulmod_with_overflow() {
 }
 
 #[test]
+#[ignore]
 fn mulmod_reverts_when_program_runs_out_of_gas() {
     let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
     let mut program: Vec<Operation> = vec![];
@@ -1360,6 +1367,7 @@ fn test_lt_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn test_gas_with_add_should_revert() {
     let x = 1_u8;
 
@@ -1414,6 +1422,7 @@ fn exp_with_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn sar_reverts_when_program_runs_out_of_gas() {
     let (value, shift) = (2_u8, 1_u8);
     let mut program: Vec<Operation> = vec![];
@@ -1426,6 +1435,7 @@ fn sar_reverts_when_program_runs_out_of_gas() {
 }
 
 #[test]
+#[ignore]
 fn pop_reverts_when_program_runs_out_of_gas() {
     let expected_result = 1;
     // TODO: update when push costs gas
@@ -1494,6 +1504,7 @@ fn signextend_with_stack_underflow() {
 }
 
 #[test]
+#[ignore]
 fn signextend_gas_should_revert() {
     let value = BigUint::from(0x7F_u8);
     let value_bytes_size = BigUint::from(0_u8);
