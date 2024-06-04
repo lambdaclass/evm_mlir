@@ -293,6 +293,7 @@ pub enum Operation {
     PC { pc: usize },
     Gas,
     Jumpdest { pc: usize },
+    Push0,
     Push(BigUint),
     Dup(u32),
     Swap(u32),
@@ -342,7 +343,7 @@ impl Program {
                 Opcode::PC => Operation::PC { pc },
                 Opcode::GAS => Operation::Gas,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
-                Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
+                Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
