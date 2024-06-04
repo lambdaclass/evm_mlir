@@ -549,6 +549,20 @@ fn xor_with_stack_underflow() {
 }
 
 #[test]
+fn xor_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Xor);
+    }
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn push_push_pop() {
     // Push two values to the stack and then pop once
     // The program result should be equal to the first
