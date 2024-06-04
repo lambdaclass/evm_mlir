@@ -814,7 +814,7 @@ fn smod_with_negative_operands() {
     let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
     let result_last_byte = expected_result.to_bytes_be()[31];
 
-    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
     run_program_assert_result(program, result_last_byte);
 }
 
@@ -823,7 +823,7 @@ fn smod_with_positive_operands() {
     let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
     let expected_result = (&num % &den).try_into().unwrap();
 
-    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
     run_program_assert_result(program, expected_result);
 }
 
@@ -831,13 +831,13 @@ fn smod_with_positive_operands() {
 fn smod_with_zero_denominator() {
     let (num, den) = (BigUint::from(10_u8), BigUint::from(0_u8));
 
-    let program = vec![Operation::Push(den), Operation::Push(num), Operation::Smod];
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
     run_program_assert_result(program, 0);
 }
 
 #[test]
 fn smod_with_stack_underflow() {
-    run_program_assert_revert(vec![Operation::Smod]);
+    run_program_assert_revert(vec![Operation::SMod]);
 }
 
 #[test]
@@ -847,7 +847,7 @@ fn smod_reverts_when_program_runs_out_of_gas() {
     for _ in 0..1000 {
         program.push(Operation::Push(a.clone()));
         program.push(Operation::Push(b.clone()));
-        program.push(Operation::Smod);
+        program.push(Operation::SMod);
     }
     run_program_assert_revert(program);
 }

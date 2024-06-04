@@ -33,7 +33,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Xor => codegen_xor(op_ctx, region),
         Operation::Div => codegen_div(op_ctx, region),
         Operation::Mod => codegen_mod(op_ctx, region),
-        Operation::Smod => codegen_smod(op_ctx, region),
+        Operation::SMod => codegen_smod(op_ctx, region),
         Operation::Addmod => codegen_addmod(op_ctx, region),
         Operation::Mulmod => codegen_mulmod(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
