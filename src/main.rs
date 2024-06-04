@@ -30,6 +30,7 @@ fn main() {
     let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
 
     let mut context = SyscallContext::default();
+    let initial_gas = 1000;
 
-    main_fn(&mut context);
+    main_fn(&mut context, initial_gas);
 }
