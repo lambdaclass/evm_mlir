@@ -819,6 +819,31 @@ fn smod_with_negative_operands() {
 }
 
 #[test]
+fn smod_with_negative_denominator() {
+    // 8 mod -3 = 2
+    let num = BigUint::from(8_u8);
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+
+    let expected_result = BigUint::from(2_u8);
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, expected_result.try_into().unwrap());
+}
+
+#[test]
+fn smod_with_negative_numerator() {
+    // -8 mod 3 = -2
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = BigUint::from(3_u8);
+
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, result_last_byte);
+}
+
+#[test]
 fn smod_with_positive_operands() {
     let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
     let expected_result = (&num % &den).try_into().unwrap();
