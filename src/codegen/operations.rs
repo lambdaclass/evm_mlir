@@ -41,7 +41,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Gt => codegen_gt(op_ctx, region),
         Operation::Lt => codegen_lt(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
-        Operation::Signextend => codegen_signextend(op_ctx, region),
+        Operation::SignExtend => codegen_signextend(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),

@@ -1098,7 +1098,7 @@ fn signextend_one_byte_negative_value() {
         Operation::Push(denominator),      // <No collapse>
         Operation::Push(value),            // <No collapse>
         Operation::Push(value_bytes_size), // <No collapse>
-        Operation::Signextend,             // <No collapse>
+        Operation::SignExtend,             // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -1121,7 +1121,7 @@ fn signextend_one_byte_positive_value() {
         Operation::Push(denominator),      // <No collapse>
         Operation::Push(value),            // <No collapse>
         Operation::Push(value_bytes_size), // <No collapse>
-        Operation::Signextend,             // <No collapse>
+        Operation::SignExtend,             // <No collapse>
         Operation::Div,
     ];
 
@@ -1130,7 +1130,7 @@ fn signextend_one_byte_positive_value() {
 
 #[test]
 fn signextend_with_stack_underflow() {
-    let program = vec![Operation::Signextend];
+    let program = vec![Operation::SignExtend];
     run_program_assert_revert(program);
 }
 
@@ -1143,7 +1143,7 @@ fn signextend_gas_should_revert() {
     for _ in 0..200 {
         program.push(Operation::Push(value.clone()));
         program.push(Operation::Push(value_bytes_size.clone()));
-        program.push(Operation::Signextend);
+        program.push(Operation::SignExtend);
     }
 
     run_program_assert_revert(program);
