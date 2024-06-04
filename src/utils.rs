@@ -187,6 +187,23 @@ pub fn stack_pop<'ctx>(
     Ok(value)
 }
 
+pub fn constant_value_from_i64<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    Ok(block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value).into(),
+            location,
+        ))
+        .result(0)?
+        .into())
+}
+
 pub fn stack_push<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
