@@ -734,10 +734,8 @@ fn pc_with_no_previous_operation() {
 
 #[test]
 fn pc_gas_should_revert() {
-    let pc = 33;
     let mut program = vec![];
-    for _ in 0..500 {
-        program.push(Operation::Push(BigUint::from(8_u8)));
+    for pc in 0..500 {
         program.push(Operation::PC { pc });
     }
     run_program_assert_revert(program);
