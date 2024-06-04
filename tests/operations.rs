@@ -31,7 +31,7 @@ fn run_program_assert_revert(program: Vec<Operation>) {
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
-    if value > BigInt::ZERO {
+    if value >= BigInt::ZERO {
         value.magnitude().clone()
     } else {
         let bytes = value.to_signed_bytes_be();
