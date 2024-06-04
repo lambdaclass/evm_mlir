@@ -14,7 +14,6 @@ pub enum Opcode {
     MULMOD = 0x09,
     EXP = 0x0A,
     // SIGNEXTEND = 0x0B,
-
     // unused 0x0C-0x0F
     LT = 0x10,
     GT = 0x11,
@@ -28,7 +27,7 @@ pub enum Opcode {
     // NOT = 0x19,
     BYTE = 0x1A,
     // SHL = 0x1B,
-    // SHR = 0x1C,
+    SHR = 0x1C,
     SAR = 0x1D,
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
@@ -175,6 +174,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::PC as u8 => Opcode::PC,
             x if x == Opcode::DIV as u8 => Opcode::DIV,
+            x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::MOD as u8 => Opcode::MOD,
             x if x == Opcode::JUMPDEST as u8 => Opcode::JUMPDEST,
             x if x == Opcode::ADDMOD as u8 => Opcode::ADDMOD,
@@ -243,6 +243,7 @@ pub enum Operation {
     Add,
     Sub,
     Mul,
+    Shr,
     Addmod,
     Mulmod,
     Sgt,
@@ -293,6 +294,7 @@ impl Program {
                 Opcode::ISZERO => Operation::IsZero,
                 Opcode::PC => Operation::PC { pc },
                 Opcode::DIV => Operation::Div,
+                Opcode::SHR => Operation::Shr,
                 Opcode::MOD => Operation::Mod,
                 Opcode::SGT => Operation::Sgt,
                 Opcode::EXP => Operation::Exp,
