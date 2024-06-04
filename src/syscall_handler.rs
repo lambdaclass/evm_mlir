@@ -32,8 +32,8 @@ impl SyscallContext {
 }
 
 pub mod syscall {
-    pub const WRITE_RESULT: &str = "write_result";
-    pub const EXTEND_MEMORY: &str = "extend_memory";
+    pub const WRITE_RESULT: &str = "emv_mlir__write_result";
+    pub const EXTEND_MEMORY: &str = "emv_mlir__extend_memory";
 }
 
 pub type MainFunc = extern "C" fn(&mut SyscallContext);
