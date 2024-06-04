@@ -8,4 +8,20 @@ pub const MAIN_ENTRYPOINT: &str = "main";
 
 pub const REVERT_EXIT_CODE: u8 = 255;
 
-pub const INITIAL_GAS: i64 = 999;
+/// Contains the gas costs of the EVM instructions
+pub mod gas_cost {
+    pub const ADD: i64 = 3;
+    pub const MUL: i64 = 5;
+    pub const SUB: i64 = 3;
+    pub const DIV: i64 = 5;
+    pub const SDIV: i64 = 5;
+    pub const MOD: i64 = 5;
+    pub const SMOD: i64 = 5;
+    pub const SIGNEXTEND: i64 = 5;
+    pub const XOR: i64 = 3;
+    pub const PC: i64 = 2;
+    pub const GAS: i64 = 2;
+    pub const JUMPDEST: i64 = 1;
+    pub const PUSH0: i64 = 2;
+    pub const PUSHN: i64 = 3;
+}
