@@ -28,6 +28,26 @@ pub enum ExecutionResult {
     Halt,
 }
 
+impl ExecutionResult {
+    fn to_u8(self) -> u8 {
+        match self {
+            ExecutionResult::Continue => 0,
+            ExecutionResult::Revert => 1,
+            ExecutionResult::Halt => 2,
+        }
+    }
+
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => ExecutionResult::Continue,
+            1 => ExecutionResult::Revert,
+            2 => ExecutionResult::Halt,
+            _ => panic!("Invalid value for ExecutionResult"),
+        }
+    }
+}
+
+
 /// The context passed to syscalls
 #[derive(Debug, Default)]
 pub struct SyscallContext {
@@ -62,10 +82,10 @@ impl SyscallContext {
         self.result = Some((offset as usize, bytes_len as usize));
     }
 
-    pub extern "C" fn store_revert_result(&mut self, offset: u32, bytes_len: u32, remaining_gas:u64,execution_result:ExecutionResult) {
+    pub extern "C" fn store_revert_result(&mut self, offset: u32, bytes_len: u32, remaining_gas: u64, execution_result: u8) {
         self.result = Some((offset as usize, bytes_len as usize));
-        self.gas_reamining = Some(remaining_gas);
-        self.execution_result = execution_result;
+        self.gas_remaining = Some(remaining_gas);
+        self.execution_result = ExecutionResult::from_u8(execution_result);
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -104,7 +124,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::REVERT_RESULT,
-            SyscallContext::store_revert_result as *const fn(*mut c_void, u32, u32, i64,ExecutionResult) as *mut (),
+            SyscallContext::store_revert_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -136,6 +156,7 @@ pub(crate) mod mlir {
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
+        let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
             Identifier::new(context, "sym_visibility"),
@@ -155,7 +176,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::REVERT_RESULT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32, uint64,ExecutionResult], &[]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32, uint64,uint8], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -186,7 +207,7 @@ pub(crate) mod mlir {
             &[syscall_ctx, offset, size],
             &[],
             location,
-        ));sy
+        ));
     }
 
     /// Stores the revert values in the syscall context
