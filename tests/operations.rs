@@ -1090,3 +1090,17 @@ fn pop_reverts_when_program_runs_out_of_gas() {
     }
     run_program_assert_revert(program);
 }
+
+#[test]
+fn jumpi_reverts_when_program_runs_out_of_gas() {
+    let jumpdest: usize = 0;
+    let pc = BigUint::from(jumpdest as u8);
+    let condition = BigUint::from(1_u8);
+    let program = vec![
+        Operation::Jumpdest { pc: 0 },
+        Operation::Push(condition),
+        Operation::Push(pc),
+        Operation::Jumpi,
+    ];
+    run_program_assert_revert(program);
+}
