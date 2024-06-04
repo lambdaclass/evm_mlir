@@ -10,11 +10,10 @@ pub enum Opcode {
     // SDIV = 0x05,
     MOD = 0x06,
     // SMOD = 0x07,
-    // EXP = 0x0A,
-    SIGNEXTEND = 0x0B,
     ADDMOD = 0x08,
     MULMOD = 0x09,
     EXP = 0x0A,
+    SIGNEXTEND = 0x0B,
 
     // unused 0x0C-0x0F
     LT = 0x10,
