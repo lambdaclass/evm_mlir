@@ -114,7 +114,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x00) STOP
 1. (0x12) SLT
 1. (0x19) NOT
 1. (0x1B) SHL
