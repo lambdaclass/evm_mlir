@@ -15,17 +15,20 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{default, ffi::c_void};
 
 use melior::ExecutionEngine;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext);
 
+#[derive(Debug,Default)]
 pub enum ExecutionResult {
+    #[default]
     Continue,
     Revert,
     Halt,
+    Invalid,
 }
 
 impl ExecutionResult {
@@ -34,6 +37,7 @@ impl ExecutionResult {
             ExecutionResult::Continue => 0,
             ExecutionResult::Revert => 1,
             ExecutionResult::Halt => 2,
+            ExecutionResult::Invalid => 3,
         }
     }
 
@@ -42,7 +46,7 @@ impl ExecutionResult {
             0 => ExecutionResult::Continue,
             1 => ExecutionResult::Revert,
             2 => ExecutionResult::Halt,
-            _ => panic!("Invalid value for ExecutionResult"),
+            _ => ExecutionResult::Invalid,
         }
     }
 }
@@ -59,7 +63,7 @@ pub struct SyscallContext {
     result: Option<(usize, usize)>,
     /// The gas available for the execution
     /// It's [`None`] in case the gas is not available
-    gas_reamining: Option<u64>,
+    gas_remaining: Option<u64>,
     /// Execution Result
     execution_result: ExecutionResult,
 }
@@ -217,8 +221,8 @@ pub(crate) mod mlir {
         block: &Block,
         offset: Value,
         size: Value,
-        remaining_gas: Value<'c, 'c>,
-        execution_result:ExecutionResult,
+        remaining_gas: Value,
+        execution_result:Value,
         location: Location,
     ) {
        block.append_operation(func::call(

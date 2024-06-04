@@ -1566,7 +1566,13 @@ fn codegen_revert<'c>(
     
     //op_ctx.write_result_syscall(&ok_block, offset, size, location);
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-    op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, ExecutionResult::Revert, location);
+
+    let reason = ok_block
+        .append_operation(arith::constant(context, integer_constant_from_i64(context,20).into(), location))
+        .result(0)?
+        .into();
+
+    op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, reason, location);
 
     Ok((start_block, ok_block))
 

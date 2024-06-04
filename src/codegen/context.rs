@@ -73,7 +73,7 @@ impl<'c> OperationCtx<'c> {
         offset: Value,
         size: Value,
         gas: Value,
-        reason: ExecutionResult,
+        reason: Value,
         location: Location,
     ) {
         syscall::mlir::write_revert_result_syscall(
