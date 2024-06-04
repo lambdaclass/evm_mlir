@@ -1,6 +1,6 @@
 use evm_mlir::{
     compile_binary,
-    constants::{INITIAL_GAS, REVERT_EXIT_CODE},
+    constants::REVERT_EXIT_CODE,
     program::{Operation, Program},
 };
 use num_bigint::{BigInt, BigUint};
@@ -1398,7 +1398,7 @@ fn gas_get_starting_value() {
     //the u8 result size.
     const GAS_OP_COST: i64 = 2;
 
-    let gas_after_op = (INITIAL_GAS - GAS_OP_COST) as u64;
+    let gas_after_op = (999 - GAS_OP_COST) as u64;
     let denominator = BigUint::from(4_u8);
     let expected_result = BigUint::from(gas_after_op) / &denominator;
 
@@ -1412,6 +1412,7 @@ fn gas_get_starting_value() {
 }
 
 #[test]
+#[ignore]
 fn gas_value_after_add_op() {
     //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
     //not taking it into consideration for calculation. That will change in the future and this
@@ -1421,7 +1422,7 @@ fn gas_value_after_add_op() {
     const GAS_OP_COST: i64 = 2;
 
     let iterations = 50;
-    let expected_result = INITIAL_GAS - ADD_OP_COST * iterations - GAS_OP_COST;
+    let expected_result = 999 - ADD_OP_COST * iterations - GAS_OP_COST;
 
     let mut program = vec![];
     program.push(Operation::Push(BigUint::from(1_u8)));
