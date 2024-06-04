@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf, func, ods},
+    dialect::{arith, cf, func, llvm, llvm::LoadStoreOptions, ods},
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -1519,10 +1519,64 @@ fn codegen_stop<'c, 'r>(
 }
 
 fn codegen_mstore<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    let value_width_in_bytes = 32;
+
+    let size = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value_width_in_bytes).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    // maybe we could check if there is already enough memory before extending it
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+    let memory_destination = ok_block
+        .append_operation(arith::addi(memory_ptr, offset, location))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(llvm::store(
+        context,
+        value,
+        memory_destination,
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_mstore8<'c, 'r>(
