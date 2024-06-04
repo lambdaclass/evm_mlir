@@ -8,6 +8,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
+    constants::gas_cost,
     errors::CodegenError,
     program::Operation,
     utils::{
@@ -419,7 +420,11 @@ fn codegen_push<'c, 'r>(
 
     // Check there's enough space in stack
     let flag = check_stack_has_space_for(context, &start_block, 1)?;
-    let gas_cost = if is_zero { 2 } else { 3 };
+    let gas_cost = if is_zero {
+        gas_cost::PUSH0
+    } else {
+        gas_cost::PUSHN
+    };
     let gas_flag = consume_gas(context, &start_block, gas_cost)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1451,7 +1456,7 @@ fn codegen_jumpdest<'c>(
     let location = Location::unknown(context);
 
     // Check there's enough gas to compute the operation
-    let gas_flag = consume_gas(context, &landing_block, 1)?;
+    let gas_flag = consume_gas(context, &landing_block, gas_cost::JUMPDEST)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -1582,7 +1587,7 @@ fn codegen_pc<'c>(
     let location = Location::unknown(context);
 
     let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::PC)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
@@ -1702,7 +1707,7 @@ fn codegen_signextend<'c, 'r>(
 
     // Check there's enough elements in stack
     let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SIGNEXTEND)?;
 
     // Check there's enough gas to perform the operation
     let ok_flag = start_block
@@ -1788,7 +1793,7 @@ fn codegen_gas<'c, 'r>(
     let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
 
     // Check there's enough gas to compute the operation
-    let gas_flag = consume_gas(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GAS)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
