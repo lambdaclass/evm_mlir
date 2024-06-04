@@ -158,7 +158,7 @@ pub enum Opcode {
     // unused 0xF6-0xF9
     // STATICCALL = 0xFA,
     // unused 0xFB-0xFC
-    // REVERT = 0xFD,
+    REVERT = 0xFD,
     // INVALID = 0xFE,
     // SELFDESTRUCT = 0xFF,
     UNUSED,
@@ -269,6 +269,7 @@ pub enum Operation {
     Jump,
     And,
     Return,
+    Revert,
 }
 
 #[derive(Debug, Clone)]
@@ -536,6 +537,7 @@ impl Program {
                 Opcode::AND => Operation::And,
                 Opcode::OR => Operation::Or,
                 Opcode::RETURN => Operation::Return,
+                Opcode::REVERT => Operation::Revert,
                 Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);

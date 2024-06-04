@@ -55,6 +55,7 @@ pub fn generate_code_for_op<'c>(
         Operation::And => codegen_and(op_ctx, region),
         Operation::Or => codegen_or(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
+        Operation::Revert => codegen_revert(op_ctx, region),
     }
 }
 
