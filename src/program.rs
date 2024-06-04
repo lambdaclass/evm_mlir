@@ -14,7 +14,6 @@ pub enum Opcode {
     MULMOD = 0x09,
     EXP = 0x0A,
     // SIGNEXTEND = 0x0B,
-
     // unused 0x0C-0x0F
     LT = 0x10,
     GT = 0x11,
@@ -29,8 +28,6 @@ pub enum Opcode {
     BYTE = 0x1A,
     // SHL = 0x1B,
     SHR = 0x1C,
-    // SAR = 0x1D,
-    // SHR = 0x1C,
     SAR = 0x1D,
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
