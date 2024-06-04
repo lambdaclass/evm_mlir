@@ -36,6 +36,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Div => codegen_div(op_ctx, region),
         Operation::Sdiv => codegen_sdiv(op_ctx, region),
         Operation::Mod => codegen_mod(op_ctx, region),
+        Operation::SMod => codegen_smod(op_ctx, region),
         Operation::Addmod => codegen_addmod(op_ctx, region),
         Operation::Mulmod => codegen_mulmod(op_ctx, region),
         Operation::Exp => codegen_exp(op_ctx, region),
@@ -805,6 +806,77 @@ fn codegen_mod<'c, 'r>(
 
     let mod_result = den_not_zero_bloq
         .append_operation(arith::remui(num, den, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_not_zero_bloq, mod_result)?;
+
+    den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        den_is_zero,
+        &den_zero_bloq,
+        &den_not_zero_bloq,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, return_block))
+}
+
+fn codegen_smod<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let num = stack_pop(context, &ok_block)?;
+    let den = stack_pop(context, &ok_block)?;
+
+    let den_is_zero = check_if_zero(context, &ok_block, &den)?;
+    let den_zero_bloq = region.append_block(Block::new(&[]));
+    let den_not_zero_bloq = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));
+
+    let constant_value = den_zero_bloq
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_zero_bloq, constant_value)?;
+
+    den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    let mod_result = den_not_zero_bloq
+        .append_operation(ods::llvm::srem(context, num, den, location).into())
         .result(0)?
         .into();
 
