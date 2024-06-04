@@ -1,9 +1,9 @@
 use evm_mlir::{
     compile_binary,
-    constants::REVERT_EXIT_CODE,
+    constants::{INITIAL_GAS, REVERT_EXIT_CODE},
     program::{Operation, Program},
 };
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
@@ -28,6 +28,19 @@ fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
 fn run_program_assert_revert(program: Vec<Operation>) {
     // TODO: design a way to check for stack overflow
     run_program_assert_result(program, REVERT_EXIT_CODE);
+}
+
+pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
+    if value > BigInt::ZERO {
+        value.magnitude().clone()
+    } else {
+        let bytes = value.to_signed_bytes_be();
+        let mut buffer = vec![255_u8; 32];
+        let finish = 32;
+        let start = finish - bytes.len();
+        buffer[start..finish].copy_from_slice(&bytes);
+        BigUint::from_bytes_be(&buffer)
+    }
 }
 
 #[test]
@@ -261,8 +274,8 @@ fn div_without_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
 
@@ -284,9 +297,9 @@ fn div_signed_division() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
-        Operation::Div,     //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Div,     // <No collapse>
     ];
     run_program_assert_result(program, expected_result);
 }
@@ -298,8 +311,8 @@ fn div_with_remainder() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -312,8 +325,8 @@ fn div_with_zero_denominator() {
     let expected_result: u8 = 0_u8;
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -326,8 +339,8 @@ fn div_with_zero_numerator() {
     let expected_result = (&a / &b).try_into().unwrap();
 
     let program = vec![
-        Operation::Push(b), //
-        Operation::Push(a), //
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
         Operation::Div,
     ];
     run_program_assert_result(program, expected_result);
@@ -336,6 +349,118 @@ fn div_with_zero_numerator() {
 #[test]
 fn div_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Div]);
+}
+
+#[test]
+fn sdiv_without_remainder() {
+    let (a, b) = (BigUint::from(20_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_1() {
+    // a = [1, 0, 0, 0, .... , 0, 0, 0, 0] == 1 << 255
+    let mut a = BigUint::from(0_u8);
+    a.set_bit(255, true);
+    // b = [0, 0, 1, 0, .... , 0, 0, 0, 0] == 1 << 253
+    let mut b = BigUint::from(0_u8);
+    b.set_bit(253, true);
+
+    //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0]
+    //If we take the lowest byte
+    //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
+    let expected_result: u8 = 252_u8;
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,    // <No collapse>
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_signed_division_2() {
+    let a = BigInt::from(-2_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result: u8 = (&a / &b).try_into().unwrap();
+
+    let a_biguint = biguint_256_from_bigint(a);
+    let b_biguint = biguint_256_from_bigint(b);
+
+    let program = vec![
+        Operation::Push(b_biguint), // <No collapse>
+        Operation::Push(a_biguint), // <No collapse>
+        Operation::Sdiv,            // <No collapse>
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_remainder() {
+    let (a, b) = (BigUint::from(21_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_denominator() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(0_u8));
+
+    let expected_result: u8 = 0_u8;
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_with_zero_numerator() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Sdiv,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn sdiv_gas_should_revert() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+
+    let mut program = vec![];
+
+    for _ in 0..200 {
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Sdiv);
+    }
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -407,6 +532,20 @@ fn push_push_xor() {
 #[test]
 fn xor_with_stack_underflow() {
     let program = vec![Operation::Xor];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn xor_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let mut program = vec![];
+
+    for _ in 0..334 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Xor);
+    }
 
     run_program_assert_revert(program);
 }
@@ -754,8 +893,8 @@ fn jumpi_does_not_revert_if_pc_is_wrong_but_branch_is_not_taken() {
 fn pc_with_previous_push() {
     let pc = 33;
     let program = vec![
-        Operation::Push(BigUint::from(8_u8)), //
-        Operation::PC { pc },                 //
+        Operation::Push(BigUint::from(8_u8)), // <No collapse>
+        Operation::PC { pc },                 // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
@@ -764,7 +903,7 @@ fn pc_with_previous_push() {
 fn pc_with_no_previous_operation() {
     let pc = 0;
     let program = vec![
-        Operation::PC { pc }, //
+        Operation::PC { pc }, // <No collapse>
     ];
     run_program_assert_result(program, pc as u8)
 }
@@ -830,6 +969,18 @@ fn mod_with_stack_underflow() {
 }
 
 #[test]
+fn mod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Mod);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn addmod_with_non_zero_result() {
     let (a, b, den) = (
         BigUint::from(13_u8),
@@ -877,6 +1028,23 @@ fn addmod_with_overflowing_add() {
         Operation::Addmod,
     ];
     run_program_assert_result(program, ((a + b) % den).try_into().unwrap());
+}
+
+#[test]
+fn addmod_reverts_when_program_runs_out_of_gas() {
+    let (a, b, den) = (
+        BigUint::from(5_u8),
+        BigUint::from(10_u8),
+        BigUint::from(2_u8),
+    );
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(den.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Addmod);
+    }
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -956,6 +1124,18 @@ fn mulmod_with_overflow() {
         Operation::Mulmod,
     ];
     run_program_assert_result(program, ((a * b) % den).try_into().unwrap());
+}
+
+#[test]
+fn mulmod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
+    let mut program: Vec<Operation> = vec![];
+    for _ in 0..1000 {
+        program.push(Operation::Push(a.clone()));
+        program.push(Operation::Push(b.clone()));
+        program.push(Operation::Mulmod);
+    }
+    run_program_assert_revert(program);
 }
 
 #[test]
@@ -1119,11 +1299,147 @@ fn exp_with_stack_underflow() {
 }
 
 #[test]
+fn sar_reverts_when_program_runs_out_of_gas() {
+    let (value, shift) = (2_u8, 1_u8);
+    let mut program: Vec<Operation> = vec![];
+    for _i in 0..1000 {
+        program.push(Operation::Push(BigUint::from(value)));
+        program.push(Operation::Push(BigUint::from(shift)));
+        program.push(Operation::Sar);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn pop_reverts_when_program_runs_out_of_gas() {
     let mut program: Vec<Operation> = vec![];
     for _i in 0..1000 {
         program.push(Operation::Push(BigUint::from(1_u8)));
         program.push(Operation::Pop);
+    }
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn signextend_one_byte_negative_value() {
+    /*
+    Since we are constrained by the output size u8, in order to check that the result
+    was correctly sign extended (completed with 1s), we have to divide by 2 so we can check
+    that the first byte is 0xFF = [1, 1, 1, 1, 1, 1, 1, 1]
+    */
+    let value = BigUint::from(0xFF_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let denominator = BigUint::from(2_u8);
+
+    let expected_result = 0xFF_u8;
+
+    let program = vec![
+        Operation::Push(denominator),      // <No collapse>
+        Operation::Push(value),            // <No collapse>
+        Operation::Push(value_bytes_size), // <No collapse>
+        Operation::SignExtend,             // <No collapse>
+        Operation::Div,
+    ];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn signextend_one_byte_positive_value() {
+    /*
+    Since we are constrained by the output size u8, in order to check that the result
+    was correctly sign extended (completed with 0s), we have to divide by 2 so we can check
+    that the first byte is 0x3F = [0, 0, 1, 1, 1, 1, 1, 1]
+    */
+    let value = BigUint::from(0x7F_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let denominator = BigUint::from(2_u8);
+
+    let expected_result = 0x3F_u8;
+
+    let program = vec![
+        Operation::Push(denominator),      // <No collapse>
+        Operation::Push(value),            // <No collapse>
+        Operation::Push(value_bytes_size), // <No collapse>
+        Operation::SignExtend,             // <No collapse>
+        Operation::Div,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn signextend_with_stack_underflow() {
+    let program = vec![Operation::SignExtend];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn signextend_gas_should_revert() {
+    let value = BigUint::from(0x7F_u8);
+    let value_bytes_size = BigUint::from(0_u8);
+    let mut program = vec![];
+
+    for _ in 0..200 {
+        program.push(Operation::Push(value.clone()));
+        program.push(Operation::Push(value_bytes_size.clone()));
+        program.push(Operation::SignExtend);
+    }
+
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn gas_get_starting_value() {
+    //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
+    //not taking it into consideration for calculation. That will change in the future and this
+    //test will have to be updated.
+    //
+    //We also have to divide the result in order for it to be contained in just one byte, which is
+    //the u8 result size.
+    const GAS_OP_COST: i64 = 2;
+
+    let gas_after_op = (INITIAL_GAS - GAS_OP_COST) as u64;
+    let denominator = BigUint::from(4_u8);
+    let expected_result = BigUint::from(gas_after_op) / &denominator;
+
+    let program = vec![
+        Operation::Push(denominator), // <No collapse>
+        Operation::Gas,               // <No collapse>
+        Operation::Div,               // <No collapse>
+    ];
+
+    run_program_assert_result(program, expected_result.try_into().unwrap());
+}
+
+#[test]
+fn gas_value_after_add_op() {
+    //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
+    //not taking it into consideration for calculation. That will change in the future and this
+    //test will have to be updated.
+
+    const ADD_OP_COST: i64 = 3;
+    const GAS_OP_COST: i64 = 2;
+
+    let iterations = 50;
+    let expected_result = INITIAL_GAS - ADD_OP_COST * iterations - GAS_OP_COST;
+
+    let mut program = vec![];
+    program.push(Operation::Push(BigUint::from(1_u8)));
+    for _ in 0..iterations {
+        program.push(Operation::Push(BigUint::from(1_u8)));
+        program.push(Operation::Add);
+    }
+
+    program.push(Operation::Gas);
+
+    run_program_assert_result(program, expected_result as u8);
+}
+
+#[test]
+fn gas_without_enough_gas_revert() {
+    let mut program = vec![];
+    for _ in 0..500 {
+        program.push(Operation::Gas);
     }
     run_program_assert_revert(program);
 }

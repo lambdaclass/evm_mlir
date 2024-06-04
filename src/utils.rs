@@ -90,6 +90,38 @@ pub fn consume_gas<'ctx>(
     Ok(flag.into())
 }
 
+pub fn get_remaining_gas<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of gas counter global
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(gas_counter)
+}
+
 pub fn stack_pop<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -154,6 +186,23 @@ pub fn stack_pop<'ctx>(
     assert!(res.verify());
 
     Ok(value)
+}
+
+pub fn constant_value_from_i64<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    Ok(block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value).into(),
+            location,
+        ))
+        .result(0)?
+        .into())
 }
 
 pub fn stack_push<'ctx>(

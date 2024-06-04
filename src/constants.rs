@@ -7,3 +7,5 @@ pub const MEMORY_SIZE_GLOBAL: &str = "emv_mlir__memory_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
 
 pub const REVERT_EXIT_CODE: u8 = 255;
+
+pub const INITIAL_GAS: i64 = 999;
