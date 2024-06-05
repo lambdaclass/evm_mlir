@@ -1590,6 +1590,7 @@ fn gas_value_after_operations() {
     run_program_assert_result_with_gas(program, expected_result, INITIAL_GAS as _);
 }
 
+#[test]
 fn gas_without_enough_gas_revert() {
     let gas_consumption = gas_cost::PUSHN * 3 + gas_cost::ADD * 2 + gas_cost::GAS;
     let expected_result = 0;
