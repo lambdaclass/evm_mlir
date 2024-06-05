@@ -527,7 +527,7 @@ fn codegen_add<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADD)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -670,7 +670,7 @@ fn codegen_sdiv<'c, 'r>(
 
     // Check there's enough elements in stack
     let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SDIV)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
@@ -770,7 +770,7 @@ fn codegen_mod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -841,7 +841,7 @@ fn codegen_smod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SMOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -912,7 +912,7 @@ fn codegen_addmod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let gas_flag = consume_gas(context, &start_block, 8)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADDMOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -1007,7 +1007,7 @@ fn codegen_mulmod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let gas_flag = consume_gas(context, &start_block, 8)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MULMOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -1102,7 +1102,7 @@ fn codegen_xor<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::XOR)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1225,7 +1225,7 @@ fn codegen_pop<'c, 'r>(
     // Check there's at least 1 element in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
-    let gas_flag = consume_gas(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::POP)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1260,7 +1260,7 @@ fn codegen_sar<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SAR)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
