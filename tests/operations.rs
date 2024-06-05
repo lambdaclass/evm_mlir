@@ -1574,17 +1574,22 @@ fn gas_without_enough_gas_revert() {
 }
 
 #[test]
-fn jump_reverts_when_program_runs_out_of_gas() {
+fn jump_with_gas_cost() {
     // this test is equivalent to the following bytecode program
-    // it is basically a GOTO 0
     //
-    // [00] JUMPDEST
-    // [01] PUSH1 0
-    // [03] JUMP
+    // [00] PUSH1 3
+    // [02] JUMP
+    // [03] JUMPDEST
+    let jumpdest: u8 = 3;
     let program = vec![
-        Operation::Jumpdest { pc: 0 },
         Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(jumpdest)),
         Operation::Jump,
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
     ];
-    run_program_assert_revert(program);
+    let expected_result = 0;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
