@@ -8,14 +8,11 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::gas_cost,
+    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
-        swap_stack_elements,
+        llvm_mlir::addressof, check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -1422,6 +1419,7 @@ fn codegen_mload<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
+    let uint64 = IntegerType::new(context, 64);
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
@@ -1463,18 +1461,68 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    // required_size = offset + value_size
     let required_size = ok_block
         .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    // Get current memory size
+    let memory_size_ptr = ok_block
+        .append_operation(addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let memory_size = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint32.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
-    let memory_destination = ok_block
+    // Compare current memory_size and required_size
+    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
+    let extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        extension_flag,
+        &extension_block,
+        &memory_access_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Extend memory path
+    extend_memory(op_ctx, &extension_block, required_size)?;
+    extension_block.append_operation(cf::br(&memory_access_block, &[], location));
+    
+    // Not extend memory path
+    ok_block.append_operation(cf::br(&memory_access_block, &[], location));
+    
+    let memory_ptr = ok_block
+        .append_operation(addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Access memory
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
-            memory_ptr,
+            memory_ptr.into(),
             &[offset],
             uint8.into(),
             ptr_type,
@@ -1483,7 +1531,7 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    let read_value = ok_block
+    let read_value = memory_access_block
         .append_operation(llvm::load(
             context,
             memory_destination,
@@ -1498,7 +1546,7 @@ fn codegen_mload<'c, 'r>(
     // check system endianness before storing the value
     let read_value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        ok_block
+        memory_access_block
             .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
             .result(0)?
             .into()
@@ -1507,9 +1555,9 @@ fn codegen_mload<'c, 'r>(
         read_value
     };
 
-    stack_push(context, &ok_block, read_value)?;
+    stack_push(context, &memory_access_block, read_value)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_sar<'c, 'r>(

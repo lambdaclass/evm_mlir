@@ -48,9 +48,9 @@ pub mod gas_cost {
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
-        let new_memory_cost = (new_memory_size_word * 2) / 512 + (3 * new_memory_size_word); // TODO: should be pow
+        let new_memory_cost = (new_memory_size_word * new_memory_size_word) / 512 + (3 * new_memory_size_word);
         let last_memory_size_word = (last_size + 31) / 32;
-        let last_memory_cost = (last_memory_size_word * 2) / 512 + (3 * last_memory_size_word); // TODO: should be pow
+        let last_memory_cost = (last_memory_size_word * last_memory_size_word) / 512 + (3 * last_memory_size_word);
         (new_memory_cost - last_memory_cost).into()
     }
 }

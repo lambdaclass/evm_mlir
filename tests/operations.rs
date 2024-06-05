@@ -1988,12 +1988,13 @@ fn mload_not_allocated_address() {
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
         Operation::Push(BigUint::from(10_u8)), // value
-        Operation::Push(BigUint::from(0_u8)),  // offset
+        Operation::Push(BigUint::from(64_u8)),  // offset
         Operation::Mstore,
     ];
+    let dynamic_gas = 9_i64;
     let needed_gas =
-        gas_cost::PUSHN * 2 + gas_cost::MSTORE + gas_cost::memory_expansion_cost(0_u32, 32);
-    run_program_assert_gas_exact(program, 0_u8, needed_gas as _); // FIX: expected result?
+        gas_cost::PUSHN * 2 + gas_cost::MSTORE + dynamic_gas;
+    run_program_assert_gas_exact(program, 0_u8, needed_gas as _);
 }
 
 #[test]
@@ -2003,17 +2004,19 @@ fn mstore8_gas_cost_with_memory_extension() {
         Operation::Push(BigUint::from(31_u8)), // offset
         Operation::Mstore8,
     ];
+    let dynamic_gas = 3_i64;
     let needed_gas =
-        gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + gas_cost::memory_expansion_cost(0_u32, 32);
-    run_program_assert_gas_exact(program, 0_u8, needed_gas as _); // FIX: expected result?
+        gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + dynamic_gas;
+    run_program_assert_gas_exact(program, 0_u8, needed_gas as _);
 }
 
 #[test]
 fn mload_gas_cost_with_memory_extension() {
     let program = vec![
-        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Push(BigUint::ZERO), // offset
         Operation::Mload,
     ];
-    let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + gas_cost::memory_expansion_cost(0_u32, 32);
-    run_program_assert_gas_exact(program, 0_u8, needed_gas as _); // FIX: expected result?
+    let dynamic_gas = 3_i64;
+    let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
+    run_program_assert_gas_exact(program, 0_u8, needed_gas as _);
 }
