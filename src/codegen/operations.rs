@@ -1659,7 +1659,7 @@ fn codegen_jumpi<'c, 'r: 'c>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, 10)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::JUMPI)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
