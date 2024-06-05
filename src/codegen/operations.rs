@@ -55,7 +55,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shr => codegen_shr(op_ctx, region),
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
-        Operation::Codesize => todo!(),
+        Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
@@ -1390,6 +1390,50 @@ fn codegen_pop<'c, 'r>(
     stack_pop(context, &ok_block)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_codesize<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's stack overflow
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CODESIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    
+    let program = op_ctx.program.operations;
+
+    let codesize = program.iter().map(|op| {
+        match op {
+            Operation::Push(x) => x + 1,
+            _ => 1
+        }
+    }).sum();
+
+    stack_push(context, &ok_block, codesize)?;
+
+    Ok((stack_flag, ok_block))
 }
 
 fn codegen_sar<'c, 'r>(
