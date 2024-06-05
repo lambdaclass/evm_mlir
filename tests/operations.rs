@@ -564,6 +564,20 @@ fn mul_with_stack_underflow() {
 }
 
 #[test]
+fn mul_gas_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let expected_result = (&a * &b).try_into().unwrap();
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Mul,     // <No collapse>
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MUL;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
 fn push_push_shr() {
     let program = vec![
         Operation::Push(BigUint::from(32_u8)),
