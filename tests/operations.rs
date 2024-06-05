@@ -961,6 +961,14 @@ fn check_initial_memory_size() {
 }
 
 #[test]
+fn msize_out_of_gas() {
+    let program = vec![Operation::Msize];
+    let gas_needed = gas_cost::MSIZE;
+
+    run_program_assert_gas_exact(program, 0, gas_needed as _);
+}
+
+#[test]
 fn test_and() {
     let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
     let expected_result = 0b1000_u8;

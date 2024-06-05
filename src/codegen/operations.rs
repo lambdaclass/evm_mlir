@@ -1,5 +1,9 @@
 use melior::{
-    dialect::{arith, cf, func, llvm::{self, r#type::pointer, LoadStoreOptions}, ods},
+    dialect::{
+        arith, cf, func,
+        llvm::{self, r#type::pointer, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -8,11 +12,14 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    constants::{gas_cost, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push, swap_stack_elements
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
+        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
+        swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1623,12 +1630,18 @@ fn codegen_msize<'c>(
     let uint256 = IntegerType::new(context, 256).into();
 
     let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MSIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        stack_flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -1648,15 +1661,15 @@ fn codegen_msize<'c>(
 
     // Load memory size
     let memory_size = ok_block
-    .append_operation(llvm::load(
-        context,
-        memory_ptr.into(),
-        uint256,
-        location,
-        LoadStoreOptions::default(),
-    ))
-    .result(0)?
-    .into();
+        .append_operation(llvm::load(
+            context,
+            memory_ptr.into(),
+            uint256,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     stack_push(context, &ok_block, memory_size)?;
 
