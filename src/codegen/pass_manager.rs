@@ -10,6 +10,8 @@ pub fn run_pass_manager(context: &Context, module: &mut MeliorModule) -> Result<
     pass_manager.add_pass(pass::transform::create_canonicalizer());
     pass_manager.add_pass(pass::conversion::create_scf_to_control_flow());
     pass_manager.add_pass(pass::conversion::create_arith_to_llvm());
+    pass_manager.add_pass(pass::conversion::create_math_to_llvm());
+    pass_manager.add_pass(pass::conversion::create_math_to_funcs());
     pass_manager.add_pass(pass::conversion::create_control_flow_to_llvm());
     pass_manager.add_pass(pass::conversion::create_index_to_llvm());
     pass_manager.add_pass(pass::conversion::create_finalize_mem_ref_to_llvm());
