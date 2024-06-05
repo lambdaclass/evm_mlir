@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
-        ods,
+        ods::{self, math},
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
@@ -620,6 +620,117 @@ pub fn check_if_zero<'ctx>(
         .result(0)?;
 
     Ok(flag.into())
+}
+
+pub(crate) fn compute_memory_cost<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    // this function computes memory cost, which is given by the following equations
+    // memory_size_word = (memory_byte_size + 31) / 32
+    // memory_cost = (memory_size_word ** 2) / 512 + (3 * memory_size_word)
+    //
+    //
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256);
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_byte_size = block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::new(),
+        ))
+        .result(0)?
+        .into();
+
+    let thirty_one = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 31).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let five_hundred_and_twelve = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 512).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let thirty_two = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let three = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 3).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_byte_size_plus_31 = block
+        .append_operation(arith::addi(memory_byte_size, thirty_one, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word = block
+        .append_operation(arith::divui(memory_byte_size_plus_31, thirty_two, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word_squared = block
+        .append_operation(arith::muli(memory_size_word, memory_size_word, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word_squared_divided_by_512 = block
+        .append_operation(arith::divui(
+            memory_size_word_squared,
+            five_hundred_and_twelve,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_size_word_x_3 = block
+        .append_operation(arith::muli(memory_size_word, three, location))
+        .result(0)?
+        .into();
+
+    let memory_cost = block
+        .append_operation(arith::addi(
+            memory_size_word_squared_divided_by_512,
+            memory_size_word_x_3,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    Ok(memory_cost)
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
