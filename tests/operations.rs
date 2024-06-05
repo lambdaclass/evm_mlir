@@ -130,18 +130,6 @@ fn dup1_once() {
     run_program_assert_result(program, 31);
 }
 
-#[test]
-fn dup2_once() {
-    let program = vec![
-        Operation::Push(BigUint::from(4_u8)),
-        Operation::Push(BigUint::from(5_u8)),
-        Operation::Push(BigUint::from(6_u8)),
-        Operation::Dup(2),
-    ];
-
-    run_program_assert_result(program, 5);
-}
-
 #[rstest]
 #[case(1)]
 #[case(2)]
@@ -178,12 +166,10 @@ fn dup_with_stack_underflow() {
 #[test]
 fn dup_out_of_gas() {
     let a = BigUint::from(2_u8);
-    let mut program = vec![];
-    for _ in 0..334 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Dup(1));
-    }
-    run_program_assert_revert(program);
+    let program = vec![Operation::Push(a.clone()), Operation::Dup(1)];
+    let gas_needed = gas_cost::PUSHN + gas_cost::DUPN;
+
+    run_program_assert_gas_exact(program, 2, gas_needed as _);
 }
 
 #[test]

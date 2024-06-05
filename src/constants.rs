@@ -38,5 +38,6 @@ pub mod gas_cost {
     pub const JUMPDEST: i64 = 1;
     pub const PUSH0: i64 = 2;
     pub const PUSHN: i64 = 3;
+    pub const DUPN: i64 = 3;
     pub const BYTE: i64 = 3;
 }
