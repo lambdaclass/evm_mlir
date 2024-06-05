@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith, cf, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
-        ods,
+        llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods,
     },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
@@ -69,6 +69,8 @@ pub fn generate_code_for_op<'c>(
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),
+        Operation::Mstore => codegen_mstore(op_ctx, region),
+        Operation::Mstore8 => codegen_mstore8(op_ctx, region),
     }
 }
 
@@ -2104,6 +2106,207 @@ fn codegen_slt<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_mstore<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    // truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let value_width_in_bytes = 32;
+    // value_size = 32
+    let value_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // required_size = offset + value_size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, value_size, location))
+        .result(0)?
+        .into();
+
+    // maybe we could check if there is already enough memory before extending it
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+    // memory_destination = memory_ptr + offset
+    let memory_destination = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let uint256 = IntegerType::new(context, 256);
+
+    // check system endianness before storing the value
+    let value = if cfg!(target_endian = "little") {
+        // if the system is little endian, we convert the value to big endian
+        ok_block
+            .append_operation(llvm::intr_bswap(value, uint256.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        // if the system is big endian, there is no need to convert the value
+        value
+    };
+
+    // store the value in the memory
+    ok_block.append_operation(llvm::store(
+        context,
+        value,
+        memory_destination,
+        location,
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_mstore8<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE8)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    // truncate value to the least significative byte of the 32-byte value
+    let value = ok_block
+        .append_operation(arith::trunci(
+            value,
+            r#IntegerType::new(context, 8).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let value_width_in_bytes = 1;
+    // value_size = 1
+    let value_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // required_size = offset + size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, value_size, location))
+        .result(0)?
+        .into();
+
+    // maybe we could check if there is already enough memory before extending it
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+    // memory_destination = memory_ptr + offset
+    let memory_destination = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(llvm::store(
+        context,
+        value,
+        memory_destination,
+        location,
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
 
     Ok((start_block, ok_block))
 }
