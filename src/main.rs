@@ -1,13 +1,27 @@
-use evm_mlir::{compile_binary, program::Program};
+use std::path::PathBuf;
+
+use evm_mlir::{context::Context, executor::Executor, program::Program, syscall::SyscallContext};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).expect("No path provided").as_str();
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
-    let output_file = "output";
 
-    compile_binary(&program, output_file).unwrap();
-    println!("Done!");
-    println!("Program was compiled in {output_file}");
+    // This is for intermediate files
+    let output_file = PathBuf::from("output");
+
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let executor = Executor::new(&module);
+
+    let mut context = SyscallContext::default();
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+
+    println!("Execution result: {result}");
 }
