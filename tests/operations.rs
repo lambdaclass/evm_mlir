@@ -1920,8 +1920,54 @@ fn mload_with_stack_underflow() {
 }
 
 #[test]
-fn mload_with_zero_address() {
-    let program = vec![Operation::Push(BigUint::from(0_u8)), Operation::Mload];
-    let read = 0_u8; // ver de inicializar la memoria en el test
-    run_program_assert_result(program, read);
+fn mstore8_mload_with_zero_address() {
+    let stored_value = BigUint::from(44_u8);
+    let program = vec![
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push(BigUint::from(31_u8)), // offset
+        Operation::Mstore8,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mstore_mload_with_zero_address() {
+    let stored_value = BigUint::from_bytes_be(&[10_u8; 32]);
+    let expected_result_byte = stored_value.to_bytes_be()[31];
+
+    let program = vec![
+        Operation::Push(stored_value), // value
+        Operation::Push0,              // offset
+        Operation::Mstore,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, expected_result_byte);
+}
+
+#[test]
+fn mstore_mload_with_memory_extension() {
+    let stored_value = BigUint::from_bytes_be(&[25_u8; 32]);
+    let expected_result_byte = stored_value.to_bytes_be()[31];
+
+    let program = vec![
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mstore,
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, expected_result_byte);
+}
+
+#[test]
+fn mload_not_allocated_address() {
+    // When offset for MLOAD is bigger than the current memory size, memory is extended with zeros
+    let program = vec![
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, 0_u8);
 }

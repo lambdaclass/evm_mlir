@@ -8,13 +8,13 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, {MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL}},
+    constants::gas_cost,
     errors::CodegenError,
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
+        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -1422,10 +1422,12 @@ fn codegen_mload<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MLOAD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -1444,74 +1446,46 @@ fn codegen_mload<'c, 'r>(
     ));
 
     let offset = stack_pop(context, &ok_block)?;
+    // truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
 
-    // Check if memory needs to be extended (offset > memory_size)
-    // Possible optimization: avoid branching by comparing offset and memory_size using bitwise operations
-    let memory_size_ptr = ok_block
-        .append_operation(llvm_mlir::addressof(
+    let value_size = ok_block
+        .append_operation(arith::constant(
             context,
-            MEMORY_SIZE_GLOBAL,
-            ptr_type,
+            IntegerAttribute::new(uint32.into(), 1).into(),
             location,
         ))
         .result(0)?
         .into();
-    let memory_size = ok_block
-        .append_operation(llvm::load(
-            context,
-            memory_size_ptr,
-            uint256.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
+
+    // required_size = offset + value_size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
-    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, offset)?;
-    let extension_block = region.append_block(Block::new(&[]));
-    let memory_access_block = region.append_block(Block::new(&[]));
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        extension_flag,
-        &extension_block,
-        &memory_access_block,
-        &[],
-        &[],
-        location,
-    ));
-    extend_memory(op_ctx, &extension_block, offset)?;
-    // TODO: calculate dynamic gas
-    // dynamic_gas = new_memory_cost - last_memory_cost
-    // memory_cost = (memory_size_word ** 2) / 512 + (3 * memory_size_word)
-    // memory_size_word = (memory_byte_size + 31) / 32
-    // (memory_byte_size can be obtained with opcode MSIZE)
-
-    extension_block.append_operation(cf::br(&memory_access_block, &[], location));
-
-    // Read value from memory
-    let memory_ptr = memory_access_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            MEMORY_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-    let memory_load_address = memory_access_block
+    let memory_destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
-            memory_ptr.into(),
+            memory_ptr,
             &[offset],
-            ptr_type,
+            uint8.into(),
             ptr_type,
             location,
         ))
-        .result(0)?;
-    let read_value = memory_access_block
+        .result(0)?
+        .into();
+
+    let read_value = ok_block
         .append_operation(llvm::load(
             context,
-            memory_load_address.into(),
+            memory_destination,
             uint256.into(),
             location,
             LoadStoreOptions::new()
@@ -1520,9 +1494,15 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &memory_access_block, read_value)?;
+    // TODO: change endianness only if the system is little endian
+    let swapped_value = ok_block
+        .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
+        .result(0)?
+        .into();
 
-    Ok((start_block, memory_access_block))
+    stack_push(context, &ok_block, swapped_value)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_sar<'c, 'r>(
@@ -2260,6 +2240,33 @@ fn codegen_mstore<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
+    // check system endiannes before storing the value
+    if cfg!(target_endian = "little") {
+        // if the system is little endian, we convert the value to big endian
+        let value: melior::ir::Value = ok_block
+            .append_operation(llvm::intr_bswap(value, uint256.into(), location))
+            .result(0)?
+            .into();
+
+        ok_block.append_operation(llvm::store(
+            context,
+            value,
+            memory_destination,
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ));
+    } else {
+        // if the system is big endian, there is no need to convert the value
+        ok_block.append_operation(llvm::store(
+            context,
+            value,
+            memory_destination,
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ));
+    }
     Ok((start_block, ok_block))
 }
 
