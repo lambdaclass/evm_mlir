@@ -130,6 +130,18 @@ fn dup1_once() {
     run_program_assert_result(program, 31);
 }
 
+#[test]
+fn dup2_once() {
+    let program = vec![
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Push(BigUint::from(5_u8)),
+        Operation::Push(BigUint::from(6_u8)),
+        Operation::Dup(2),
+    ];
+
+    run_program_assert_result(program, 5);
+}
+
 #[rstest]
 #[case(1)]
 #[case(2)]
