@@ -1920,6 +1920,18 @@ fn mload_with_stack_underflow() {
 }
 
 #[test]
+fn mstore_with_stack_underflow() {
+    let program = vec![Operation::Mstore];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore8_with_stack_underflow() {
+    let program = vec![Operation::Mstore8];
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn mstore8_mload_with_zero_address() {
     let stored_value = BigUint::from(44_u8);
     let program = vec![
