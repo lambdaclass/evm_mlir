@@ -1585,7 +1585,7 @@ fn slt_positive_less_than() {
     let a = BigInt::from(1_u8);
     let b = BigInt::from(2_u8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let program = vec![
         Operation::Push(biguint_256_from_bigint(b)),
@@ -1601,7 +1601,7 @@ fn slt_positive_greater_than() {
     let a = BigInt::from(2_u8);
     let b = BigInt::from(1_u8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let program = vec![
         Operation::Push(biguint_256_from_bigint(b)),
@@ -1617,7 +1617,7 @@ fn slt_negative_less_than() {
     let a = BigInt::from(-3_i8);
     let b = BigInt::from(-1_i8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let program = vec![
         Operation::Push(biguint_256_from_bigint(b)),
@@ -1633,7 +1633,7 @@ fn slt_negative_greater_than() {
     let a = BigInt::from(0_i8);
     let b = BigInt::from(-1_i8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let program = vec![
         Operation::Push(biguint_256_from_bigint(b)),
@@ -1649,7 +1649,7 @@ fn slt_equal() {
     let a = BigInt::from(-4_i8);
     let b = BigInt::from(-4_i8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let program = vec![
         Operation::Push(biguint_256_from_bigint(b)),
@@ -1665,7 +1665,7 @@ fn slt_gas_should_revert() {
     let a = BigInt::from(1_u8);
     let b = BigInt::from(2_u8);
 
-    let expected_result = (&a < &b) as u8;
+    let expected_result = (a < b) as u8;
 
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SLT;
 
