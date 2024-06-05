@@ -208,12 +208,13 @@ fn compile_program(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
     let uint8 = IntegerType::new(context, 8).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
     // Build the main function
     let main_func = func::func(
         context,
         StringAttribute::new(context, MAIN_ENTRYPOINT),
-        TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint8]).into()),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint64], &[uint8]).into()),
         Region::new(),
         &[
             (
@@ -234,11 +235,12 @@ fn compile_program(
     // PERF: avoid generating unneeded setup blocks
     let setup_block = main_region.append_block(Block::new(&[]));
     let syscall_ctx = setup_block.add_argument(ptr_type, location);
+    let initial_gas = setup_block.add_argument(uint64, location);
 
     // Append setup code to be run at the start
     generate_stack_setup_code(context, module, &setup_block)?;
     generate_memory_setup_code(context, module, &setup_block)?;
-    generate_gas_counter_setup_code(context, module, &setup_block)?;
+    generate_gas_counter_setup_code(context, module, &setup_block, initial_gas)?;
 
     syscall::mlir::declare_syscalls(context, module);
 
@@ -290,32 +292,21 @@ fn generate_gas_counter_setup_code<'c>(
     context: &'c MeliorContext,
     module: &'c MeliorModule,
     block: &'c Block<'c>,
+    initial_gas: Value,
 ) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64).into();
 
     let body = module.body();
     let res = body.append_operation(llvm_mlir::global(
         context,
         GAS_COUNTER_GLOBAL,
-        ptr_type,
+        uint64,
         location,
     ));
 
     assert!(res.verify());
-
-    let uint256 = IntegerType::new(context, 256);
-
-    let initial_gas = 999_i64;
-
-    let gas_size = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), initial_gas).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
 
     let gas_addr = block
         .append_operation(llvm_mlir::addressof(
@@ -328,7 +319,7 @@ fn generate_gas_counter_setup_code<'c>(
 
     let res = block.append_operation(llvm::store(
         context,
-        gas_size,
+        initial_gas,
         gas_addr.into(),
         location,
         LoadStoreOptions::default(),

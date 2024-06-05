@@ -1,12 +1,6 @@
 use std::path::PathBuf;
 
-use evm_mlir::{
-    constants::MAIN_ENTRYPOINT,
-    context::Context,
-    program::Program,
-    syscall::{register_syscalls, MainFunc, SyscallContext},
-};
-use melior::ExecutionEngine;
+use evm_mlir::{context::Context, executor::Executor, program::Program, syscall::SyscallContext};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -22,14 +16,12 @@ fn main() {
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
-    register_syscalls(&engine);
-
-    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
-    let fptr = engine.lookup(&function_name);
-    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+    let executor = Executor::new(&module);
 
     let mut context = SyscallContext::default();
+    let initial_gas = 1000;
 
-    main_fn(&mut context);
+    let result = executor.execute(&mut context, initial_gas);
+
+    println!("Execution result: {result}");
 }
