@@ -13,9 +13,9 @@ use crate::{
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
-        swap_stack_elements,
+        compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
+        extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
+        integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -2061,6 +2061,7 @@ fn codegen_mstore<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
     // Check there's enough gas
     let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE)?;
 
@@ -2108,11 +2109,38 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
+    let memory_cost_before_expansion = compute_memory_cost(op_ctx, &ok_block)?;
+
     // maybe we could check if there is already enough memory before extending it
     let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
+    let memory_cost = compute_memory_cost(op_ctx, &ok_block)?;
+
+    let gas_cost = ok_block
+        .append_operation(arith::subi(
+            memory_cost,
+            memory_cost_before_expansion,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let store_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &store_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
     // memory_destination = memory_ptr + offset
-    let memory_destination = ok_block
+    let memory_destination = store_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2129,7 +2157,7 @@ fn codegen_mstore<'c, 'r>(
     // check system endianness before storing the value
     let value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        ok_block
+        store_block
             .append_operation(llvm::intr_bswap(value, uint256.into(), location))
             .result(0)?
             .into()
@@ -2139,7 +2167,7 @@ fn codegen_mstore<'c, 'r>(
     };
 
     // store the value in the memory
-    ok_block.append_operation(llvm::store(
+    store_block.append_operation(llvm::store(
         context,
         value,
         memory_destination,
@@ -2148,7 +2176,7 @@ fn codegen_mstore<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
-    Ok((start_block, ok_block))
+    Ok((start_block, store_block))
 }
 
 fn codegen_mstore8<'c, 'r>(
