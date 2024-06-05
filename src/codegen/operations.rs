@@ -8,16 +8,12 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::gas_cost,
-    errors::CodegenError,
-    program::Operation,
-    utils::{
+    constants::{gas_cost, REVERT_EXIT_CODE}, errors::CodegenError, program::Operation, syscall::ExecutionStatus, utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
-    },
-    syscall::ExecutionResult,
+    }
 };
 use num_bigint::BigUint;
 
@@ -1666,7 +1662,7 @@ fn codegen_return<'c>(
     extend_memory(op_ctx, &ok_block, required_size)?;
 
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExecutionResult::Continue.to_u8();
+    let reason = ExecutionStatus::Success.to_u8();
     let reason = ok_block
         .append_operation(arith::constant(
             context,
@@ -1739,17 +1735,20 @@ fn codegen_revert<'c>(
 
     
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExecutionResult::Revert.to_u8();
+    let reason = ExecutionStatus::Revert.to_u8();
     let reason = ok_block 
         .append_operation(arith::constant(context, integer_constant_from_i64(context,reason as i64).into(), location))
         .result(0)?
         .into();
 
-    //op_ctx.write_revert_result(&ok_block, offset, size, reamining_gas, reason, location);
-
     op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas,reason,location);
 
-    ok_block.append_operation(func::r#return(&[], location));
+    let revert_exit_code = ok_block
+        .append_operation(arith::constant(context, integer_constant_from_i64(context, REVERT_EXIT_CODE.into()).into(), location))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
 
     Ok((start_block, ok_block))
 

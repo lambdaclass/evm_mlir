@@ -22,34 +22,44 @@ use melior::ExecutionEngine;
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
-#[derive(Debug,Default)]
-pub enum ExecutionResult {
-    #[default]
-    Continue,
+#[derive(Debug)]
+pub enum ExecutionStatus {
+    Success,
     Revert,
     Halt,
-    Invalid,
+    Default,
 }
-
-impl ExecutionResult {
+impl ExecutionStatus {
     pub fn to_u8(self) -> u8 {
-        match self {
-            ExecutionResult::Continue => 0,
-            ExecutionResult::Revert => 1,
-            ExecutionResult::Halt => 2,
-            ExecutionResult::Invalid => 3,
-        }
+            self as u8
     }
-
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => ExecutionResult::Continue,
-            1 => ExecutionResult::Revert,
-            2 => ExecutionResult::Halt,
-            _ => ExecutionResult::Invalid,
+            0 => Self::Success,
+            1 => Self::Revert,
+            2 => Self::Halt,
+            _ => Self::Default,
         }
     }
 }
+
+#[derive(Debug)]
+pub enum ExecutionResult{
+    Success{
+        /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
+        /// It's [`None`] in case there's no return data
+        return_data: Option<(usize, usize)>,
+        gas_remaining: Option<u64>,
+    },
+    Revert{
+        /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
+        /// It's [`None`] in case there's no return data
+        return_data: Option<(usize, usize)>,
+        gas_remaining: Option<u64>,
+    },
+    Halt
+}
+
 
 
 /// The context passed to syscalls
@@ -58,22 +68,29 @@ pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
-    /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
-    /// It's [`None`] in case there's no return data
-    result: Option<(usize, usize)>,
-    /// The gas available for the execution
-    /// It's [`None`] in case the gas is not available
-    gas_remaining: Option<u64>,
-    /// Execution Result
-    execution_result: ExecutionResult,
+    /// The result of the execution
+    result: Option<ExecutionResult>,
 }
+
+
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
-        let (offset, size) = self.result.unwrap_or((0, 0));
-        &self.memory[offset..offset + size]
+        // let (offset, size) = self.result.unwrap_or((0, 0));
+        // &self.memory[offset..offset + size]
+        match self.result {
+            Some(ExecutionResult::Success{return_data,..}) => {
+                let (offset, size) = return_data.unwrap_or((0, 0));
+                &self.memory[offset..offset + size]
+            },
+            Some(ExecutionResult::Revert{return_data,..}) => {
+                let (offset, size) = return_data.unwrap_or((0, 0));
+                &self.memory[offset..offset + size]
+            },
+            _ => &[],
+        }
     }
 }
 
@@ -83,9 +100,29 @@ impl SyscallContext {
 /// function to be callable from the generated code.
 impl SyscallContext {
     pub extern "C" fn write_result(&mut self, offset: u32, bytes_len: u32,remaining_gas: u64,execution_result: u8) {
-        self.result = Some((offset as usize, bytes_len as usize));
-        self.gas_remaining = Some(remaining_gas);
-        self.execution_result = ExecutionResult::from_u8(execution_result);
+        let offset = offset as usize;
+        let bytes_len = bytes_len as usize;
+        let execution_result = ExecutionStatus::from_u8(execution_result);
+        match execution_result {
+            ExecutionStatus::Success => {
+                self.result = Some(ExecutionResult::Success {
+                    return_data: Some((offset, bytes_len)),
+                    gas_remaining: Some(remaining_gas),
+                });
+            }
+            ExecutionStatus::Revert => {
+                self.result = Some(ExecutionResult::Revert {
+                    return_data: Some((offset, bytes_len)),
+                    gas_remaining: Some(remaining_gas),
+                });
+            }
+            ExecutionStatus::Halt => {
+                self.result = Some(ExecutionResult::Halt);
+            }
+            ExecutionStatus::Default => {
+                self.result = None;
+            }
+        }
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
