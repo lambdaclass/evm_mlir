@@ -7,3 +7,9 @@ pub const MEMORY_SIZE_GLOBAL: &str = "emv_mlir__memory_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
 
 pub const REVERT_EXIT_CODE: u8 = 255;
+
+/// Contains the gas costs of the EVM instructions
+pub mod gas_cost {
+    pub const MSTORE: i64 = 3;
+    pub const MSTORE8: i64 = 3;
+}
