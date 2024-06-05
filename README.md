@@ -28,6 +28,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x0B) SIGNEXTEND
 1. (0x10) LT
 1. (0x11) GT
+1. (0x12) SLT
 1. (0x13) SGT
 1. (0x14) EQ
 1. (0x15) ISZERO
@@ -35,9 +36,12 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x17) OR
 1. (0x18) XOR
 1. (0x1A) BYTE
+1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
 1. (0x50) POP
+1. (0x52) MSTORE
+1. (0x53) MSTORE8
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
@@ -114,9 +118,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x12) SLT
 1. (0x19) NOT
-1. (0x1B) SHL
 1. (0x20) KECCAK256
 1. (0x30) ADDRESS
 1. (0x31) BALANCE
@@ -146,8 +148,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
 1. (0x51) MLOAD
-1. (0x52) MSTORE
-1. (0x53) MSTORE8
 1. (0x54) SLOAD
 1. (0x55) SSTORE
 1. (0x59) MSIZE
