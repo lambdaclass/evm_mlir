@@ -1,10 +1,10 @@
 use evm_mlir::{
-    constants::{gas_cost, REVERT_EXIT_CODE},
+    constants::{gas_cost, REVERT_EXIT_CODE,MAIN_ENTRYPOINT},
     context::Context,
-    executor::Executor,
     program::{Operation, Program},
     syscall::{register_syscalls, ExecutionResult, MainFunc, SyscallContext},
 };
+use melior::ExecutionEngine;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
@@ -27,7 +27,12 @@ fn run_program_assert_result_with_gas(
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
+    register_syscalls(&engine);
+
+    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
+    let fptr = engine.lookup(&function_name);
+    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
 
     let mut context = SyscallContext::default();
     let result = main_fn(&mut context, initial_gas);
@@ -58,7 +63,7 @@ fn run_program_assert_result_with_execution_context(
     let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
 
     let mut context = SyscallContext::default();
-    let result = main_fn(&mut context, initial_gas);
+    let _result = main_fn(&mut context, initial_gas);
 
     let context_result = context.get_result().unwrap();
     assert_matches!(context_result, expected_result);

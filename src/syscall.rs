@@ -219,6 +219,7 @@ pub(crate) mod mlir {
     }
 
     /// Stores the return values in the syscall context
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn write_result_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
