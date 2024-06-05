@@ -1922,7 +1922,7 @@ fn codegen_revert<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    let reamining_gas = get_remaining_gas(context, &ok_block)?;
+    let remaining_gas = get_remaining_gas(context, &ok_block)?;
     let reason = ExitStatusCode::Revert.to_u8();
     let reason = ok_block
         .append_operation(arith::constant(
@@ -1933,7 +1933,7 @@ fn codegen_revert<'c>(
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas, reason, location);
+    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
 
     // Terminar la ejecución después del revert
     let revert_exit_code = ok_block

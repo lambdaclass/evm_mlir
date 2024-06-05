@@ -46,14 +46,10 @@ impl ExitStatusCode {
 #[derive(Debug)]
 pub enum ExecutionResult {
     Success {
-        /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
-        /// It's [`None`] in case there's no return data
         return_data: Vec<u8>,
         gas_remaining: u64,
     },
     Revert {
-        /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
-        /// It's [`None`] in case there's no return data
         return_data: Vec<u8>,
         gas_remaining: u64,
     },
@@ -116,12 +112,7 @@ impl SyscallContext {
     ) {
         self.return_data = Some((offset as usize, bytes_len as usize));
         self.gas_remaining = Some(remaining_gas);
-        match ExitStatusCode::from_u8(execution_result) {
-            ExitStatusCode::Return => self.exit_status = Some(ExitStatusCode::Return),
-            ExitStatusCode::Revert => self.exit_status = Some(ExitStatusCode::Revert),
-            ExitStatusCode::Error => self.exit_status = Some(ExitStatusCode::Error),
-            ExitStatusCode::Default => self.exit_status = Some(ExitStatusCode::Default),
-        }
+        self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
