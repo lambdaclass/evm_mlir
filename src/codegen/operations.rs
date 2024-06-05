@@ -1526,6 +1526,7 @@ fn codegen_mstore<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
@@ -1579,7 +1580,7 @@ fn codegen_mstore<'c, 'r>(
             context,
             memory_ptr,
             &[offset],
-            ptr_type,
+            uint8.into(),
             ptr_type,
             location,
         ))
@@ -1606,6 +1607,7 @@ fn codegen_mstore8<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
@@ -1669,7 +1671,7 @@ fn codegen_mstore8<'c, 'r>(
             context,
             memory_ptr,
             &[offset],
-            ptr_type,
+            uint8.into(),
             ptr_type,
             location,
         ))
