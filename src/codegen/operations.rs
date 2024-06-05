@@ -1227,7 +1227,7 @@ fn codegen_shl<'c, 'r>(
     // Check there's enough elements in stack
     let mut flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SHL)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
