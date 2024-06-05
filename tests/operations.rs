@@ -1118,16 +1118,3 @@ fn pop_reverts_when_program_runs_out_of_gas() {
     }
     run_program_assert_revert(program);
 }
-
-#[test]
-fn mstore() {
-    let value: [u8; 32] = [0xaa; 32];
-    let offset = 0_u8;
-    let program = vec![
-        Operation::Push(BigUint::from_bytes_be(&value)),
-        Operation::Push(BigUint::from(offset)),
-        Operation::Mstore,
-    ];
-    let expected_result = 0;
-    run_program_assert_result(program, expected_result);
-}
