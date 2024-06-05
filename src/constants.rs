@@ -11,6 +11,14 @@ pub const REVERT_EXIT_CODE: u8 = 255;
 /// Contains the gas costs of the EVM instructions
 pub mod gas_cost {
     pub const ADD: i64 = 3;
+    pub const AND: i64 = 3;
+    pub const EXP: i64 = 10;
+    pub const LT: i64 = 3;
+    pub const SGT: i64 = 3;
+    pub const GT: i64 = 3;
+    pub const EQ: i64 = 3;
+    pub const ISZERO: i64 = 3;
+    pub const OR: i64 = 3;
     pub const MUL: i64 = 5;
     pub const SUB: i64 = 3;
     pub const DIV: i64 = 5;
