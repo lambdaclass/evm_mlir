@@ -1596,3 +1596,104 @@ fn byte_gas_cost() {
     let expected_result = 0xff;
     run_program_assert_result_with_gas(program, expected_result, needed_gas as _);
 }
+
+#[test]
+fn and_reverts_when_program_run_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::And,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::AND;
+    let expected_result = (a & b).try_into().unwrap();
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn exp_reverts_when_program_runs_out_of_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(3_u8)),
+        Operation::Push(BigUint::from(256_u16)),
+        Operation::Exp,
+    ];
+
+    let initial_gas = gas_cost::PUSHN * 2 + gas_cost::EXP;
+    let expected_result = 1;
+    run_program_assert_gas_exact(program, expected_result, initial_gas as _);
+}
+
+#[test]
+fn lt_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Lt,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::LT;
+    let expected_result = if a < b { 0 } else { 1 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn sgt_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sgt,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SGT;
+    let expected_result = if a > b { 0 } else { 1 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn gt_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Gt,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::GT;
+    let expected_result = if a > b { 1 } else { 0 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn eq_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Eq,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::EQ;
+    let expected_result = if a == b { 1 } else { 0 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn iszero_reverts_when_program_runs_out_of_gas() {
+    let a = BigUint::from(0_u8);
+    let program = vec![Operation::Push(a.clone()), Operation::IsZero];
+    let needed_gas = gas_cost::PUSHN + gas_cost::ISZERO;
+    let expected_result = if a == 0_u8.into() { 1 } else { 0 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn or_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Or,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::OR;
+    let expected_result = (a | b).try_into().unwrap();
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
