@@ -53,7 +53,7 @@ fn run_program_assert_revert(program: Vec<Operation>) {
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
-    if value > BigInt::ZERO {
+    if value >= BigInt::ZERO {
         value.magnitude().clone()
     } else {
         let bytes = value.to_signed_bytes_be();
@@ -1690,4 +1690,108 @@ fn or_reverts_when_program_runs_out_of_gas() {
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::OR;
     let expected_result = (a | b).try_into().unwrap();
     run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn slt_positive_less_than() {
+    let a = BigInt::from(1_u8);
+    let b = BigInt::from(2_u8);
+
+    let expected_result = (a < b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_positive_greater_than() {
+    let a = BigInt::from(2_u8);
+    let b = BigInt::from(1_u8);
+
+    let expected_result = (a < b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_negative_less_than() {
+    let a = BigInt::from(-3_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result = (a < b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_negative_greater_than() {
+    let a = BigInt::from(0_i8);
+    let b = BigInt::from(-1_i8);
+
+    let expected_result = (a < b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_equal() {
+    let a = BigInt::from(-4_i8);
+    let b = BigInt::from(-4_i8);
+
+    let expected_result = (a < b) as u8;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn slt_gas_should_revert() {
+    let a = BigInt::from(1_u8);
+    let b = BigInt::from(2_u8);
+
+    let expected_result = (a < b) as u8;
+
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SLT;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn slt_stack_underflow() {
+    let program = vec![Operation::Slt];
+    run_program_assert_revert(program);
 }
