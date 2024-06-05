@@ -1922,5 +1922,6 @@ fn mload_with_stack_underflow() {
 #[test]
 fn mload_with_zero_address() {
     let program = vec![Operation::Push(BigUint::from(0_u8)), Operation::Mload];
-    run_program_assert_revert(program);
+    let read = 0_u8; // ver de inicializar la memoria en el test
+    run_program_assert_result(program, read);
 }

@@ -8,13 +8,13 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::gas_cost,
+    constants::{gas_cost, {MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL}},
     errors::CodegenError,
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
+        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -56,7 +56,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
-        Operation::Mload => todo!(),
+        Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
@@ -1412,6 +1412,117 @@ fn codegen_pop<'c, 'r>(
     stack_pop(context, &ok_block)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_mload<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+
+    // Check if memory needs to be extended (offset > memory_size)
+    // Possible optimization: avoid branching by comparing offset and memory_size using bitwise operations
+    let memory_size_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let memory_size = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, offset)?;
+    let extension_block = region.append_block(Block::new(&[]));
+    let memory_access_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        extension_flag,
+        &extension_block,
+        &memory_access_block,
+        &[],
+        &[],
+        location,
+    ));
+    extend_memory(op_ctx, &extension_block, offset)?;
+    // TODO: calculate dynamic gas
+    // dynamic_gas = new_memory_cost - last_memory_cost
+    // memory_cost = (memory_size_word ** 2) / 512 + (3 * memory_size_word)
+    // memory_size_word = (memory_byte_size + 31) / 32
+    // (memory_byte_size can be obtained with opcode MSIZE)
+
+    extension_block.append_operation(cf::br(&memory_access_block, &[], location));
+
+    // Read value from memory
+    let memory_ptr = memory_access_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+    let memory_load_address = memory_access_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr.into(),
+            &[offset],
+            ptr_type,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+    let read_value = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_load_address.into(),
+            uint256.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &memory_access_block, read_value)?;
+
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_sar<'c, 'r>(
