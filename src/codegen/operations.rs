@@ -1547,8 +1547,6 @@ fn codegen_mstore<'c, 'r>(
     let offset = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let value_width_in_bytes = 32;
-
     // truncate offset to 32 bits
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
@@ -1556,7 +1554,9 @@ fn codegen_mstore<'c, 'r>(
         .unwrap()
         .into();
 
-    let size = ok_block
+    let value_width_in_bytes = 32;
+    // value_size = 32
+    let value_size = ok_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
@@ -1565,9 +1565,9 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
-    // required_size = offset + size
+    // required_size = offset + value_size
     let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
+        .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
@@ -1658,8 +1658,6 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    let value_width_in_bytes = 1;
-
     // truncate offset to 32 bits
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
@@ -1667,7 +1665,9 @@ fn codegen_mstore8<'c, 'r>(
         .unwrap()
         .into();
 
-    let size = ok_block
+    let value_width_in_bytes = 1;
+    // value_size = 1
+    let value_size = ok_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32.into(), value_width_in_bytes).into(),
@@ -1678,7 +1678,7 @@ fn codegen_mstore8<'c, 'r>(
 
     // required_size = offset + size
     let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
+        .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
