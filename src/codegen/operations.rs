@@ -623,17 +623,8 @@ fn codegen_not<'c, 'r>(
         location,
     ));
 
-    let mut mask: [u8; 32] = [0; 32];
-   mask[31] = 0xff;
+    let  mask: [u8; 32] = [0xff; 32];
     let lhs = stack_pop(context, &ok_block)?;
-    // let one = ok_block
-    //     .append_operation(arith::constant(
-    //         context,
-    //         integer_constant_from_i64(context, 1).into(),
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
     let mask = ok_block
     .append_operation(arith::constant(
         context,

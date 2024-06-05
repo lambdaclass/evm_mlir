@@ -55,6 +55,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x7D) PUSH30
 1. (0x7E) PUSH31
 1. (0x7F) PUSH32
+1. (0x19) NOT
 
 </details>
 
@@ -77,7 +78,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x16) AND
 1. (0x17) OR
 1. (0x18) XOR
-1. (0x19) NOT
 1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
