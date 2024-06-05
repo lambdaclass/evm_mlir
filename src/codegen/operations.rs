@@ -8,7 +8,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, REVERT_EXIT_CODE},
+    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -1850,7 +1850,7 @@ fn codegen_return<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    let reamining_gas = get_remaining_gas(context, &ok_block)?;
+    let remaining_gas = get_remaining_gas(context, &ok_block)?;
     let reason = ExitStatusCode::Return.to_u8();
     let reason = ok_block
         .append_operation(arith::constant(
@@ -1861,9 +1861,22 @@ fn codegen_return<'c>(
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas, reason, location);
+    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
 
-    Ok((start_block, ok_block))
+    let revert_exit_code = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i8(context, RETURN_EXIT_CODE as i8).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+
+    let empty_block = region.append_block(Block::new(&[]));
+
+    Ok((start_block, empty_block))
 }
 
 // Stop the current context execution, revert the state changes

@@ -41,9 +41,8 @@ fn run_program_assert_result_with_gas(
 
 fn run_program_assert_result_with_execution_context(
     operations: Vec<Operation>,
-    expected_result: u8,
     initial_gas: u64,
-    context: ExecutionResult,
+    _exec_result: ExecutionResult,
 ) {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
@@ -66,7 +65,7 @@ fn run_program_assert_result_with_execution_context(
     let _result = main_fn(&mut context, initial_gas);
 
     let context_result = context.get_result().unwrap();
-    assert_matches!(context_result, expected_result);
+    assert_matches!(context_result, _exec_result);
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -112,12 +111,7 @@ fn test_return_with_gas() {
         return_data: vec![0],
         gas_remaining: 16 as _,
     };
-    run_program_assert_result_with_execution_context(
-        program,
-        0,
-        20 as _,
-        expected_execution_context,
-    );
+    run_program_assert_result_with_execution_context(program, 20 as _, expected_execution_context);
 }
 
 #[test]
@@ -131,12 +125,7 @@ fn test_revert_with_gas() {
         return_data: vec![0],
         gas_remaining: 16 as _,
     };
-    run_program_assert_result_with_execution_context(
-        program,
-        0,
-        20 as _,
-        expected_execution_context,
-    );
+    run_program_assert_result_with_execution_context(program, 20 as _, expected_execution_context);
 }
 
 #[test]

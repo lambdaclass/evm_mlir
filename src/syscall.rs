@@ -77,23 +77,19 @@ impl SyscallContext {
     }
 
     pub fn get_result(&self) -> Option<ExecutionResult> {
-        //si exit code es none devolver halt
-        //todo: return option execution result
-        let (offset, size) = self.return_data.unwrap_or((0, 0));
         let gas_remaining = self.gas_remaining.unwrap_or(0);
         let exit_status = <Option<ExitStatusCode> as Clone>::clone(&self.exit_status)
             .unwrap_or(ExitStatusCode::Default);
         match exit_status {
             ExitStatusCode::Return => Some(ExecutionResult::Success {
-                return_data: self.memory[offset..offset + size].to_vec(),
+                return_data: self.return_values().to_vec(),
                 gas_remaining,
             }),
             ExitStatusCode::Revert => Some(ExecutionResult::Revert {
-                return_data: self.memory[offset..offset + size].to_vec(),
+                return_data: self.return_values().to_vec(),
                 gas_remaining,
             }),
-            ExitStatusCode::Error => Some(ExecutionResult::Halt),
-            ExitStatusCode::Default => Some(ExecutionResult::Halt),
+            ExitStatusCode::Error | ExitStatusCode::Default => Some(ExecutionResult::Halt),
         }
     }
 }
@@ -135,16 +131,14 @@ impl SyscallContext {
 }
 
 pub mod symbols {
-    pub const WRITE_RESULT: &str = "emv_mlir__write_result";
-    pub const REVERT_RESULT: &str = "emv_mlir__store_revert_result";
-    pub const EXTEND_MEMORY: &str = "emv_mlir__extend_memory";
+    pub const WRITE_RESULT: &str = "evm_mlir__write_result";
+    pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
 ///
 /// This allows the generated code to call the syscalls by name.
 pub fn register_syscalls(engine: &ExecutionEngine) {
-    println!("Registering syscalls");
     unsafe {
         engine.register_symbol(
             symbols::WRITE_RESULT,
