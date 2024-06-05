@@ -337,13 +337,14 @@ fn sub_add_wrapping() {
 #[test]
 fn sub_out_of_gas() {
     let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
-    let mut program = vec![];
-    for _ in 0..334 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Sub);
-    }
-    run_program_assert_revert(program);
+    let mut program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sub,
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SUB;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
 }
 
 #[test]
