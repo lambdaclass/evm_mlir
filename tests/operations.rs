@@ -438,6 +438,23 @@ fn div_with_stack_underflow() {
 }
 
 #[test]
+fn div_gas_should_revert() {
+    let (a, b) = (BigUint::from(21_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Div,
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::DIV;
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
 fn sdiv_without_remainder() {
     let (a, b) = (BigUint::from(20_u8), BigUint::from(5_u8));
 
