@@ -1988,12 +1988,11 @@ fn mload_not_allocated_address() {
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
         Operation::Push(BigUint::from(10_u8)), // value
-        Operation::Push(BigUint::from(64_u8)),  // offset
+        Operation::Push(BigUint::from(64_u8)), // offset
         Operation::Mstore,
     ];
     let dynamic_gas = 9_i64;
-    let needed_gas =
-        gas_cost::PUSHN * 2 + gas_cost::MSTORE + dynamic_gas;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE + dynamic_gas;
     run_program_assert_gas_exact(program, 0_u8, needed_gas as _);
 }
 
@@ -2005,8 +2004,7 @@ fn mstore8_gas_cost_with_memory_extension() {
         Operation::Mstore8,
     ];
     let dynamic_gas = 3_i64;
-    let needed_gas =
-        gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + dynamic_gas;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + dynamic_gas;
     run_program_assert_gas_exact(program, 0_u8, needed_gas as _);
 }
 

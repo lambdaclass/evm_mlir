@@ -12,7 +12,10 @@ use crate::{
     errors::CodegenError,
     program::Operation,
     utils::{
-        llvm_mlir::addressof, check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
+        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir::addressof, stack_pop,
+        stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1419,7 +1422,6 @@ fn codegen_mload<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
-    let uint64 = IntegerType::new(context, 64);
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
@@ -1468,14 +1470,10 @@ fn codegen_mload<'c, 'r>(
 
     // Get current memory size
     let memory_size_ptr = ok_block
-        .append_operation(addressof(
-            context,
-            MEMORY_SIZE_GLOBAL,
-            ptr_type,
-            location,
-        ))
+        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
         .result(0)?
         .into();
+
     let memory_size = ok_block
         .append_operation(llvm::load(
             context,
@@ -1502,23 +1500,26 @@ fn codegen_mload<'c, 'r>(
         location,
     ));
 
-    // Extend memory path
+    // Extend memory path (extension_block)
     extend_memory(op_ctx, &extension_block, required_size)?;
     extension_block.append_operation(cf::br(&memory_access_block, &[], location));
-    
-    // Not extend memory path
-    ok_block.append_operation(cf::br(&memory_access_block, &[], location));
-    
-    let memory_ptr = ok_block
-        .append_operation(addressof(
+
+    // Not extend memory path (memory_access_block)
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
             context,
-            MEMORY_PTR_GLOBAL,
-            ptr_type,
+            memory_ptr_ptr.into(),
+            ptr_type.into(),
             location,
+            LoadStoreOptions::default(),
         ))
         .result(0)?;
 
-    // Access memory
+    // Memory access
     let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
