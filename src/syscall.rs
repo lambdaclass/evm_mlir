@@ -114,10 +114,6 @@ impl SyscallContext {
         remaining_gas: u64,
         execution_result: u8,
     ) {
-        println!(
-            "[WRITE RESULT]: offset: {}, bytes_len: {}, remaining_gas: {}, execution_result: {}",
-            offset, bytes_len, remaining_gas, execution_result
-        );
         self.return_data = Some((offset as usize, bytes_len as usize));
         self.gas_remaining = Some(remaining_gas);
         match ExitStatusCode::from_u8(execution_result) {

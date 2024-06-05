@@ -1750,14 +1750,17 @@ fn codegen_revert<'c>(
 
     op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas, reason, location);
 
-    // let revert_exit_code = start_block
-    //     .append_operation(arith::constant(context, integer_constant_from_i64(context, REVERT_EXIT_CODE.into()).into(), location))
-    //     .result(0)?
-    //     .into();
+    // Terminar la ejecución después del revert
+    let revert_exit_code = ok_block
+        .append_operation(arith::constant(context, integer_constant_from_i8(context, REVERT_EXIT_CODE as i8).into(), location))
+        .result(0)?
+        .into();
 
-    //ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
 
-    Ok((start_block, ok_block))
+    let empty_block = region.append_block(Block::new(&[]));
+
+    Ok((start_block, empty_block))
 }
 
 fn codegen_stop<'c, 'r>(
