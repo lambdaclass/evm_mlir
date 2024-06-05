@@ -30,7 +30,7 @@ pub fn generate_code_for_op<'c>(
     match op {
         Operation::Stop => codegen_stop(op_ctx, region),
         Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
-        Operation::Push(x) => codegen_push(op_ctx, region, x, false),
+        Operation::Push((x, _)) => codegen_push(op_ctx, region, x, false),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
@@ -497,7 +497,7 @@ fn codegen_push<'c, 'r>(
 fn codegen_dup<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
-    nth: u32,
+    nth: u8,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
     let start_block = region.append_block(Block::new(&[]));
@@ -505,7 +505,7 @@ fn codegen_dup<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, nth)?;
+    let flag = check_stack_has_at_least(context, &start_block, nth as u32)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -529,7 +529,7 @@ fn codegen_dup<'c, 'r>(
 fn codegen_swap<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
-    nth: u32,
+    nth: u8,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
     let start_block = region.append_block(Block::new(&[]));
@@ -537,7 +537,7 @@ fn codegen_swap<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, nth + 1)?;
+    let flag = check_stack_has_at_least(context, &start_block, nth as u32 + 1)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -1399,6 +1399,7 @@ fn codegen_codesize<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
 
     // Check there's stack overflow
     let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
@@ -1421,19 +1422,30 @@ fn codegen_codesize<'c, 'r>(
         &[],
         location,
     ));
-    
-    let program = op_ctx.program.operations;
 
-    let codesize = program.iter().map(|op| {
-        match op {
-            Operation::Push(x) => x + 1,
-            _ => 1
-        }
-    }).sum();
+    let program = &op_ctx.program.operations;
+
+    let codesize: u32 = program
+        .iter()
+        .map(|op| match op {
+            // the size in bytes to push + 1 from the PUSHN opcode
+            Operation::Push((_, size)) => (size + 1) as u32,
+            _ => 1,
+        })
+        .sum();
+
+    let codesize = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), codesize as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
     stack_push(context, &ok_block, codesize)?;
 
-    Ok((stack_flag, ok_block))
+    Ok((start_block, ok_block))
 }
 
 fn codegen_sar<'c, 'r>(

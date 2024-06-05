@@ -693,6 +693,26 @@ fn sar_with_stack_underflow() {
 }
 
 #[test]
+fn check_codesize() {
+    let mut a = BigUint::from(0_u8);
+    let mut program = vec![Operation::Push0, Operation::Codesize];
+    let mut codesize = 2;
+
+    run_program_assert_result(program, codesize);
+
+    // iterate from 1 byte to 32 byte push cases
+    for i in 0..255 {
+        a = BigUint::from(1_u8) << i;
+
+        program = vec![Operation::Push(a.clone()), Operation::Codesize];
+
+        codesize = 1 + i + 1; // PUSHN + N + CODESIZE
+
+        run_program_assert_result(program, codesize);
+    }
+}
+
+#[test]
 fn push_push_byte() {
     let mut value: [u8; 32] = [0; 32];
     let desired_byte = 0xff;
