@@ -1912,3 +1912,18 @@ fn jump_with_gas_cost() {
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
     run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
+
+#[test]
+fn mstore_gas() {
+    let offset = BigUint::from(0_u8);
+    let value = BigUint::from_bytes_be(&[0xff; 32]);
+    let program = vec![
+        Operation::Push(value),
+        Operation::Push(offset),
+        Operation::Mstore,
+        Operation::Push(BigUint::from(0_u8)),
+    ];
+    let expected_result = 0;
+    let needed_gas = gas_cost::PUSHN * 3 + gas_cost::MSTORE + 3;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
