@@ -176,6 +176,15 @@ fn dup_with_stack_underflow() {
 }
 
 #[test]
+fn dup_out_of_gas() {
+    let a = BigUint::from(2_u8);
+    let program = vec![Operation::Push(a.clone()), Operation::Dup(1)];
+    let gas_needed = gas_cost::PUSHN + gas_cost::DUPN;
+
+    run_program_assert_gas_exact(program, 2, gas_needed as _);
+}
+
+#[test]
 fn push_push_shl() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
