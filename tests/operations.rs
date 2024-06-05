@@ -281,6 +281,19 @@ fn swap_stack_underflow() {
 }
 
 #[test]
+fn swap_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Swap(1),
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SWAPN;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
