@@ -1446,6 +1446,7 @@ fn codegen_mload<'c, 'r>(
     ));
 
     let offset = stack_pop(context, &ok_block)?;
+
     // truncate offset to 32 bits
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
@@ -1456,7 +1457,7 @@ fn codegen_mload<'c, 'r>(
     let value_size = ok_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), 1).into(),
+            IntegerAttribute::new(uint32.into(), 32).into(),
             location,
         ))
         .result(0)?
@@ -1494,13 +1495,19 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    // TODO: change endianness only if the system is little endian
-    let swapped_value = ok_block
-        .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
-        .result(0)?
-        .into();
+    // check system endianness before storing the value
+    let read_value = if cfg!(target_endian = "little") {
+        // if the system is little endian, we convert the value to big endian
+        ok_block
+            .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        // if the system is big endian, there is no need to convert the value
+        read_value
+    };
 
-    stack_push(context, &ok_block, swapped_value)?;
+    stack_push(context, &ok_block, read_value)?;
 
     Ok((start_block, ok_block))
 }
