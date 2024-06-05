@@ -8,12 +8,16 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, REVERT_EXIT_CODE}, errors::CodegenError, program::Operation, syscall::ExecutionStatus, utils::{
+    constants::{gas_cost, REVERT_EXIT_CODE},
+    errors::CodegenError,
+    program::Operation,
+    syscall::ExitStatusCode,
+    utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
-    }
+    },
 };
 use num_bigint::BigUint;
 
@@ -1662,11 +1666,11 @@ fn codegen_return<'c>(
     extend_memory(op_ctx, &ok_block, required_size)?;
 
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExecutionStatus::Success.to_u8();
+    let reason = ExitStatusCode::Return.to_u8();
     let reason = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, reason as i64).into(),
+            integer_constant_from_i8(context, reason as i8).into(),
             location,
         ))
         .result(0)?
@@ -1677,17 +1681,17 @@ fn codegen_return<'c>(
     Ok((start_block, ok_block))
 }
 
-// Stop the current context execution, revert the state changes 
-// (see STATICCALL for a list of state changing opcodes) and 
+// Stop the current context execution, revert the state changes
+// (see STATICCALL for a list of state changing opcodes) and
 // return the unused gas to the caller. It also reverts the gas refund to i
-// ts value before the current context. If the execution is stopped with REVERT, 
-// the value 0 is put on the stack of the calling context, which continues to execute normally. 
-// The return data of the calling context is set as the given 
+// ts value before the current context. If the execution is stopped with REVERT,
+// the value 0 is put on the stack of the calling context, which continues to execute normally.
+// The return data of the calling context is set as the given
 // chunk of memory of this context.
 fn codegen_revert<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError>{
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     //TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -1733,27 +1737,28 @@ fn codegen_revert<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    
     let reamining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExecutionStatus::Revert.to_u8();
-    let reason = ok_block 
-        .append_operation(arith::constant(context, integer_constant_from_i64(context,reason as i64).into(), location))
+    let reason = ExitStatusCode::Revert.to_u8();
+    let reason = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i8(context, reason as i8).into(),
+            location,
+        ))
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas,reason,location);
+    op_ctx.write_result_syscall(&ok_block, offset, size, reamining_gas, reason, location);
 
-    let revert_exit_code = ok_block
-        .append_operation(arith::constant(context, integer_constant_from_i64(context, REVERT_EXIT_CODE.into()).into(), location))
-        .result(0)?
-        .into();
+    // let revert_exit_code = start_block
+    //     .append_operation(arith::constant(context, integer_constant_from_i64(context, REVERT_EXIT_CODE.into()).into(), location))
+    //     .result(0)?
+    //     .into();
 
-    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+    //ok_block.append_operation(func::r#return(&[revert_exit_code], location));
 
     Ok((start_block, ok_block))
-
-} 
-
+}
 
 fn codegen_stop<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,

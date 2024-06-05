@@ -2,12 +2,15 @@ use evm_mlir::{
     constants::{gas_cost, MAIN_ENTRYPOINT, REVERT_EXIT_CODE},
     context::Context,
     program::{Operation, Program},
-    syscall::{register_syscalls, MainFunc, SyscallContext},
+    syscall::{register_syscalls, ExecutionResult, MainFunc, SyscallContext},
 };
 use melior::ExecutionEngine;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
+
+#[macro_use]
+extern crate assert_matches;
 
 fn run_program_assert_result_with_gas(
     operations: Vec<Operation>,
@@ -32,10 +35,38 @@ fn run_program_assert_result_with_gas(
     let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
 
     let mut context = SyscallContext::default();
+    let result = main_fn(&mut context, initial_gas);
+    assert_eq!(result, expected_result);
+}
 
+fn run_program_assert_result_with_execution_context(
+    operations: Vec<Operation>,
+    expected_result: u8,
+    initial_gas: u64,
+    context: ExecutionResult,
+) {
+    let program = Program::from(operations);
+    let output_file = NamedTempFile::new()
+        .expect("failed to generate tempfile")
+        .into_temp_path();
+
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
+    register_syscalls(&engine);
+
+    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
+    let fptr = engine.lookup(&function_name);
+    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+
+    let mut context = SyscallContext::default();
     let result = main_fn(&mut context, initial_gas);
 
-    assert_eq!(result, expected_result);
+    let context_result = context.get_result().unwrap();
+    assert_matches!(context_result, expected_result);
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -68,6 +99,44 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
         buffer[start..finish].copy_from_slice(&bytes);
         BigUint::from_bytes_be(&buffer)
     }
+}
+
+#[test]
+fn test_return_with_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Return,
+    ];
+    let expected_execution_context = ExecutionResult::Success {
+        return_data: vec![0],
+        gas_remaining: 16 as _,
+    };
+    run_program_assert_result_with_execution_context(
+        program,
+        0,
+        20 as _,
+        expected_execution_context,
+    );
+}
+
+#[test]
+fn test_revert_with_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Revert,
+    ];
+    let expected_execution_context = ExecutionResult::Revert {
+        return_data: vec![0],
+        gas_remaining: 16 as _,
+    };
+    run_program_assert_result_with_execution_context(
+        program,
+        0,
+        20 as _,
+        expected_execution_context,
+    );
 }
 
 #[test]

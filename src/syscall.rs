@@ -22,45 +22,43 @@ use melior::ExecutionEngine;
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
-#[derive(Debug)]
-pub enum ExecutionStatus {
-    Success,
+#[derive(Debug, Clone)]
+pub enum ExitStatusCode {
+    Return,
     Revert,
-    Halt,
+    Error,
     Default,
 }
-impl ExecutionStatus {
+impl ExitStatusCode {
     pub fn to_u8(self) -> u8 {
-            self as u8
+        self as u8
     }
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => Self::Success,
+            0 => Self::Return,
             1 => Self::Revert,
-            2 => Self::Halt,
+            2 => Self::Error,
             _ => Self::Default,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum ExecutionResult{
-    Success{
+pub enum ExecutionResult {
+    Success {
         /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
         /// It's [`None`] in case there's no return data
-        return_data: Option<(usize, usize)>,
-        gas_remaining: Option<u64>,
+        return_data: Vec<u8>,
+        gas_remaining: u64,
     },
-    Revert{
+    Revert {
         /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
         /// It's [`None`] in case there's no return data
-        return_data: Option<(usize, usize)>,
-        gas_remaining: Option<u64>,
+        return_data: Vec<u8>,
+        gas_remaining: u64,
     },
-    Halt
+    Halt,
 }
-
-
 
 /// The context passed to syscalls
 #[derive(Debug, Default)]
@@ -69,27 +67,37 @@ pub struct SyscallContext {
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
     /// The result of the execution
-    result: Option<ExecutionResult>,
+    return_data: Option<(usize, usize)>,
+    gas_remaining: Option<u64>,
+    exit_status: Option<ExitStatusCode>,
 }
-
-
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
-        // let (offset, size) = self.result.unwrap_or((0, 0));
-        // &self.memory[offset..offset + size]
-        match self.result {
-            Some(ExecutionResult::Success{return_data,..}) => {
-                let (offset, size) = return_data.unwrap_or((0, 0));
-                &self.memory[offset..offset + size]
-            },
-            Some(ExecutionResult::Revert{return_data,..}) => {
-                let (offset, size) = return_data.unwrap_or((0, 0));
-                &self.memory[offset..offset + size]
-            },
-            _ => &[],
+        let (offset, size) = self.return_data.unwrap_or((0, 0));
+        &self.memory[offset..offset + size]
+    }
+
+    pub fn get_result(&self) -> Option<ExecutionResult> {
+        //si exit code es none devolver halt
+        //todo: return option execution result
+        let (offset, size) = self.return_data.unwrap_or((0, 0));
+        let gas_remaining = self.gas_remaining.unwrap_or(0);
+        let exit_status = <Option<ExitStatusCode> as Clone>::clone(&self.exit_status)
+            .unwrap_or(ExitStatusCode::Default);
+        match exit_status {
+            ExitStatusCode::Return => Some(ExecutionResult::Success {
+                return_data: self.memory[offset..offset + size].to_vec(),
+                gas_remaining,
+            }),
+            ExitStatusCode::Revert => Some(ExecutionResult::Revert {
+                return_data: self.memory[offset..offset + size].to_vec(),
+                gas_remaining,
+            }),
+            ExitStatusCode::Error => Some(ExecutionResult::Halt),
+            ExitStatusCode::Default => Some(ExecutionResult::Halt),
         }
     }
 }
@@ -99,29 +107,24 @@ impl SyscallContext {
 /// Note that each function is marked as `extern "C"`, which is necessary for the
 /// function to be callable from the generated code.
 impl SyscallContext {
-    pub extern "C" fn write_result(&mut self, offset: u32, bytes_len: u32,remaining_gas: u64,execution_result: u8) {
-        let offset = offset as usize;
-        let bytes_len = bytes_len as usize;
-        let execution_result = ExecutionStatus::from_u8(execution_result);
-        match execution_result {
-            ExecutionStatus::Success => {
-                self.result = Some(ExecutionResult::Success {
-                    return_data: Some((offset, bytes_len)),
-                    gas_remaining: Some(remaining_gas),
-                });
-            }
-            ExecutionStatus::Revert => {
-                self.result = Some(ExecutionResult::Revert {
-                    return_data: Some((offset, bytes_len)),
-                    gas_remaining: Some(remaining_gas),
-                });
-            }
-            ExecutionStatus::Halt => {
-                self.result = Some(ExecutionResult::Halt);
-            }
-            ExecutionStatus::Default => {
-                self.result = None;
-            }
+    pub extern "C" fn write_result(
+        &mut self,
+        offset: u32,
+        bytes_len: u32,
+        remaining_gas: u64,
+        execution_result: u8,
+    ) {
+        println!(
+            "[WRITE RESULT]: offset: {}, bytes_len: {}, remaining_gas: {}, execution_result: {}",
+            offset, bytes_len, remaining_gas, execution_result
+        );
+        self.return_data = Some((offset as usize, bytes_len as usize));
+        self.gas_remaining = Some(remaining_gas);
+        match ExitStatusCode::from_u8(execution_result) {
+            ExitStatusCode::Return => self.exit_status = Some(ExitStatusCode::Return),
+            ExitStatusCode::Revert => self.exit_status = Some(ExitStatusCode::Revert),
+            ExitStatusCode::Error => self.exit_status = Some(ExitStatusCode::Error),
+            ExitStatusCode::Default => self.exit_status = Some(ExitStatusCode::Default),
         }
     }
 
@@ -154,10 +157,11 @@ pub mod symbols {
 ///
 /// This allows the generated code to call the syscalls by name.
 pub fn register_syscalls(engine: &ExecutionEngine) {
+    println!("Registering syscalls");
     unsafe {
         engine.register_symbol(
             symbols::WRITE_RESULT,
-            SyscallContext::write_result as *const fn(*mut c_void, u32, u32,u64,u8) as *mut (),
+            SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -188,7 +192,7 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
-        let uint64 = IntegerType::new(context, 64).into();
+        let uint64 = IntegerType::new(context, 256).into();
         let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
@@ -200,7 +204,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::WRITE_RESULT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32,uint64,uint8], &[]).into()),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint64, uint8], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -235,7 +241,7 @@ pub(crate) mod mlir {
             location,
         ));
     }
-   
+
     /// Extends the memory segment of the syscall context.
     /// Returns a pointer to the start of the memory segment.
     pub(crate) fn extend_memory_syscall<'c>(

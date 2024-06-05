@@ -6,7 +6,10 @@ use melior::{
     Context as MeliorContext,
 };
 
-use crate::{errors::CodegenError, {program::Program, syscall}};
+use crate::{
+    errors::CodegenError,
+    {program::Program, syscall},
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct OperationCtx<'c> {
