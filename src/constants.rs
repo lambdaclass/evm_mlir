@@ -17,8 +17,12 @@ pub mod gas_cost {
     pub const SDIV: i64 = 5;
     pub const MOD: i64 = 5;
     pub const SMOD: i64 = 5;
+    pub const ADDMOD: i64 = 8;
+    pub const MULMOD: i64 = 8;
     pub const SIGNEXTEND: i64 = 5;
     pub const XOR: i64 = 3;
+    pub const SAR: i64 = 3;
+    pub const POP: i64 = 2;
     pub const PC: i64 = 2;
     pub const MSIZE: i64 = 2;
     pub const GAS: i64 = 2;
