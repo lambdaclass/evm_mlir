@@ -32,6 +32,7 @@ pub mod codegen;
 pub mod constants;
 pub mod context;
 pub mod errors;
+pub mod executor;
 pub mod module;
 pub mod program;
 pub mod syscall;
