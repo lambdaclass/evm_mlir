@@ -187,6 +187,47 @@ fn dup_out_of_gas() {
 }
 
 #[test]
+fn push_push_shl() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Shl,
+    ];
+
+    run_program_assert_result(program, 16);
+}
+
+#[test]
+fn shl_shift_grater_than_255() {
+    let program = vec![
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(256_u16)),
+        Operation::Shl,
+    ];
+
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn shl_with_stack_underflow() {
+    let program = vec![Operation::Shl];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn shl_out_of_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Shl,
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SHL;
+
+    run_program_assert_gas_exact(program, 16, gas_needed as _);
+}
+
+#[test]
 fn swap_first() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
