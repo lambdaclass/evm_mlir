@@ -1,5 +1,5 @@
 use evm_mlir::{
-    constants::{gas_cost, REVERT_EXIT_CODE,MAIN_ENTRYPOINT},
+    constants::{gas_cost, MAIN_ENTRYPOINT, REVERT_EXIT_CODE},
     context::Context,
     program::{Operation, Program},
     syscall::{register_syscalls, ExecutionResult, MainFunc, SyscallContext},
