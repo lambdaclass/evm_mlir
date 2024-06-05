@@ -6,6 +6,7 @@ use melior::{
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        operation::OperationResult,
         r#type::IntegerType,
         Block, Location, Value,
     },
@@ -13,9 +14,114 @@ use melior::{
 };
 
 use crate::{
-    constants::{MAX_STACK_SIZE, REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL},
+    codegen::context::OperationCtx,
+    constants::{
+        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+    },
     errors::CodegenError,
 };
+
+/// Returns true if there is enough Gas
+pub fn consume_gas<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    amount: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64).into();
+
+    // Get address of gas counter global
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            uint64,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    let gas_value = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, amount).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // Check that gas_counter >= gas_value
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Sge,
+            gas_counter,
+            gas_value,
+            location,
+        ))
+        .result(0)?;
+
+    // Subtract gas from gas counter
+    let new_gas_counter = block
+        .append_operation(arith::subi(gas_counter, gas_value, location))
+        .result(0)?;
+
+    // Store new gas counter
+    let _res = block.append_operation(llvm::store(
+        context,
+        new_gas_counter.into(),
+        gas_counter_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    Ok(flag.into())
+}
+
+pub fn get_remaining_gas<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of gas counter global
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(gas_counter)
+}
 
 pub fn stack_pop<'ctx>(
     context: &'ctx MeliorContext,
@@ -83,6 +189,23 @@ pub fn stack_pop<'ctx>(
     Ok(value)
 }
 
+pub fn constant_value_from_i64<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    Ok(block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value).into(),
+            location,
+        ))
+        .result(0)?
+        .into())
+}
+
 pub fn stack_push<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -141,6 +264,101 @@ pub fn stack_push<'ctx>(
         context,
         new_stack_ptr.into(),
         stack_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
+// Returns a copy of the nth value of the stack along with its stack's address
+pub fn get_nth_from_stack<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    nth: u32,
+) -> Result<(Value<'ctx, 'ctx>, OperationResult<'ctx, 'ctx>), CodegenError> {
+    debug_assert!(nth < MAX_STACK_SIZE as u32);
+    let uint256 = IntegerType::new(context, 256);
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    // Decrement stack pointer
+    let nth_stack_ptr = block
+        .append_operation(llvm::get_element_ptr(
+            context,
+            stack_ptr.into(),
+            DenseI32ArrayAttribute::new(context, &[-(nth as i32)]),
+            uint256.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load value from top of stack
+    let value = block
+        .append_operation(llvm::load(
+            context,
+            nth_stack_ptr.into(),
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok((value, nth_stack_ptr))
+}
+
+pub fn swap_stack_elements<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    position_1: u32,
+    position_2: u32,
+) -> Result<(), CodegenError> {
+    debug_assert!(position_1 < MAX_STACK_SIZE as u32);
+    debug_assert!(position_2 < MAX_STACK_SIZE as u32);
+    let location = Location::unknown(context);
+
+    let (first_element, first_elem_address) = get_nth_from_stack(context, block, position_1)?;
+    let (nth_element, nth_elem_address) = get_nth_from_stack(context, block, position_2)?;
+
+    // Store element in position 1 into position 2
+    let res = block.append_operation(llvm::store(
+        context,
+        first_element,
+        nth_elem_address.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    // Store element in position 2 into position 1
+    let res = block.append_operation(llvm::store(
+        context,
+        nth_element,
+        first_elem_address.into(),
         location,
         LoadStoreOptions::default(),
     ));
@@ -238,6 +456,7 @@ pub fn check_stack_has_space_for<'ctx>(
 }
 
 /// Generates code for checking if the stack has enough space for `element_count` more elements.
+/// Returns true if there are at least `element_count` elements in the stack.
 pub fn check_stack_has_at_least<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -324,19 +543,43 @@ pub fn check_stack_has_at_least<'ctx>(
     Ok(flag.into())
 }
 
+// Generates code for checking if lhs < rhs
+pub fn check_is_greater_than<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    lhs: Value<'ctx, 'ctx>,
+    rhs: Value<'ctx, 'ctx>,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ugt,
+            rhs,
+            lhs,
+            location,
+        ))
+        .result(0)?;
+
+    Ok(flag.into())
+}
+
 pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: create only one revert block and use it for all revert operations
+    // TODO: return result via write_result syscall
     let location = Location::unknown(context);
     let uint8 = IntegerType::new(context, 8);
+
     let revert_block = Block::new(&[]);
 
     let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
 
     let exit_code = revert_block
         .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?;
+        .result(0)?
+        .into();
 
-    revert_block.append_operation(func::r#return(&[exit_code.into()], location));
+    revert_block.append_operation(func::r#return(&[exit_code], location));
     Ok(revert_block)
 }
 
@@ -379,9 +622,66 @@ pub fn check_if_zero<'ctx>(
     Ok(flag.into())
 }
 
+/// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
+pub(crate) fn extend_memory<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    new_size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let ptr_type = pointer(context, 0);
+
+    let memory_ptr = op_ctx.extend_memory_syscall(block, new_size, location)?;
+
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        new_size,
+        memory_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let memory_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        memory_ptr,
+        memory_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(memory_ptr)
+}
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)
+}
+
+pub fn integer_constant_from_i8(context: &MeliorContext, value: i8) -> IntegerAttribute {
+    let int8 = IntegerType::new(context, 8);
+    IntegerAttribute::new(int8.into(), value.into())
 }
 
 pub mod llvm_mlir {
