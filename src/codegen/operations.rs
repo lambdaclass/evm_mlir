@@ -1598,33 +1598,28 @@ fn codegen_mstore<'c, 'r>(
 
     let uint256 = IntegerType::new(context, 256);
 
-    // check system endiannes before storing the value
-    if cfg!(target_endian = "little") {
+    // check system endianness before storing the value
+    let value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        let value: melior::ir::Value = ok_block
+        ok_block
             .append_operation(llvm::intr_bswap(value, uint256.into(), location))
             .result(0)?
-            .into();
-
-        ok_block.append_operation(llvm::store(
-            context,
-            value,
-            memory_destination,
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ));
+            .into()
     } else {
         // if the system is big endian, there is no need to convert the value
-        ok_block.append_operation(llvm::store(
-            context,
-            value,
-            memory_destination,
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ));
-    }
+        value
+    };
+
+    // store the value in the memory
+    ok_block.append_operation(llvm::store(
+        context,
+        value,
+        memory_destination,
+        location,
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
     Ok((start_block, ok_block))
 }
 
