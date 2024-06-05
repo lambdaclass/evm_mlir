@@ -286,7 +286,7 @@ fn swap_out_of_gas() {
     let mut program = vec![
         Operation::Push(a.clone()),
         Operation::Push(b.clone()),
-        Operation::Swap(1)
+        Operation::Swap(1),
     ];
     let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SWAPN;
 
