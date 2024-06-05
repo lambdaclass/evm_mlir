@@ -76,12 +76,16 @@ fn codegen_exp<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXP)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -112,12 +116,17 @@ fn codegen_iszero<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ISZERO)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -179,12 +188,17 @@ fn codegen_and<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::AND)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -215,12 +229,16 @@ fn codegen_gt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GT)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -257,12 +275,17 @@ fn codegen_or<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::OR)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -293,12 +316,17 @@ fn codegen_lt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::LT)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -335,12 +363,17 @@ fn codegen_sgt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SGT)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -377,12 +410,16 @@ fn codegen_eq<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EQ)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
