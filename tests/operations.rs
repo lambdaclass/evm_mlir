@@ -1906,3 +1906,24 @@ fn slt_stack_underflow() {
     let program = vec![Operation::Slt];
     run_program_assert_revert(program);
 }
+
+#[test]
+fn jump_with_gas_cost() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 3
+    // [02] JUMP
+    // [03] JUMPDEST
+    let jumpdest: u8 = 3;
+    let program = vec![
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(jumpdest)),
+        Operation::Jump,
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+    ];
+    let expected_result = 0;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
