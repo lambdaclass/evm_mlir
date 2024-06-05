@@ -14,9 +14,10 @@ use melior::{
 };
 
 use crate::{
+    codegen::context::OperationCtx,
     constants::{
-        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL,
-        STACK_PTR_GLOBAL,
+        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
 };
@@ -25,10 +26,11 @@ use crate::{
 pub fn consume_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    gas: i64,
+    amount: i64,
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64).into();
 
     // Get address of gas counter global
     let gas_counter_ptr = block
@@ -45,7 +47,7 @@ pub fn consume_gas<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            IntegerType::new(context, 256).into(),
+            uint64,
             location,
             LoadStoreOptions::default(),
         ))
@@ -55,7 +57,7 @@ pub fn consume_gas<'ctx>(
     let gas_value = block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, gas).into(),
+            IntegerAttribute::new(uint64, amount).into(),
             location,
         ))
         .result(0)?
@@ -87,6 +89,38 @@ pub fn consume_gas<'ctx>(
     ));
 
     Ok(flag.into())
+}
+
+pub fn get_remaining_gas<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of gas counter global
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(gas_counter)
 }
 
 pub fn stack_pop<'ctx>(
@@ -153,6 +187,23 @@ pub fn stack_pop<'ctx>(
     assert!(res.verify());
 
     Ok(value)
+}
+
+pub fn constant_value_from_i64<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    value: i64,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    Ok(block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, value).into(),
+            location,
+        ))
+        .result(0)?
+        .into())
 }
 
 pub fn stack_push<'ctx>(
@@ -492,19 +543,43 @@ pub fn check_stack_has_at_least<'ctx>(
     Ok(flag.into())
 }
 
+// Generates code for checking if lhs < rhs
+pub fn check_is_greater_than<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    lhs: Value<'ctx, 'ctx>,
+    rhs: Value<'ctx, 'ctx>,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ugt,
+            rhs,
+            lhs,
+            location,
+        ))
+        .result(0)?;
+
+    Ok(flag.into())
+}
+
 pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: create only one revert block and use it for all revert operations
+    // TODO: return result via write_result syscall
     let location = Location::unknown(context);
     let uint8 = IntegerType::new(context, 8);
+
     let revert_block = Block::new(&[]);
 
     let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
 
     let exit_code = revert_block
         .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?;
+        .result(0)?
+        .into();
 
-    revert_block.append_operation(func::r#return(&[exit_code.into()], location));
+    revert_block.append_operation(func::r#return(&[exit_code], location));
     Ok(revert_block)
 }
 
@@ -545,6 +620,58 @@ pub fn check_if_zero<'ctx>(
         .result(0)?;
 
     Ok(flag.into())
+}
+
+/// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
+pub(crate) fn extend_memory<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    new_size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let ptr_type = pointer(context, 0);
+
+    let memory_ptr = op_ctx.extend_memory_syscall(block, new_size, location)?;
+
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        new_size,
+        memory_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let memory_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        memory_ptr,
+        memory_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(memory_ptr)
 }
 
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
