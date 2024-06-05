@@ -9,7 +9,7 @@ pub enum Opcode {
     DIV = 0x04,
     SDIV = 0x05,
     MOD = 0x06,
-    // SMOD = 0x07,
+    SMOD = 0x07,
     ADDMOD = 0x08,
     MULMOD = 0x09,
     EXP = 0x0A,
@@ -149,7 +149,7 @@ pub enum Opcode {
     // CREATE = 0xF0,
     // CALL = 0xF1,
     // CALLCODE = 0xF2,
-    // RETURN = 0xF3,
+    RETURN = 0xF3,
     // DELEGATECALL = 0xF4,
     // CREATE2 = 0xF5,
     // unused 0xF6-0xF9
@@ -171,6 +171,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::DIV as u8 => Opcode::DIV,
             x if x == Opcode::SDIV as u8 => Opcode::SDIV,
             x if x == Opcode::MOD as u8 => Opcode::MOD,
+            x if x == Opcode::SMOD as u8 => Opcode::SMOD,
             x if x == Opcode::ADDMOD as u8 => Opcode::ADDMOD,
             x if x == Opcode::MULMOD as u8 => Opcode::MULMOD,
             x if x == Opcode::EXP as u8 => Opcode::EXP,
@@ -258,6 +259,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::SWAP14 as u8 => Opcode::SWAP14,
             x if x == Opcode::SWAP15 as u8 => Opcode::SWAP15,
             x if x == Opcode::SWAP16 as u8 => Opcode::SWAP16,
+            x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             _ => Opcode::UNUSED,
         }
     }
@@ -272,6 +274,7 @@ pub enum Operation {
     Div,
     Sdiv,
     Mod,
+    SMod,
     Addmod,
     Mulmod,
     Exp,
@@ -294,9 +297,11 @@ pub enum Operation {
     PC { pc: usize },
     Gas,
     Jumpdest { pc: usize },
+    Push0,
     Push(BigUint),
     Dup(u32),
     Swap(u32),
+    Return,
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +326,7 @@ impl Program {
                 Opcode::DIV => Operation::Div,
                 Opcode::SDIV => Operation::Sdiv,
                 Opcode::MOD => Operation::Mod,
+                Opcode::SMOD => Operation::SMod,
                 Opcode::ADDMOD => Operation::Addmod,
                 Opcode::MULMOD => Operation::Mulmod,
                 Opcode::EXP => Operation::Exp,
@@ -343,7 +349,7 @@ impl Program {
                 Opcode::PC => Operation::PC { pc },
                 Opcode::GAS => Operation::Gas,
                 Opcode::JUMPDEST => Operation::Jumpdest { pc },
-                Opcode::PUSH0 => Operation::Push(BigUint::ZERO),
+                Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
@@ -567,7 +573,8 @@ impl Program {
                 Opcode::SWAP14 => Operation::Swap(14),
                 Opcode::SWAP15 => Operation::Swap(15),
                 Opcode::SWAP16 => Operation::Swap(16),
-                Opcode::UNUSED => panic!("Unknown opcode {:02X}", opcode),
+                Opcode::RETURN => Operation::Return,
+                Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);
             pc += 1;

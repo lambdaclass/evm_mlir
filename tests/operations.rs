@@ -1,28 +1,50 @@
 use evm_mlir::{
-    compile_binary,
-    constants::{INITIAL_GAS, REVERT_EXIT_CODE},
+    constants::{gas_cost, REVERT_EXIT_CODE},
+    context::Context,
+    executor::Executor,
     program::{Operation, Program},
+    syscall::SyscallContext,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
-fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
+fn run_program_assert_result_with_gas(
+    operations: Vec<Operation>,
+    expected_result: u8,
+    initial_gas: u64,
+) {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
         .into_temp_path();
 
-    compile_binary(&program, &output_file).expect("failed to compile program");
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
 
-    assert!(output_file.exists(), "output file does not exist");
+    let executor = Executor::new(&module);
 
-    let mut res = std::process::Command::new(&output_file)
-        .spawn()
-        .expect("spawn process failed");
-    let output = res.wait().expect("wait for process failed");
+    let mut context = SyscallContext::default();
 
-    assert_eq!(output.code().expect("no exit code"), expected_result.into());
+    let result = executor.execute(&mut context, initial_gas);
+
+    assert_eq!(result, expected_result);
+}
+
+fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
+    run_program_assert_result_with_gas(operations, expected_result, 1e7 as _);
+}
+
+fn run_program_assert_reverts_with_gas(program: Vec<Operation>, initial_gas: u64) {
+    // TODO: design a way to check for stack overflow
+    run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, initial_gas);
+}
+
+fn run_program_assert_gas_exact(program: Vec<Operation>, expected_result: u8, exact_gas: u64) {
+    run_program_assert_result_with_gas(program.clone(), expected_result, exact_gas);
+    run_program_assert_reverts_with_gas(program, exact_gas - 1);
 }
 
 fn run_program_assert_revert(program: Vec<Operation>) {
@@ -48,7 +70,7 @@ fn push_once() {
     let value = BigUint::from(5_u8);
 
     // For PUSH0
-    let program = vec![Operation::Push(BigUint::ZERO)];
+    let program = vec![Operation::Push0];
     run_program_assert_result(program, 0);
 
     // For PUSH1, ... , PUSH32
@@ -78,6 +100,15 @@ fn push_fill_stack() {
     // Push 1024 times
     let program = vec![Operation::Push(stack_top.clone()); 1024];
     run_program_assert_result(program, stack_top.try_into().unwrap());
+}
+
+#[test]
+fn push_reverts_without_gas() {
+    let stack_top = 88_u8;
+    let initial_gas = (gas_cost::PUSH0 + gas_cost::PUSHN) as _;
+
+    let program = vec![Operation::Push0, Operation::Push(BigUint::from(stack_top))];
+    run_program_assert_gas_exact(program, stack_top, initial_gas);
 }
 
 #[test]
@@ -156,7 +187,7 @@ fn swap_first() {
 }
 
 #[test]
-fn swap_16_and_get_the_swaped_one() {
+fn swap_16_and_get_the_swapped_one() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
         Operation::Push(BigUint::from(2_u8)),
@@ -451,16 +482,16 @@ fn sdiv_with_zero_numerator() {
 
 #[test]
 fn sdiv_gas_should_revert() {
-    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
+    let (a, b) = (2_u8, 10_u8);
 
-    let mut program = vec![];
-
-    for _ in 0..200 {
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Sdiv);
-    }
-    run_program_assert_revert(program);
+    let program = vec![
+        Operation::Push(BigUint::from(b)),
+        Operation::Push(BigUint::from(a)),
+        Operation::Sdiv,
+    ];
+    let initial_gas = gas_cost::PUSHN * 2 + gas_cost::SDIV;
+    let expected_result = a / b;
+    run_program_assert_gas_exact(program, expected_result, initial_gas as _);
 }
 
 #[test]
@@ -538,16 +569,15 @@ fn xor_with_stack_underflow() {
 
 #[test]
 fn xor_out_of_gas() {
-    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
-    let mut program = vec![];
-
-    for _ in 0..334 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Xor);
-    }
-
-    run_program_assert_revert(program);
+    let (a, b) = (1_u8, 2_u8);
+    let program = vec![
+        Operation::Push(BigUint::from(a)),
+        Operation::Push(BigUint::from(b)),
+        Operation::Xor,
+    ];
+    let initial_gas = gas_cost::PUSHN * 2 + gas_cost::XOR;
+    let expected_result = a ^ b;
+    run_program_assert_gas_exact(program, expected_result, initial_gas as _);
 }
 
 #[test]
@@ -702,11 +732,14 @@ fn jumpdest() {
 
 #[test]
 fn jumpdest_gas_should_revert() {
-    let mut program = vec![];
-    for i in 0..1000 {
-        program.push(Operation::Jumpdest { pc: i });
-    }
-    run_program_assert_revert(program);
+    let program = vec![
+        Operation::Push0,
+        Operation::Jumpdest { pc: 0 },
+        Operation::Jumpdest { pc: 1 },
+        Operation::Jumpdest { pc: 2 },
+    ];
+    let needed_gas = gas_cost::PUSH0 + gas_cost::JUMPDEST * 3;
+    run_program_assert_gas_exact(program, 0, needed_gas as _);
 }
 
 #[test]
@@ -909,6 +942,13 @@ fn pc_with_no_previous_operation() {
 }
 
 #[test]
+fn pc_gas_should_revert() {
+    let program = vec![Operation::Push0, Operation::PC { pc: 0 }];
+    let needed_gas = gas_cost::PUSH0 + gas_cost::PC;
+    run_program_assert_gas_exact(program, 0, needed_gas as _);
+}
+
+#[test]
 fn test_and() {
     let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
     let expected_result = 0b1000_u8;
@@ -970,14 +1010,88 @@ fn mod_with_stack_underflow() {
 
 #[test]
 fn mod_reverts_when_program_runs_out_of_gas() {
-    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
-    let mut program: Vec<Operation> = vec![];
-    for _ in 0..1000 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Mod);
-    }
-    run_program_assert_revert(program);
+    let (a, b) = (5_u8, 10_u8);
+    let program: Vec<Operation> = vec![
+        Operation::Push(BigUint::from(b)),
+        Operation::Push(BigUint::from(a)),
+        Operation::Mod,
+    ];
+    let initial_gas = gas_cost::PUSHN * 2 + gas_cost::MOD;
+    let expected_result = a % b;
+    run_program_assert_gas_exact(program, expected_result, initial_gas as _);
+}
+
+#[test]
+fn smod_with_negative_operands() {
+    // -8 mod -3 = -2
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, result_last_byte);
+}
+
+#[test]
+fn smod_with_negative_denominator() {
+    // 8 mod -3 = 2
+    let num = BigUint::from(8_u8);
+    let den = biguint_256_from_bigint(BigInt::from(-3_i8));
+
+    let expected_result = BigUint::from(2_u8);
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, expected_result.try_into().unwrap());
+}
+
+#[test]
+fn smod_with_negative_numerator() {
+    // -8 mod 3 = -2
+    let num = biguint_256_from_bigint(BigInt::from(-8_i8));
+    let den = BigUint::from(3_u8);
+
+    let expected_result = biguint_256_from_bigint(BigInt::from(-2_i8));
+    let result_last_byte = expected_result.to_bytes_be()[31];
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, result_last_byte);
+}
+
+#[test]
+fn smod_with_positive_operands() {
+    let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
+    let expected_result = (&num % &den).try_into().unwrap();
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, expected_result);
+}
+
+#[test]
+fn smod_with_zero_denominator() {
+    let (num, den) = (BigUint::from(10_u8), BigUint::from(0_u8));
+
+    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn smod_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::SMod]);
+}
+
+#[test]
+fn smod_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (5_u8, 10_u8);
+    let program = vec![
+        Operation::Push(BigUint::from(b)),
+        Operation::Push(BigUint::from(a)),
+        Operation::SMod,
+    ];
+    let expected_result = a % b;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SMOD;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1037,14 +1151,18 @@ fn addmod_reverts_when_program_runs_out_of_gas() {
         BigUint::from(10_u8),
         BigUint::from(2_u8),
     );
-    let mut program: Vec<Operation> = vec![];
-    for _ in 0..1000 {
-        program.push(Operation::Push(den.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Addmod);
-    }
-    run_program_assert_revert(program);
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Addmod,
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 3 + gas_cost::ADDMOD;
+    let expected_result = ((a + b) % den).try_into().unwrap();
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1128,14 +1246,23 @@ fn mulmod_with_overflow() {
 
 #[test]
 fn mulmod_reverts_when_program_runs_out_of_gas() {
-    let (a, b) = (BigUint::from(5_u8), BigUint::from(10_u8));
-    let mut program: Vec<Operation> = vec![];
-    for _ in 0..1000 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Mulmod);
-    }
-    run_program_assert_revert(program);
+    let (a, b, den) = (
+        BigUint::from(13_u8),
+        BigUint::from(30_u8),
+        BigUint::from(10_u8),
+    );
+
+    let program = vec![
+        Operation::Push(den.clone()),
+        Operation::Push(b.clone()),
+        Operation::Push(a.clone()),
+        Operation::Mulmod,
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 3 + gas_cost::MULMOD;
+    let expected_result = ((a * b) % den).try_into().unwrap();
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1250,14 +1377,16 @@ fn test_lt_stack_underflow() {
 
 #[test]
 fn test_gas_with_add_should_revert() {
-    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
-    let mut program = vec![];
-    for _ in 0..334 {
-        program.push(Operation::Push(a.clone()));
-        program.push(Operation::Push(b.clone()));
-        program.push(Operation::Add);
-    }
-    run_program_assert_revert(program);
+    let x = 1_u8;
+
+    let program = vec![
+        Operation::Push(BigUint::from(x)),
+        Operation::Push(BigUint::from(x)),
+        Operation::Add,
+    ];
+    let expected_result = x + x;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::ADD;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1270,7 +1399,6 @@ fn stop() {
 #[test]
 fn push_push_exp() {
     let (a, b) = (BigUint::from(2_u8), BigUint::from(3_u8));
-
     let program = vec![
         Operation::Push(a.clone()),
         Operation::Push(b.clone()),
@@ -1301,23 +1429,25 @@ fn exp_with_stack_underflow() {
 #[test]
 fn sar_reverts_when_program_runs_out_of_gas() {
     let (value, shift) = (2_u8, 1_u8);
-    let mut program: Vec<Operation> = vec![];
-    for _i in 0..1000 {
-        program.push(Operation::Push(BigUint::from(value)));
-        program.push(Operation::Push(BigUint::from(shift)));
-        program.push(Operation::Sar);
-    }
-    run_program_assert_revert(program);
+    let program: Vec<Operation> = vec![
+        Operation::Push(BigUint::from(value)),
+        Operation::Push(BigUint::from(shift)),
+        Operation::Sar,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::PUSHN + gas_cost::ADD;
+    run_program_assert_gas_exact(program, value >> shift, needed_gas as _);
 }
 
 #[test]
 fn pop_reverts_when_program_runs_out_of_gas() {
-    let mut program: Vec<Operation> = vec![];
-    for _i in 0..1000 {
-        program.push(Operation::Push(BigUint::from(1_u8)));
-        program.push(Operation::Pop);
-    }
-    run_program_assert_revert(program);
+    let expected_result = 33_u8;
+    let program = vec![
+        Operation::Push(BigUint::from(expected_result)),
+        Operation::Push(BigUint::from(expected_result + 1)),
+        Operation::Pop,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::POP;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1377,71 +1507,63 @@ fn signextend_with_stack_underflow() {
 fn signextend_gas_should_revert() {
     let value = BigUint::from(0x7F_u8);
     let value_bytes_size = BigUint::from(0_u8);
-    let mut program = vec![];
-
-    for _ in 0..200 {
-        program.push(Operation::Push(value.clone()));
-        program.push(Operation::Push(value_bytes_size.clone()));
-        program.push(Operation::SignExtend);
-    }
-
-    run_program_assert_revert(program);
+    let program = vec![
+        Operation::Push(value.clone()),
+        Operation::Push(value_bytes_size.clone()),
+        Operation::SignExtend,
+    ];
+    let expected_result = value.try_into().unwrap();
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SIGNEXTEND;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
 fn gas_get_starting_value() {
-    //IMPORTANT: For the moment, gas consumption was not implemented for DIV and PUSH operation, so we are
-    //not taking it into consideration for calculation. That will change in the future and this
-    //test will have to be updated.
-    //
-    //We also have to divide the result in order for it to be contained in just one byte, which is
-    //the u8 result size.
-    const GAS_OP_COST: i64 = 2;
+    const INITIAL_GAS: i64 = 30;
 
-    let gas_after_op = (INITIAL_GAS - GAS_OP_COST) as u64;
-    let denominator = BigUint::from(4_u8);
-    let expected_result = BigUint::from(gas_after_op) / &denominator;
+    let expected_result = (INITIAL_GAS - gas_cost::GAS) as _;
 
     let program = vec![
-        Operation::Push(denominator), // <No collapse>
-        Operation::Gas,               // <No collapse>
-        Operation::Div,               // <No collapse>
+        Operation::Gas, // <No collapse>
     ];
 
-    run_program_assert_result(program, expected_result.try_into().unwrap());
+    run_program_assert_result_with_gas(program, expected_result, INITIAL_GAS as _);
 }
 
 #[test]
-fn gas_value_after_add_op() {
-    //IMPORTANT: For the moment, gas consumption was not implemented for PUSH operation, so we are
-    //not taking it into consideration for calculation. That will change in the future and this
-    //test will have to be updated.
+fn gas_value_after_operations() {
+    const INITIAL_GAS: i64 = 50;
 
-    const ADD_OP_COST: i64 = 3;
-    const GAS_OP_COST: i64 = 2;
+    let gas_consumption = gas_cost::PUSHN * 3 + gas_cost::ADD * 2 + gas_cost::GAS;
+    let expected_result = (INITIAL_GAS - gas_consumption) as _;
 
-    let iterations = 50;
-    let expected_result = INITIAL_GAS - ADD_OP_COST * iterations - GAS_OP_COST;
+    let program = vec![
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Add,                 // <No collapse>
+        Operation::Add,                 // <No collapse>
+        Operation::Gas,                 // <No collapse>
+    ];
 
-    let mut program = vec![];
-    program.push(Operation::Push(BigUint::from(1_u8)));
-    for _ in 0..iterations {
-        program.push(Operation::Push(BigUint::from(1_u8)));
-        program.push(Operation::Add);
-    }
-
-    program.push(Operation::Gas);
-
-    run_program_assert_result(program, expected_result as u8);
+    run_program_assert_result_with_gas(program, expected_result, INITIAL_GAS as _);
 }
 
 #[test]
 fn gas_without_enough_gas_revert() {
-    let mut program = vec![];
-    for _ in 0..500 {
-        program.push(Operation::Gas);
-    }
-    run_program_assert_revert(program);
+    let gas_consumption = gas_cost::PUSHN * 3 + gas_cost::ADD * 2 + gas_cost::GAS;
+    let expected_result = 0;
+
+    let program = vec![
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Push(BigUint::ZERO), // <No collapse>
+        Operation::Add,                 // <No collapse>
+        Operation::Add,                 // <No collapse>
+        Operation::Gas,                 // <No collapse>
+    ];
+
+    run_program_assert_gas_exact(program, expected_result, gas_consumption as _);
 }
 
 #[test]

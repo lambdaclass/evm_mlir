@@ -1,5 +1,9 @@
 use llvm_sys::{
     core::LLVMDisposeMessage,
+    target::{
+        LLVM_InitializeAllAsmPrinters, LLVM_InitializeAllTargetInfos, LLVM_InitializeAllTargetMCs,
+        LLVM_InitializeAllTargets,
+    },
     target_machine::{
         LLVMCodeGenOptLevel, LLVMCodeModel, LLVMCreateTargetMachine, LLVMGetDefaultTargetTriple,
         LLVMGetHostCPUFeatures, LLVMGetHostCPUName, LLVMGetTargetFromTriple, LLVMRelocMode,
@@ -16,7 +20,7 @@ use melior::{
         attribute::{IntegerAttribute, StringAttribute, TypeAttribute},
         operation::OperationBuilder,
         r#type::{FunctionType, IntegerType},
-        Block, Identifier, Location, Module as MeliorModule, Region, Value,
+        Attribute, Block, Identifier, Location, Module as MeliorModule, Region, Value,
     },
     utility::{register_all_dialects, register_all_llvm_translations, register_all_passes},
     Context as MeliorContext,
@@ -26,16 +30,19 @@ use std::{
     mem::MaybeUninit,
     path::Path,
     ptr::{addr_of_mut, null_mut},
+    sync::OnceLock,
 };
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
     constants::{
-        GAS_COUNTER_GLOBAL, INITIAL_GAS, MAX_STACK_SIZE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        GAS_COUNTER_GLOBAL, MAIN_ENTRYPOINT, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
     module::MLIRModule,
     program::{Operation, Program},
+    syscall,
     utils::{generate_revert_block, llvm_mlir, stack_pop},
 };
 
@@ -64,6 +71,14 @@ impl Context {
         program: &Program,
         output_file: impl AsRef<Path>,
     ) -> Result<MLIRModule, CodegenError> {
+        static INITIALIZED: OnceLock<()> = OnceLock::new();
+        INITIALIZED.get_or_init(|| unsafe {
+            LLVM_InitializeAllTargets();
+            LLVM_InitializeAllTargetInfos();
+            LLVM_InitializeAllTargetMCs();
+            LLVM_InitializeAllAsmPrinters();
+        });
+
         let target_triple = get_target_triple();
 
         let context = &self.melior_context;
@@ -191,28 +206,58 @@ fn compile_program(
     program: &Program,
 ) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint8 = IntegerType::new(context, 8).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
-    // Build a region for the main function
-    let main_region = Region::new();
+    // Build the main function
+    let main_func = func::func(
+        context,
+        StringAttribute::new(context, MAIN_ENTRYPOINT),
+        TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint64], &[uint8]).into()),
+        Region::new(),
+        &[
+            (
+                Identifier::new(context, "sym_visibility"),
+                StringAttribute::new(context, "public").into(),
+            ),
+            (
+                Identifier::new(context, "llvm.emit_c_interface"),
+                Attribute::unit(context),
+            ),
+        ],
+        location,
+    );
+
+    let main_region = main_func.region(0).unwrap();
 
     // Setup the stack, memory, etc.
     // PERF: avoid generating unneeded setup blocks
-    let stack_setup_block = main_region.append_block(generate_stack_setup_block(context, module)?);
-    let gas_setup_block = main_region.append_block(generate_gas_counter_block(context, module)?);
-    stack_setup_block.append_operation(cf::br(&gas_setup_block, &[], location));
+    let setup_block = main_region.append_block(Block::new(&[]));
+    let syscall_ctx = setup_block.add_argument(ptr_type, location);
+    let initial_gas = setup_block.add_argument(uint64, location);
 
+    // Append setup code to be run at the start
+    generate_stack_setup_code(context, module, &setup_block)?;
+    generate_memory_setup_code(context, module, &setup_block)?;
+    generate_gas_counter_setup_code(context, module, &setup_block, initial_gas)?;
+
+    syscall::mlir::declare_syscalls(context, module);
+
+    // Generate helper blocks
     let revert_block = main_region.append_block(generate_revert_block(context)?);
     let jumptable_block = main_region.append_block(create_jumptable_landing_block(context));
-
-    let mut last_block = gas_setup_block;
 
     let mut op_ctx = OperationCtx {
         mlir_context: context,
         program,
+        syscall_ctx,
         revert_block,
         jumptable_block,
         jumpdest_blocks: Default::default(),
     };
+
+    let mut last_block = setup_block;
 
     // Generate code for the program
     for op in &op_ctx.program.operations {
@@ -229,58 +274,39 @@ fn compile_program(
 
     // Setup return operation
     // This returns the last element of the stack
-    // TODO: handle case where stack is empty
+    // TODO: this should return nothing
     let stack_top = stack_pop(context, &return_block)?;
     // Truncate the value to 8 bits.
     // NOTE: this is due to amd64 using two registers (128 bits) for return values.
-    let uint8 = IntegerType::new(context, 8);
     let exit_code = return_block
-        .append_operation(arith::trunci(stack_top, uint8.into(), location))
-        .result(0)?;
-    return_block.append_operation(func::r#return(&[exit_code.into()], location));
-
-    let main_func = func::func(
-        context,
-        StringAttribute::new(context, "main"),
-        TypeAttribute::new(FunctionType::new(context, &[], &[uint8.into()]).into()),
-        main_region,
-        &[],
-        location,
-    );
+        .append_operation(arith::trunci(stack_top, uint8, location))
+        .result(0)?
+        .into();
+    return_block.append_operation(func::r#return(&[exit_code], location));
 
     module.body().append_operation(main_func);
     Ok(())
 }
 
-fn generate_gas_counter_block<'c>(
+fn generate_gas_counter_setup_code<'c>(
     context: &'c MeliorContext,
     module: &'c MeliorModule,
-) -> Result<Block<'c>, CodegenError> {
+    block: &'c Block<'c>,
+    initial_gas: Value,
+) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
-
     let ptr_type = pointer(context, 0);
+    let uint64 = IntegerType::new(context, 64).into();
 
     let body = module.body();
     let res = body.append_operation(llvm_mlir::global(
         context,
         GAS_COUNTER_GLOBAL,
-        ptr_type,
+        uint64,
         location,
     ));
 
     assert!(res.verify());
-
-    let block = Block::new(&[]);
-    let uint256 = IntegerType::new(context, 256);
-
-    let gas_size = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), INITIAL_GAS).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
 
     let gas_addr = block
         .append_operation(llvm_mlir::addressof(
@@ -293,7 +319,7 @@ fn generate_gas_counter_block<'c>(
 
     let res = block.append_operation(llvm::store(
         context,
-        gas_size,
+        initial_gas,
         gas_addr.into(),
         location,
         LoadStoreOptions::default(),
@@ -301,13 +327,14 @@ fn generate_gas_counter_block<'c>(
 
     assert!(res.verify());
 
-    Ok(block)
+    Ok(())
 }
 
-fn generate_stack_setup_block<'c>(
+fn generate_stack_setup_code<'c>(
     context: &'c MeliorContext,
     module: &'c MeliorModule,
-) -> Result<Block<'c>, CodegenError> {
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
@@ -328,7 +355,6 @@ fn generate_stack_setup_block<'c>(
     ));
     assert!(res.verify());
 
-    let block = Block::new(&[]);
     let uint256 = IntegerType::new(context, 256);
 
     // Allocate stack memory
@@ -388,7 +414,63 @@ fn generate_stack_setup_block<'c>(
     ));
     assert!(res.verify());
 
-    Ok(block)
+    Ok(())
+}
+
+fn generate_memory_setup_code<'c>(
+    context: &'c MeliorContext,
+    module: &'c MeliorModule,
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    // Declare the stack pointer and base pointer globals
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        MEMORY_PTR_GLOBAL,
+        ptr_type,
+        location,
+    ));
+    assert!(res.verify());
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        MEMORY_SIZE_GLOBAL,
+        uint32,
+        location,
+    ));
+    assert!(res.verify());
+
+    let zero = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        zero,
+        memory_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
 }
 
 /// Create the jumptable landing block. This is the main entrypoint

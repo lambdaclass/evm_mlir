@@ -4,16 +4,16 @@ use melior::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
     },
-    Context as MeliorContext,
 };
 
 use super::context::OperationCtx;
 use crate::{
+    constants::gas_cost,
     errors::CodegenError,
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, get_nth_from_stack, get_remaining_gas,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
         swap_stack_elements,
     },
@@ -29,12 +29,15 @@ pub fn generate_code_for_op<'c>(
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
     match op {
         Operation::Stop => codegen_stop(op_ctx, region),
+        Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
+        Operation::Push(x) => codegen_push(op_ctx, region, x, false),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
         Operation::Div => codegen_div(op_ctx, region),
         Operation::Sdiv => codegen_sdiv(op_ctx, region),
         Operation::Mod => codegen_mod(op_ctx, region),
+        Operation::SMod => codegen_smod(op_ctx, region),
         Operation::Addmod => codegen_addmod(op_ctx, region),
         Operation::Mulmod => codegen_mulmod(op_ctx, region),
         Operation::Exp => codegen_exp(op_ctx, region),
@@ -57,9 +60,9 @@ pub fn generate_code_for_op<'c>(
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
-        Operation::Push(x) => codegen_push(op_ctx, region, x),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
+        Operation::Return => codegen_return(op_ctx, region),
     }
 }
 
@@ -410,6 +413,7 @@ fn codegen_push<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
     value_to_push: BigUint,
+    is_zero: bool,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -417,12 +421,22 @@ fn codegen_push<'c, 'r>(
 
     // Check there's enough space in stack
     let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_cost = if is_zero {
+        gas_cost::PUSH0
+    } else {
+        gas_cost::PUSHN
+    };
+    let gas_flag = consume_gas(context, &start_block, gas_cost)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -514,7 +528,7 @@ fn codegen_add<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADD)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -650,7 +664,7 @@ fn codegen_sdiv<'c, 'r>(
 
     // Check there's enough elements in stack
     let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SDIV)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
@@ -750,7 +764,7 @@ fn codegen_mod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -811,6 +825,77 @@ fn codegen_mod<'c, 'r>(
     Ok((start_block, return_block))
 }
 
+fn codegen_smod<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SMOD)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let num = stack_pop(context, &ok_block)?;
+    let den = stack_pop(context, &ok_block)?;
+
+    let den_is_zero = check_if_zero(context, &ok_block, &den)?;
+    let den_zero_bloq = region.append_block(Block::new(&[]));
+    let den_not_zero_bloq = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));
+
+    let constant_value = den_zero_bloq
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_zero_bloq, constant_value)?;
+
+    den_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    let mod_result = den_not_zero_bloq
+        .append_operation(ods::llvm::srem(context, num, den, location).into())
+        .result(0)?
+        .into();
+
+    stack_push(context, &den_not_zero_bloq, mod_result)?;
+
+    den_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        den_is_zero,
+        &den_zero_bloq,
+        &den_not_zero_bloq,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, return_block))
+}
+
 fn codegen_addmod<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -821,7 +906,7 @@ fn codegen_addmod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let gas_flag = consume_gas(context, &start_block, 8)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADDMOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -916,7 +1001,7 @@ fn codegen_mulmod<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let gas_flag = consume_gas(context, &start_block, 8)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MULMOD)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -1011,7 +1096,7 @@ fn codegen_xor<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::XOR)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1134,7 +1219,7 @@ fn codegen_pop<'c, 'r>(
     // Check there's at least 1 element in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
-    let gas_flag = consume_gas(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::POP)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1169,7 +1254,7 @@ fn codegen_sar<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SAR)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1191,14 +1276,11 @@ fn codegen_sar<'c, 'r>(
     let shift = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let mut max_shift: [u8; 32] = [0; 32];
-    max_shift[31] = 255;
-
     // max_shift = 255
     let max_shift = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, max_shift),
+            integer_constant_from_i64(context, 255).into(),
             location,
         ))
         .result(0)?
@@ -1337,13 +1419,10 @@ fn codegen_byte<'c, 'r>(
         .result(0)?
         .into();
 
-    let mut mask: [u8; 32] = [0; 32];
-    mask[31] = 0xff;
-
     let mask = offset_ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant(context, mask),
+            integer_constant_from_i64(context, 0xff).into(),
             location,
         ))
         .result(0)?
@@ -1362,12 +1441,6 @@ fn codegen_byte<'c, 'r>(
     Ok((start_block, end_block))
 }
 
-fn integer_constant(context: &MeliorContext, value: [u8; 32]) -> Attribute {
-    let str_value = BigUint::from_bytes_be(&value).to_string();
-    // TODO: should we handle this error?
-    Attribute::parse(context, &format!("{str_value} : i256")).unwrap()
-}
-
 fn codegen_jumpdest<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
@@ -1378,7 +1451,7 @@ fn codegen_jumpdest<'c>(
     let location = Location::unknown(context);
 
     // Check there's enough gas to compute the operation
-    let gas_flag = consume_gas(context, &landing_block, 1)?;
+    let gas_flag = consume_gas(context, &landing_block, gas_cost::JUMPDEST)?;
 
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -1508,13 +1581,19 @@ fn codegen_pc<'c>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::PC)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -1532,6 +1611,60 @@ fn codegen_pc<'c>(
         .into();
 
     stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_return<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    // TODO: compute gas cost for memory expansion
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let uint32 = IntegerType::new(context, 32);
+
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
+    // If any of them were bigger than a u32, we would have ran out of gas before here.
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, location);
 
     Ok((start_block, ok_block))
 }
@@ -1569,7 +1702,7 @@ fn codegen_signextend<'c, 'r>(
 
     // Check there's enough elements in stack
     let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 5)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SIGNEXTEND)?;
 
     // Check there's enough gas to perform the operation
     let ok_flag = start_block
@@ -1655,7 +1788,7 @@ fn codegen_gas<'c, 'r>(
     let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
 
     // Check there's enough gas to compute the operation
-    let gas_flag = consume_gas(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GAS)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
