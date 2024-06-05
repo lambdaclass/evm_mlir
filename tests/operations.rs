@@ -1567,6 +1567,20 @@ fn gas_without_enough_gas_revert() {
 }
 
 #[test]
+fn byte_gas_cost() {
+    let value: [u8; 32] = [0xff; 32];
+    let offset = BigUint::from(16_u8);
+    let program: Vec<Operation> = vec![
+        Operation::Push(BigUint::from_bytes_be(&value)),
+        Operation::Push(offset),
+        Operation::Byte,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::BYTE;
+    let expected_result = 0xff;
+    run_program_assert_result_with_gas(program, expected_result, needed_gas as _);
+}
+
+#[test]
 fn slt_positive_less_than() {
     let a = BigInt::from(1_u8);
     let b = BigInt::from(2_u8);
