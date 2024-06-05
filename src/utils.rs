@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
-        ods::{self, math},
+        ods::{self},
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
