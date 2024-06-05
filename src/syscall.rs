@@ -24,9 +24,9 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
-    Return,
-    Revert,
-    Error,
+    Return = 0,
+    Revert = 1,
+    Error = 2,
     Default,
 }
 impl ExitStatusCode {
