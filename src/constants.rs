@@ -21,6 +21,7 @@ pub mod gas_cost {
     pub const MULMOD: i64 = 8;
     pub const SIGNEXTEND: i64 = 5;
     pub const XOR: i64 = 3;
+    pub const SAR: i64 = 3;
     pub const POP: i64 = 2;
     pub const PC: i64 = 2;
     pub const GAS: i64 = 2;
