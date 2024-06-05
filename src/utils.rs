@@ -91,6 +91,67 @@ pub fn consume_gas<'ctx>(
     Ok(flag.into())
 }
 
+/// Returns true if there is enough Gas
+pub fn consume_gas_as_value<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+    gas_value: Value<'ctx, 'ctx>,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    //let uint64 = IntegerType::new(context, 64).into();
+    let uint256 = IntegerType::new(context, 256).into();
+
+    // Get address of gas counter global
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            uint256,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    // Check that gas_counter >= gas_value
+    let flag = block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Sge,
+            gas_counter,
+            gas_value,
+            location,
+        ))
+        .result(0)?;
+
+    // Subtract gas from gas counter
+    let new_gas_counter = block
+        .append_operation(arith::subi(gas_counter, gas_value, location))
+        .result(0)?;
+
+    // Store new gas counter
+    let _res = block.append_operation(llvm::store(
+        context,
+        new_gas_counter.into(),
+        gas_counter_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    Ok(flag.into())
+}
+
 pub fn get_remaining_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
