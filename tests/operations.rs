@@ -337,7 +337,7 @@ fn sub_add_wrapping() {
 #[test]
 fn sub_out_of_gas() {
     let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
-    let mut program = vec![
+    let program = vec![
         Operation::Push(a.clone()),
         Operation::Push(b.clone()),
         Operation::Sub,
