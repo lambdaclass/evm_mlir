@@ -1752,7 +1752,11 @@ fn codegen_revert<'c>(
 
     // Terminar la ejecución después del revert
     let revert_exit_code = ok_block
-        .append_operation(arith::constant(context, integer_constant_from_i8(context, REVERT_EXIT_CODE as i8).into(), location))
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i8(context, REVERT_EXIT_CODE as i8).into(),
+            location,
+        ))
         .result(0)?
         .into();
 
