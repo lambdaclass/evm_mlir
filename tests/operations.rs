@@ -1648,15 +1648,20 @@ fn slt_equal() {
 
 #[test]
 fn slt_gas_should_revert() {
-    let mut program = vec![];
+    let a = BigInt::from(1_u8);
+    let b = BigInt::from(2_u8);
 
-    program.push(Operation::Push(BigUint::ZERO));
-    for _ in 0..334 {
-        program.push(Operation::Push(BigUint::ZERO));
-        program.push(Operation::Slt);
-    }
+    let expected_result = (&a < &b) as u8;
 
-    run_program_assert_revert(program);
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::SLT;
+
+    let program = vec![
+        Operation::Push(biguint_256_from_bigint(b)),
+        Operation::Push(biguint_256_from_bigint(a)),
+        Operation::Slt,
+    ];
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]

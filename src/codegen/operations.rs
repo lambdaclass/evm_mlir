@@ -1826,7 +1826,7 @@ fn codegen_slt<'c, 'r>(
     let stack_size_flag = check_stack_has_at_least(context, &start_block, 2)?;
 
     // Check there's enough gas to compute the operation
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SLT)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
