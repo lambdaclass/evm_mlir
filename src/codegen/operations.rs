@@ -1587,6 +1587,14 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
+    let uint256 = IntegerType::new(context, 256);
+
+    // TODO: change endianness only if the system is little endian
+    let value = ok_block
+        .append_operation(llvm::intr_bswap(value, uint256.into(), location))
+        .result(0)?
+        .into();
+
     ok_block.append_operation(llvm::store(
         context,
         value,
