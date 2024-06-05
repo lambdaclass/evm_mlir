@@ -1582,7 +1582,7 @@ fn byte_gas_cost() {
 
 #[test]
 fn and_reverts_when_program_run_out_of_gas() {
-    let (a,b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
     let program = vec![
         Operation::Push(a.clone()),
         Operation::Push(b.clone()),
@@ -1596,7 +1596,6 @@ fn and_reverts_when_program_run_out_of_gas() {
 
 #[test]
 fn exp_reverts_when_program_runs_out_of_gas() {
-    
     let program = vec![
         Operation::Push(BigUint::from(3_u8)),
         Operation::Push(BigUint::from(256_u16)),
@@ -1605,7 +1604,7 @@ fn exp_reverts_when_program_runs_out_of_gas() {
 
     let initial_gas = gas_cost::PUSHN * 2 + gas_cost::EXP;
     let expected_result = 1;
-    run_program_assert_gas_exact(program, expected_result, initial_gas as _);    
+    run_program_assert_gas_exact(program, expected_result, initial_gas as _);
 }
 
 #[test]
@@ -1635,6 +1634,19 @@ fn sgt_reverts_when_program_runs_out_of_gas() {
 }
 
 #[test]
+fn gt_reverts_when_program_runs_out_of_gas() {
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Gt,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::GT;
+    let expected_result = if a > b { 1 } else { 0 };
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
 fn eq_reverts_when_program_runs_out_of_gas() {
     let (a, b) = (BigUint::from(0_u8), BigUint::from(1_u8));
     let program = vec![
@@ -1650,10 +1662,7 @@ fn eq_reverts_when_program_runs_out_of_gas() {
 #[test]
 fn iszero_reverts_when_program_runs_out_of_gas() {
     let a = BigUint::from(0_u8);
-    let program = vec![
-        Operation::Push(a.clone()),
-        Operation::IsZero,
-    ];
+    let program = vec![Operation::Push(a.clone()), Operation::IsZero];
     let needed_gas = gas_cost::PUSHN + gas_cost::ISZERO;
     let expected_result = if a == 0_u8.into() { 1 } else { 0 };
     run_program_assert_gas_exact(program, expected_result, needed_gas as _);

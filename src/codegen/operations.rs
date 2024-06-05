@@ -75,7 +75,7 @@ fn codegen_exp<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 10)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXP)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -115,7 +115,7 @@ fn codegen_iszero<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ISZERO)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -187,7 +187,7 @@ fn codegen_and<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::AND)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -228,7 +228,7 @@ fn codegen_gt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GT)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -274,7 +274,7 @@ fn codegen_or<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::OR)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -315,7 +315,7 @@ fn codegen_lt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::LT)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -362,7 +362,7 @@ fn codegen_sgt<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SGT)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
@@ -409,7 +409,7 @@ fn codegen_eq<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, 3)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EQ)?;
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?

@@ -12,9 +12,10 @@ pub const REVERT_EXIT_CODE: u8 = 255;
 pub mod gas_cost {
     pub const ADD: i64 = 3;
     pub const AND: i64 = 3;
-    pub const EXP : i64 = 10;
+    pub const EXP: i64 = 10;
     pub const LT: i64 = 3;
     pub const SGT: i64 = 3;
+    pub const GT: i64 = 3;
     pub const EQ: i64 = 3;
     pub const ISZERO: i64 = 3;
     pub const OR: i64 = 3;
