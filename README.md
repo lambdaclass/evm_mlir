@@ -281,12 +281,11 @@ An example edit would look like this:
 ```rust
 fn main() {
     let program = vec![
-            Operation::Push32([0; 32]),
-            Operation::Push32([42; 32]),
+            Operation::Push0,
+            Operation::PushN(BigUint::from(42_u8)),
             Operation::Add,
         ];
-    let output_file = "some_other_filename";
-    compile_binary(program, output_file).unwrap();
+    // ...
 }
 ```
 

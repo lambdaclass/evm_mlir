@@ -8,13 +8,13 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::gas_cost,
+    constants::{gas_cost, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
+        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -59,6 +59,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
+        Operation::Msize => codegen_msize(op_ctx, region),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
@@ -1796,6 +1797,63 @@ fn codegen_pc<'c>(
         .into();
 
     stack_push(context, &ok_block, pc_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_msize<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256).into();
+
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MSIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Get address of memory size global
+    let memory_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load memory size
+    let memory_size = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr.into(),
+            uint256,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, memory_size)?;
 
     Ok((start_block, ok_block))
 }

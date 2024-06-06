@@ -19,6 +19,8 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
+use crate::env::Env;
+
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
@@ -31,10 +33,19 @@ pub struct SyscallContext {
     /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
     /// It's [`None`] in case there's no return data
     result: Option<(usize, usize)>,
+    /// The execution environment. It contains chain, block, and tx data.
+    #[allow(unused)]
+    env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
+    pub fn with_env(env: Env) -> Self {
+        Self {
+            env,
+            ..Self::default()
+        }
+    }
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
         let (offset, size) = self.result.unwrap_or((0, 0));

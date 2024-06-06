@@ -1056,6 +1056,38 @@ fn pc_gas_should_revert() {
 }
 
 #[test]
+fn check_initial_memory_size() {
+    let program = vec![Operation::Msize];
+
+    run_program_assert_result(program, 0)
+}
+
+#[test]
+fn check_memory_size_after_store() {
+    let a = (BigUint::from(1_u8) << 256) - 1_u8;
+    let b = (BigUint::from(1_u8) << 256) - 1_u8;
+    let program = vec![
+        Operation::Push(a),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push(b),
+        Operation::Push(BigUint::from(32_u8)),
+        Operation::Mstore,
+        Operation::Msize,
+    ];
+
+    run_program_assert_result(program, 64);
+}
+
+#[test]
+fn msize_out_of_gas() {
+    let program = vec![Operation::Msize];
+    let gas_needed = gas_cost::MSIZE;
+
+    run_program_assert_gas_exact(program, 0, gas_needed as _);
+}
+
+#[test]
 fn test_and() {
     let (a, b) = (BigUint::from(0b1010_u8), BigUint::from(0b1100_u8));
     let expected_result = 0b1000_u8;
