@@ -15,7 +15,8 @@ use crate::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
         extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
-        integer_constant_from_i8, stack_pop, stack_push, swap_stack_elements,llvm_mlir::addressof
+        integer_constant_from_i8, llvm_mlir::addressof, load_memory_size, stack_pop, stack_push,
+        swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1462,7 +1463,6 @@ fn codegen_mload<'c, 'r>(
         ))
         .result(0)?
         .into();
-
     let required_size = ok_block
         .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
@@ -1501,10 +1501,28 @@ fn codegen_mload<'c, 'r>(
     ));
 
     // Extend memory path (extension_block)
-    extend_memory(op_ctx, &extension_block, required_size)?;
-    extension_block.append_operation(cf::br(&memory_access_block, &[], location));
+    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block)?;
 
-    // Not extend memory path (memory_access_block)
+    extend_memory(op_ctx, &extension_block, required_size)?;
+
+    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block)?;
+
+    let gas_cost = extension_block
+        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
+        .result(0)?
+        .into();
+    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
+
+    extension_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_access_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
     let memory_ptr_ptr = memory_access_block
         .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
         .result(0)?;
