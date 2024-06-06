@@ -45,4 +45,5 @@ pub mod gas_cost {
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
     pub const BYTE: i64 = 3;
+    pub const CALLDATALOAD: i64 = 3;
 }

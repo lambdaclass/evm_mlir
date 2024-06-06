@@ -2309,8 +2309,69 @@ fn codegen_mstore8<'c, 'r>(
 }
 
 fn codegen_calldataload<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CALLDATALOAD)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+
+    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+
+    // TODO: check that offset < calldatasize
+
+    // calldata_ptr_at_offset = calldata_ptr + offset
+    let calldata_ptr_at_offset = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            calldata_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // calldata_slice = calldata[offset..offset + 32bytes]
+    let calldata_slice = ok_block
+        .append_operation(llvm::load(
+            context,
+            calldata_ptr_at_offset,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, calldata_slice)?;
+    Ok((start_block, ok_block))
 }
