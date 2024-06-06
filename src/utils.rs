@@ -99,8 +99,7 @@ pub fn consume_gas_as_value<'ctx>(
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
-    //let uint64 = IntegerType::new(context, 64).into();
-    let uint256 = IntegerType::new(context, 256).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
     // Get address of gas counter global
     let gas_counter_ptr = block
@@ -117,7 +116,7 @@ pub fn consume_gas_as_value<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            uint256,
+            uint64,
             location,
             LoadStoreOptions::default(),
         ))
@@ -695,7 +694,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
-    let uint256 = IntegerType::new(context, 256);
+    let uint64 = IntegerType::new(context, 64);
     let memory_size_ptr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -710,7 +709,7 @@ pub(crate) fn compute_memory_cost<'c>(
         .append_operation(llvm::load(
             context,
             memory_size_ptr,
-            uint256.into(),
+            uint64.into(),
             location,
             LoadStoreOptions::new(),
         ))
@@ -720,7 +719,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let thirty_one = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 31).into(),
+            IntegerAttribute::new(uint64.into(), 31).into(),
             location,
         ))
         .result(0)?
@@ -729,7 +728,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let five_hundred_and_twelve = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 512).into(),
+            IntegerAttribute::new(uint64.into(), 512).into(),
             location,
         ))
         .result(0)?
@@ -738,7 +737,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let thirty_two = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 32).into(),
+            IntegerAttribute::new(uint64.into(), 32).into(),
             location,
         ))
         .result(0)?
@@ -747,7 +746,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let three = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 3).into(),
+            IntegerAttribute::new(uint64.into(), 3).into(),
             location,
         ))
         .result(0)?
