@@ -1946,24 +1946,20 @@ fn mstore8_mload_with_zero_address() {
 
 #[test]
 fn mstore_mload_with_zero_address() {
-    let stored_value = BigUint::from_bytes_be(&[10_u8; 32]);
-    let expected_result_byte = stored_value.to_bytes_be()[31];
-
+    let stored_value = BigUint::from(10_u8);
     let program = vec![
-        Operation::Push(stored_value), // value
-        Operation::Push0,              // offset
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push0,                      // offset
         Operation::Mstore,
         Operation::Push0, // offset
         Operation::Mload,
     ];
-    run_program_assert_result(program, expected_result_byte);
+    run_program_assert_result(program, stored_value.try_into().unwrap());
 }
 
 #[test]
 fn mstore_mload_with_memory_extension() {
-    let stored_value = BigUint::from_bytes_be(&[25_u8; 32]);
-    let expected_result_byte = stored_value.to_bytes_be()[31];
-
+    let stored_value = BigUint::from(25_u8);
     let program = vec![
         Operation::Push(stored_value.clone()), // value
         Operation::Push(BigUint::from(32_u8)), // offset
@@ -1971,7 +1967,7 @@ fn mstore_mload_with_memory_extension() {
         Operation::Push(BigUint::from(32_u8)), // offset
         Operation::Mload,
     ];
-    run_program_assert_result(program, expected_result_byte);
+    run_program_assert_result(program, stored_value.try_into().unwrap());
 }
 
 #[test]
