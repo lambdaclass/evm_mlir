@@ -2367,7 +2367,8 @@ fn codegen_calldataload<'c, 'r>(
             calldata_ptr_at_offset,
             uint256.into(),
             location,
-            LoadStoreOptions::default(),
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
         ))
         .result(0)?
         .into();
