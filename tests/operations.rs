@@ -657,7 +657,6 @@ fn push_push_normal_mul() {
 }
 
 #[test]
-// #[ignore]
 fn mul_wraps_result() {
     let a = BigUint::from_bytes_be(&[0xFF; 32]);
     let program = vec![
