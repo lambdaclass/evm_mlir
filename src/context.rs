@@ -34,7 +34,9 @@ use crate::{
     constants::MAIN_ENTRYPOINT,
     errors::CodegenError,
     module::MLIRModule,
-    program::{Operation, Program},
+    program::Program,
+    syscall::ExitStatusCode,
+    utils::return_empty_result,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -240,10 +242,10 @@ fn compile_program(
 
     op_ctx.populate_jumptable()?;
 
-    let (return_block, _empty_block) =
-        generate_code_for_op(&mut op_ctx, &main_region, Operation::Stop)?;
-
+    let return_block = main_region.append_block(Block::new(&[]));
     last_block.append_operation(cf::br(&return_block, &[], location));
+
+    return_empty_result(&op_ctx, &return_block, ExitStatusCode::Stop, location)?;
 
     module.body().append_operation(main_func);
     Ok(())

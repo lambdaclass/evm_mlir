@@ -61,6 +61,29 @@ pub enum ExecutionResult {
     Halt,
 }
 
+impl ExecutionResult {
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success { .. })
+    }
+
+    pub fn is_revert(&self) -> bool {
+        matches!(self, Self::Revert { .. })
+    }
+
+    pub fn is_halt(&self) -> bool {
+        matches!(self, Self::Halt { .. })
+    }
+
+    pub fn return_data(&self) -> Option<&[u8]> {
+        match self {
+            Self::Success { return_data, .. } | Self::Revert { return_data, .. } => {
+                Some(return_data)
+            }
+            Self::Halt => None,
+        }
+    }
+}
+
 /// The context passed to syscalls
 #[derive(Debug, Default)]
 pub struct SyscallContext {
