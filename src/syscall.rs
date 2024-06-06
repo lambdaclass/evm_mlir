@@ -83,12 +83,17 @@ impl SyscallContext {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.calldata.as_ptr()
     }
+
+    pub extern "C" fn get_calldata_size(&mut self) -> *const u32 {
+        self.env.tx.calldata.len() as *const u32
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "emv_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "emv_mlir__extend_memory";
     pub const GET_CALLDATA_PTR: &str = "emv_mlir__get_calldata_ptr";
+    pub const GET_CALLDATA_SIZE: &str = "emv_mlir__get_calldata_size";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -106,6 +111,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_PTR,
+            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_SIZE,
             SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
         );
     };
@@ -166,6 +175,15 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
     }
 
     /// Stores the return values in the syscall context
@@ -221,6 +239,27 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    /// Returns a pointer to the calldata size.
+    #[allow(unused)]
+    pub(crate) fn get_calldata_size_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
                 &[syscall_ctx],
                 &[ptr_type],
                 location,
