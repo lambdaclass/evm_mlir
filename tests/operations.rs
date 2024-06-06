@@ -9,9 +9,6 @@ use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
-#[macro_use]
-extern crate assert_matches;
-
 fn run_program_get_result_with_gas(
     operations: Vec<Operation>,
     initial_gas: u64,
@@ -38,11 +35,8 @@ fn run_program_get_result_with_gas(
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(operations, 1e7 as _);
-    assert_matches!(
-        result,
-        ExecutionResult::Success { return_data, gas_remaining: _ }
-            if &return_data == expected_result
-    );
+    assert!(result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn run_program_assert_stack_top(operations: Vec<Operation>, expected_result: BigUint) {
@@ -58,15 +52,17 @@ fn run_program_assert_stack_top_with_gas(
         Operation::Push0,
         Operation::Mstore,
         Operation::Push0,
-        Operation::Push(32_u8.into()),
+        Operation::Push((1, 32_u8.into())),
         Operation::Return,
     ]);
+    let mut result_bytes = [0_u8; 32];
+    if expected_result != BigUint::ZERO {
+        let bytes = expected_result.to_bytes_be();
+        result_bytes[32 - bytes.len()..].copy_from_slice(&bytes);
+    }
     let result = run_program_get_result_with_gas(operations, initial_gas);
-    assert_matches!(
-        result,
-        ExecutionResult::Success { return_data, gas_remaining: _ }
-            if return_data == expected_result.to_bytes_be()
-    );
+    assert!(result.is_success());
+    assert_eq!(result.return_data().unwrap(), result_bytes);
 }
 
 fn run_program_assert_halt(program: Vec<Operation>) {
@@ -76,25 +72,16 @@ fn run_program_assert_halt(program: Vec<Operation>) {
 
 fn run_program_assert_revert(program: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(program, 1e7 as _);
-    assert_matches!(
-        result,
-        ExecutionResult::Success { return_data, gas_remaining: _ }
-            if &return_data == expected_result
-    );
+    assert!(result.is_revert());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
     let result = run_program_get_result_with_gas(program.clone(), expected_gas);
-    assert_matches!(
-        result,
-        ExecutionResult::Success {
-            return_data: _,
-            gas_remaining: 0
-        }
-    );
+    assert!(result.is_success());
 
     let result = run_program_get_result_with_gas(program, expected_gas - 1);
-    assert_eq!(result, ExecutionResult::Halt);
+    assert!(result.is_halt());
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
@@ -113,8 +100,8 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
 #[test]
 fn test_return_with_gas() {
     let program = vec![
-        Operation::Push(BigUint::from(1_u8)),
-        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push((1, 1_u8.into())),
+        Operation::Push((1, 2_u8.into())),
         Operation::Return,
     ];
     run_program_assert_result(program, &[0]);
@@ -123,8 +110,8 @@ fn test_return_with_gas() {
 #[test]
 fn test_revert_with_gas() {
     let program = vec![
-        Operation::Push(BigUint::from(1_u8)),
-        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push((1, 1_u8.into())),
+        Operation::Push((1, 2_u8.into())),
         Operation::Revert,
     ];
     run_program_assert_revert(program, &[0]);
@@ -142,7 +129,7 @@ fn push_once() {
     for i in 0..32 {
         let shifted_value: BigUint = value.clone() << (i * 8);
         let program = vec![Operation::Push((i, shifted_value.clone()))];
-        let expected_result: u8 = (shifted_value % 256_u32).try_into().unwrap();
+        let expected_result = shifted_value % 256_u32;
         run_program_assert_stack_top(program, expected_result);
     }
 }
@@ -798,7 +785,7 @@ fn check_codesize() {
     let mut program = vec![Operation::Push0, Operation::Codesize];
     let mut codesize = 2;
 
-    run_program_assert_result(program, codesize);
+    run_program_assert_stack_top(program, codesize.into());
 
     // iterate from 1 byte to 32 byte operation::push cases
     for i in 0..255 {
@@ -808,7 +795,7 @@ fn check_codesize() {
 
         codesize = 1 + (i / 8 + 1) + 1; // OPERATION::PUSHN + N + CODESIZE
 
-        run_program_assert_result(program, codesize);
+        run_program_assert_stack_top(program, codesize.into());
     }
 }
 
@@ -1156,11 +1143,11 @@ fn check_memory_size_after_store() {
     let a = (BigUint::from(1_u8) << 256) - 1_u8;
     let b = (BigUint::from(1_u8) << 256) - 1_u8;
     let program = vec![
-        Operation::Push(a),
+        Operation::Push((32, a)),
         Operation::Push0,
         Operation::Mstore,
-        Operation::Push(b),
-        Operation::Push(BigUint::from(32_u8)),
+        Operation::Push((32, b)),
+        Operation::Push((1, 32_u8.into())),
         Operation::Mstore,
         Operation::Msize,
     ];
@@ -1298,11 +1285,10 @@ fn smod_with_negative_denominator() {
     let expected_result = BigUint::from(2_u8);
 
     let program = vec![
-        Operation::Push((1_u8, den)),
-        Operation::Push((1_u8, num)),
+        Operation::Push((32, den)),
+        Operation::Push((32, num)),
         Operation::SMod,
     ];
-    let program = vec![Operation::Push(den), Operation::Push(num), Operation::SMod];
     run_program_assert_stack_top(program, expected_result);
 }
 
@@ -2140,71 +2126,4 @@ fn mload_not_allocated_address() {
         Operation::Mload,
     ];
     run_program_assert_stack_top(program, 0_u8.into());
-}
-
-#[test]
-fn check_initial_memory_size() {
-    let program = vec![Operation::Msize];
-
-    run_program_assert_result(program, 0)
-}
-
-#[test]
-fn check_memory_size_after_store() {
-    let a = (BigUint::from(1_u8) << 256) - 1_u8;
-    let b = (BigUint::from(1_u8) << 256) - 1_u8;
-    let program = vec![
-        Operation::Push((32_u8, a)),
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((32_u8, b)),
-        Operation::Push((1_u8, BigUint::from(32_u8))),
-        Operation::Mstore,
-        Operation::Msize,
-    ];
-
-    run_program_assert_result(program, 64);
-}
-
-#[test]
-fn msize_out_of_gas() {
-    let program = vec![Operation::Msize];
-    let gas_needed = gas_cost::MSIZE;
-
-    run_program_assert_gas_exact(program, 0, gas_needed as _);
-}
-
-#[test]
-fn test_return_with_gas() {
-    let program = vec![
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Push((1_u8, BigUint::from(2_u8))),
-        Operation::Return,
-    ];
-    let execution_result = run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, 20);
-
-    assert_eq!(
-        execution_result,
-        ExecutionResult::Success {
-            return_data: vec![0],
-            gas_remaining: 14
-        }
-    );
-}
-
-#[test]
-fn test_revert_with_gas() {
-    let program = vec![
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Push((1_u8, BigUint::from(2_u8))),
-        Operation::Revert,
-    ];
-    let execution_result = run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, 20);
-    assert_eq!(
-        execution_result,
-        ExecutionResult::Revert {
-            return_data: vec![0],
-            gas_remaining: 14
-        }
-    );
 }
