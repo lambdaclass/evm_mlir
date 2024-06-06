@@ -589,7 +589,7 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::CALLDATASIZE => Operation::CallDataSize, 
+                Opcode::CALLDATASIZE => Operation::CallDataSize,
                 Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);

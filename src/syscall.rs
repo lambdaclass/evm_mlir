@@ -87,10 +87,6 @@ impl SyscallContext {
         &self.memory[offset..offset + size]
     }
 
-    pub fn get_size_call_data(&self) -> u64 {
-        self.env.tx.calldata.len() as u64
-    }   
-
     pub fn get_result(&self) -> ExecutionResult {
         let gas_remaining = self.gas_remaining.unwrap_or(0);
         let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
@@ -224,7 +220,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-            
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),

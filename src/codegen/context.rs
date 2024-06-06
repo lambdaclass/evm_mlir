@@ -79,7 +79,12 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
-        syscall::mlir::get_calldata_size_syscall(self.mlir_context, self.syscall_ctx, block, location)
+        syscall::mlir::get_calldata_size_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+        )
     }
 
     pub(crate) fn extend_memory_syscall(
