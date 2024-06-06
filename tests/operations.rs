@@ -1,6 +1,7 @@
 use evm_mlir::{
     constants::{gas_cost, MAIN_ENTRYPOINT, REVERT_EXIT_CODE},
     context::Context,
+    executor::Executor,
     program::{Operation, Program},
     syscall::{register_syscalls, ExecutionResult, MainFunc, SyscallContext},
 };
@@ -27,46 +28,13 @@ fn run_program_assert_result_with_gas(
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
-    register_syscalls(&engine);
-
-    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
-    let fptr = engine.lookup(&function_name);
-    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+    let executor = Executor::new(&module);
 
     let mut context = SyscallContext::default();
-    let result = main_fn(&mut context, initial_gas);
+
+    let result = executor.execute(&mut context, initial_gas);
+
     assert_eq!(result, expected_result);
-}
-
-fn run_program_assert_result_with_execution_context(
-    operations: Vec<Operation>,
-    initial_gas: u64,
-    _exec_result: ExecutionResult,
-) {
-    let program = Program::from(operations);
-    let output_file = NamedTempFile::new()
-        .expect("failed to generate tempfile")
-        .into_temp_path();
-
-    let context = Context::new();
-    let module = context
-        .compile(&program, &output_file)
-        .expect("failed to compile program");
-
-    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
-    register_syscalls(&engine);
-
-    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
-    let fptr = engine.lookup(&function_name);
-    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
-
-    let mut context = SyscallContext::default();
-    let _result = main_fn(&mut context, initial_gas);
-
-    let context_result = context.get_result().unwrap();
-    
-    assert_matches!(context_result, _exec_result);
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -118,18 +86,13 @@ fn test_return_with_gas() {
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
-    register_syscalls(&engine);
-
-    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
-    let fptr = engine.lookup(&function_name);
-    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+    let executor = Executor::new(&module);
 
     let mut context = SyscallContext::default();
-    let result = main_fn(&mut context, 20);
-    
-    let a: ExecutionResult = context.get_result().unwrap();
-    assert_matches!(a, ExecutionResult::Success { return_data, gas_remaining: 14 } if return_data == vec![0]);
+
+    let _result = executor.execute(&mut context, 20);
+
+    assert_matches!(context.get_result().unwrap(), ExecutionResult::Success { return_data, gas_remaining: 14 } if return_data == vec![0]);
 }
 
 #[test]
@@ -149,21 +112,13 @@ fn test_revert_with_gas() {
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let engine = ExecutionEngine::new(module.module(), 0, &[], false);
-    register_syscalls(&engine);
-
-    let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
-    let fptr = engine.lookup(&function_name);
-    let main_fn: MainFunc = unsafe { std::mem::transmute(fptr) };
+    let executor = Executor::new(&module);
 
     let mut context = SyscallContext::default();
-    let result = main_fn(&mut context, 20);
-    
-    let a: ExecutionResult = context.get_result().unwrap();
 
-    println!("{:?}", a);
-    assert_matches!(a, ExecutionResult::Revert { return_data, gas_remaining: 14 } if return_data == vec![0]);
-    
+    let _result = executor.execute(&mut context, 20);
+
+    assert_matches!(context.get_result().unwrap(), ExecutionResult::Revert { return_data, gas_remaining: 14 } if return_data == vec![0]);
 }
 
 #[test]
