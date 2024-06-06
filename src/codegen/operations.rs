@@ -15,8 +15,7 @@ use crate::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
         extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
-        integer_constant_from_i8, llvm_mlir::addressof, load_memory_size, stack_pop, stack_push,
-        swap_stack_elements,
+        integer_constant_from_i8, llvm_mlir::addressof, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1523,6 +1522,8 @@ fn codegen_mload<'c, 'r>(
         location,
     ));
 
+    // Memory access
+    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
     let memory_ptr_ptr = memory_access_block
         .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
         .result(0)?;
@@ -1535,13 +1536,13 @@ fn codegen_mload<'c, 'r>(
             location,
             LoadStoreOptions::default(),
         ))
-        .result(0)?;
+        .result(0)?
+        .into();
 
-    // Memory access
     let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
-            memory_ptr.into(),
+            memory_ptr,
             &[offset],
             uint8.into(),
             ptr_type,
@@ -2275,14 +2276,46 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
-    let memory_cost_before_expansion = compute_memory_cost(op_ctx, &ok_block)?;
+    // Get current memory size
+    let memory_size_ptr = ok_block
+        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
+        .result(0)?
+        .into();
+
+    let memory_size = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint32.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    // Compare current memory_size and required_size
+    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
+    let store_block = region.append_block(Block::new(&[]));
+    let extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        extension_flag,
+        &extension_block,
+        &store_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let memory_cost_before_expansion = compute_memory_cost(op_ctx, &extension_block)?;
 
     // maybe we could check if there is already enough memory before extending it
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    extend_memory(op_ctx, &extension_block, required_size)?;
 
-    let memory_cost = compute_memory_cost(op_ctx, &ok_block)?;
+    let memory_cost = compute_memory_cost(op_ctx, &extension_block)?;
 
-    let gas_cost = ok_block
+    let gas_cost = extension_block
         .append_operation(arith::subi(
             memory_cost,
             memory_cost_before_expansion,
@@ -2291,11 +2324,9 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
-    let flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
 
-    let store_block = region.append_block(Block::new(&[]));
-
-    ok_block.append_operation(cf::cond_br(
+    extension_block.append_operation(cf::cond_br(
         context,
         flag,
         &store_block,
@@ -2304,6 +2335,23 @@ fn codegen_mstore<'c, 'r>(
         &[],
         location,
     ));
+
+    // Memory access
+    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
+    let memory_ptr_ptr = store_block
+        .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
+        .result(0)?;
+
+    let memory_ptr = store_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     // memory_destination = memory_ptr + offset
     let memory_destination = store_block
@@ -2415,11 +2463,80 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    // maybe we could check if there is already enough memory before extending it
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    // Get current memory size
+    let memory_size_ptr = ok_block
+        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
+        .result(0)?
+        .into();
+
+    let memory_size = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint32.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    // Compare current memory_size and required_size
+    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
+    let extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        extension_flag,
+        &extension_block,
+        &memory_access_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Extend memory path (extension_block)
+    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block)?;
+
+    extend_memory(op_ctx, &extension_block, required_size)?;
+
+    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block)?;
+
+    let gas_cost = extension_block
+        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
+        .result(0)?
+        .into();
+    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
+
+    extension_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_access_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Memory access
+    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     // memory_destination = memory_ptr + offset
-    let memory_destination = ok_block
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2431,7 +2548,7 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(llvm::store(
+    memory_access_block.append_operation(llvm::store(
         context,
         value,
         memory_destination,
@@ -2440,5 +2557,5 @@ fn codegen_mstore8<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
