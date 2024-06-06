@@ -19,8 +19,44 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
+use crate::env::Env;
+
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
+
+#[derive(Debug, Clone)]
+pub enum ExitStatusCode {
+    Return = 0,
+    Revert = 1,
+    Error = 2,
+    Default,
+}
+impl ExitStatusCode {
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            0 => Self::Return,
+            1 => Self::Revert,
+            2 => Self::Error,
+            _ => Self::Default,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionResult {
+    Success {
+        return_data: Vec<u8>,
+        gas_remaining: u64,
+    },
+    Revert {
+        return_data: Vec<u8>,
+        gas_remaining: u64,
+    },
+    Halt,
+}
 
 /// The context passed to syscalls
 #[derive(Debug, Default)]
@@ -28,17 +64,43 @@ pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
-    /// The offset and size in [`Self::memory`] corresponding to the EVM return data.
-    /// It's [`None`] in case there's no return data
-    result: Option<(usize, usize)>,
+    /// The result of the execution
+    return_data: Option<(usize, usize)>,
+    gas_remaining: Option<u64>,
+    exit_status: Option<ExitStatusCode>,
+    /// The execution environment. It contains chain, block, and tx data.
+    #[allow(unused)]
+    env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
+    pub fn with_env(env: Env) -> Self {
+        Self {
+            env,
+            ..Self::default()
+        }
+    }
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
-        let (offset, size) = self.result.unwrap_or((0, 0));
+        let (offset, size) = self.return_data.unwrap_or((0, 0));
         &self.memory[offset..offset + size]
+    }
+
+    pub fn get_result(&self) -> ExecutionResult {
+        let gas_remaining = self.gas_remaining.unwrap_or(0);
+        let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
+        match exit_status {
+            ExitStatusCode::Return => ExecutionResult::Success {
+                return_data: self.return_values().to_vec(),
+                gas_remaining,
+            },
+            ExitStatusCode::Revert => ExecutionResult::Revert {
+                return_data: self.return_values().to_vec(),
+                gas_remaining,
+            },
+            ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt,
+        }
     }
 }
 
@@ -47,8 +109,16 @@ impl SyscallContext {
 /// Note that each function is marked as `extern "C"`, which is necessary for the
 /// function to be callable from the generated code.
 impl SyscallContext {
-    pub extern "C" fn write_result(&mut self, offset: u32, bytes_len: u32) {
-        self.result = Some((offset as usize, bytes_len as usize));
+    pub extern "C" fn write_result(
+        &mut self,
+        offset: u32,
+        bytes_len: u32,
+        remaining_gas: u64,
+        execution_result: u8,
+    ) {
+        self.return_data = Some((offset as usize, bytes_len as usize));
+        self.gas_remaining = Some(remaining_gas);
+        self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -71,8 +141,8 @@ impl SyscallContext {
 }
 
 pub mod symbols {
-    pub const WRITE_RESULT: &str = "emv_mlir__write_result";
-    pub const EXTEND_MEMORY: &str = "emv_mlir__extend_memory";
+    pub const WRITE_RESULT: &str = "evm_mlir__write_result";
+    pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -82,7 +152,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
     unsafe {
         engine.register_symbol(
             symbols::WRITE_RESULT,
-            SyscallContext::write_result as *const fn(*mut c_void, u32, u32) as *mut (),
+            SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -113,6 +183,8 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
+        let uint64 = IntegerType::new(context, 64).into();
+        let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
             Identifier::new(context, "sym_visibility"),
@@ -123,7 +195,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::WRITE_RESULT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint64, uint8], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -140,18 +214,21 @@ pub(crate) mod mlir {
     }
 
     /// Stores the return values in the syscall context
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn write_result_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &Block,
         offset: Value,
         size: Value,
+        gas: Value,
+        reason: Value,
         location: Location,
     ) {
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),
-            &[syscall_ctx, offset, size],
+            &[syscall_ctx, offset, size, gas, reason],
             &[],
             location,
         ));

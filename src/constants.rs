@@ -7,9 +7,13 @@ pub const MEMORY_SIZE_GLOBAL: &str = "emv_mlir__memory_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
 
 pub const REVERT_EXIT_CODE: u8 = 255;
+pub const RETURN_EXIT_CODE: u8 = 0;
 
 /// Contains the gas costs of the EVM instructions
 pub mod gas_cost {
+    pub const MSTORE: i64 = 3;
+    pub const MSTORE8: i64 = 3;
+    pub const MLOAD: i64 = 3;
     pub const ADD: i64 = 3;
     pub const AND: i64 = 3;
     pub const EXP: i64 = 10;
@@ -35,9 +39,13 @@ pub mod gas_cost {
     pub const CODESIZE: i64 = 2;
     pub const POP: i64 = 2;
     pub const PC: i64 = 2;
+    pub const MSIZE: i64 = 2;
     pub const GAS: i64 = 2;
     pub const JUMPDEST: i64 = 1;
     pub const PUSH0: i64 = 2;
     pub const PUSHN: i64 = 3;
+    pub const JUMP: i64 = 8;
+    pub const DUPN: i64 = 3;
+    pub const SWAPN: i64 = 3;
     pub const BYTE: i64 = 3;
 }

@@ -41,6 +41,9 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1D) SAR
 1. (0x38) CODESIZE
 1. (0x50) POP
+1. (0x51) MLOAD
+1. (0x52) MSTORE
+1. (0x53) MSTORE8
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
@@ -145,9 +148,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
-1. (0x51) MLOAD
-1. (0x52) MSTORE
-1. (0x53) MSTORE8
 1. (0x54) SLOAD
 1. (0x55) SSTORE
 1. (0x59) MSIZE
@@ -281,12 +281,11 @@ An example edit would look like this:
 ```rust
 fn main() {
     let program = vec![
-            Operation::Push32([0; 32]),
-            Operation::Push32([42; 32]),
+            Operation::Push0,
+            Operation::PushN(BigUint::from(42_u8)),
             Operation::Add,
         ];
-    let output_file = "some_other_filename";
-    compile_binary(program, output_file).unwrap();
+    // ...
 }
 ```
 
