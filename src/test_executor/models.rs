@@ -1,20 +1,40 @@
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 /*
-Models extracted from REVM
-https://github.com/bluealloy/revm/blob/main/bins/revme/src/cmd/statetest/models/mod.rs
+Models and deserialization functions extracted from REVM revme
+https://github.com/bluealloy/revm/blob/main/bins/revme
 */
 
-pub type SpecName = String;
+pub fn deserialize_str_as_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let string = String::deserialize(deserializer)?;
 
-//Uncomment this line to import alloy_primitives (and comment type definitions down below)
-// use alloy_primitives::{Address, Bytes, B256, U256};
-//
-pub type Address = String;
-pub type Bytes = String;
-pub type B256 = String;
-pub type U256 = String;
+    if let Some(stripped) = string.strip_prefix("0x") {
+        u64::from_str_radix(stripped, 16)
+    } else {
+        string.parse()
+    }
+    .map_err(serde::de::Error::custom)
+}
+
+pub fn deserialize_maybe_empty<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let string = String::deserialize(deserializer)?;
+    if string.is_empty() {
+        Ok(None)
+    } else {
+        string.parse().map_err(de::Error::custom).map(Some)
+    }
+}
+
+pub type SpecName = String; //TODO: maybe we should check if the SpecName is valid
+
+use alloy_primitives::{Address, Bytes, B256, U256};
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct TestSuite(pub BTreeMap<String, TestUnit>);
@@ -59,7 +79,8 @@ pub struct TxPartIndices {
 pub struct AccountInfo {
     pub balance: U256,
     pub code: Bytes,
-    pub nonce: String, //TODO: This should be u64
+    #[serde(deserialize_with = "deserialize_str_as_u64")]
+    pub nonce: u64,
     pub storage: HashMap<U256, U256>,
 }
 
@@ -92,7 +113,7 @@ pub struct TransactionParts {
     /// if sender is not present we need to derive it from secret key.
     #[serde(default)]
     pub sender: Option<Address>,
-    //#[serde(deserialize_with = "deserialize_maybe_empty")]
+    #[serde(deserialize_with = "deserialize_maybe_empty")]
     pub to: Option<Address>,
     pub value: Vec<U256>,
     pub max_fee_per_gas: Option<U256>,
