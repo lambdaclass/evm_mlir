@@ -1,23 +1,19 @@
 use evm_mlir::{
-    constants::{gas_cost, MAIN_ENTRYPOINT, REVERT_EXIT_CODE},
+    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
-    syscall::{register_syscalls, ExecutionResult, MainFunc, SyscallContext},
+    syscall::{ExecutionResult, SyscallContext},
 };
-use melior::ExecutionEngine;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
-
-#[macro_use]
-extern crate assert_matches;
 
 fn run_program_assert_result_with_gas(
     operations: Vec<Operation>,
     expected_result: u8,
     initial_gas: u64,
-) {
+) -> ExecutionResult {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
@@ -35,6 +31,7 @@ fn run_program_assert_result_with_gas(
     let result = executor.execute(&mut context, initial_gas);
 
     assert_eq!(result, expected_result);
+    context.get_result()
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -76,23 +73,15 @@ fn test_return_with_gas() {
         Operation::Push(BigUint::from(2_u8)),
         Operation::Return,
     ];
-    let program = Program::from(program);
-    let output_file = NamedTempFile::new()
-        .expect("failed to generate tempfile")
-        .into_temp_path();
+    let execution_result = run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, 20);
 
-    let context = Context::new();
-    let module = context
-        .compile(&program, &output_file)
-        .expect("failed to compile program");
-
-    let executor = Executor::new(&module);
-
-    let mut context = SyscallContext::default();
-
-    let _result = executor.execute(&mut context, 20);
-
-    assert_matches!(context.get_result().unwrap(), ExecutionResult::Success { return_data, gas_remaining: 14 } if return_data == vec![0]);
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Success {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
 }
 
 #[test]
@@ -102,23 +91,14 @@ fn test_revert_with_gas() {
         Operation::Push(BigUint::from(2_u8)),
         Operation::Revert,
     ];
-    let program = Program::from(program);
-    let output_file = NamedTempFile::new()
-        .expect("failed to generate tempfile")
-        .into_temp_path();
-
-    let context = Context::new();
-    let module = context
-        .compile(&program, &output_file)
-        .expect("failed to compile program");
-
-    let executor = Executor::new(&module);
-
-    let mut context = SyscallContext::default();
-
-    let _result = executor.execute(&mut context, 20);
-
-    assert_matches!(context.get_result().unwrap(), ExecutionResult::Revert { return_data, gas_remaining: 14 } if return_data == vec![0]);
+    let execution_result = run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, 20);
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Revert {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
 }
 
 #[test]

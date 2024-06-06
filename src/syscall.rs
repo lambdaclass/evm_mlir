@@ -43,7 +43,7 @@ impl ExitStatusCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ExecutionResult {
     Success {
         return_data: Vec<u8>,
@@ -76,20 +76,19 @@ impl SyscallContext {
         &self.memory[offset..offset + size]
     }
 
-    pub fn get_result(&self) -> Option<ExecutionResult> {
+    pub fn get_result(&self) -> ExecutionResult {
         let gas_remaining = self.gas_remaining.unwrap_or(0);
-        let exit_status = <Option<ExitStatusCode> as Clone>::clone(&self.exit_status)
-            .unwrap_or(ExitStatusCode::Default);
+        let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
         match exit_status {
-            ExitStatusCode::Return => Some(ExecutionResult::Success {
+            ExitStatusCode::Return => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
-            }),
-            ExitStatusCode::Revert => Some(ExecutionResult::Revert {
+            },
+            ExitStatusCode::Revert => ExecutionResult::Revert {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
-            }),
-            ExitStatusCode::Error | ExitStatusCode::Default => Some(ExecutionResult::Halt),
+            },
+            ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt,
         }
     }
 }
@@ -106,6 +105,7 @@ impl SyscallContext {
         remaining_gas: u64,
         execution_result: u8,
     ) {
+        println!("[en syscall_ctx] execution_result: {:?}", execution_result);
         self.return_data = Some((offset as usize, bytes_len as usize));
         self.gas_remaining = Some(remaining_gas);
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
@@ -173,7 +173,7 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
-        let uint64 = IntegerType::new(context, 256).into();
+        let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
@@ -215,6 +215,7 @@ pub(crate) mod mlir {
         reason: Value,
         location: Location,
     ) {
+        println!("[en mod mlir] reason: {:?}", reason);
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),

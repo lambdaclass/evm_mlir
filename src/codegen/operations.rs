@@ -15,8 +15,8 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, stack_pop, stack_push,
-        swap_stack_elements,
+        integer_constant_from_i64, integer_constant_from_i8, integer_constant_from_u8, stack_pop,
+        stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1937,14 +1937,16 @@ fn codegen_revert<'c>(
 
     let remaining_gas = get_remaining_gas(context, &ok_block)?;
     let reason = ExitStatusCode::Revert.to_u8();
+    println!("[en op revert:] REVERT REASON: {}", reason);
     let reason = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, reason as i8).into(),
+            integer_constant_from_u8(context, reason).into(),
             location,
         ))
         .result(0)?
         .into();
+    println!("[en op revert:] reason pasado a value: {:?}", reason);
 
     op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
 

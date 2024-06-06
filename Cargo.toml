@@ -8,7 +8,6 @@ license = "LICENSE"
 keywords = ["ethereum", "evm"]
 
 [dependencies]
-assert_matches = "1.5.0"
 llvm-sys = "180.0.0"
 melior = { version = "0.18.1", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"

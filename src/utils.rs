@@ -44,7 +44,7 @@ pub fn get_remaining_gas<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            IntegerType::new(context, 256).into(),
+            IntegerType::new(context, 64).into(),
             location,
             LoadStoreOptions::default(),
         ))
@@ -682,6 +682,11 @@ pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> Integer
 pub fn integer_constant_from_i8(context: &MeliorContext, value: i8) -> IntegerAttribute {
     let int8 = IntegerType::new(context, 8);
     IntegerAttribute::new(int8.into(), value.into())
+}
+
+pub fn integer_constant_from_u8(context: &MeliorContext, value: u8) -> IntegerAttribute {
+    let uint8 = IntegerType::new(context, 8);
+    IntegerAttribute::new(uint8.into(), value.into())
 }
 
 pub mod llvm_mlir {
