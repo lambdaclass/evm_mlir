@@ -11,7 +11,7 @@ use llvm_sys::{
     },
 };
 use melior::{
-    dialect::{arith, cf, func, llvm::r#type::pointer, DialectRegistry},
+    dialect::{cf, func, llvm::r#type::pointer, DialectRegistry},
     ir::{
         attribute::{StringAttribute, TypeAttribute},
         operation::OperationBuilder,
@@ -34,8 +34,7 @@ use crate::{
     constants::MAIN_ENTRYPOINT,
     errors::CodegenError,
     module::MLIRModule,
-    program::Program,
-    utils::stack_pop,
+    program::{Operation, Program},
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -241,20 +240,10 @@ fn compile_program(
 
     op_ctx.populate_jumptable()?;
 
-    let return_block = main_region.append_block(Block::new(&[]));
-    last_block.append_operation(cf::br(&return_block, &[], location));
+    let (return_block, _empty_block) =
+        generate_code_for_op(&mut op_ctx, &main_region, Operation::Stop)?;
 
-    // Setup return operation
-    // This returns the last element of the stack
-    // TODO: this should return nothing
-    let stack_top = stack_pop(context, &return_block)?;
-    // Truncate the value to 8 bits.
-    // NOTE: this is due to amd64 using two registers (128 bits) for return values.
-    let exit_code = return_block
-        .append_operation(arith::trunci(stack_top, uint8, location))
-        .result(0)?
-        .into();
-    return_block.append_operation(func::r#return(&[exit_code], location));
+    last_block.append_operation(cf::br(&return_block, &[], location));
 
     module.body().append_operation(main_func);
     Ok(())

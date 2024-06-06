@@ -1,5 +1,5 @@
 use evm_mlir::{
-    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
+    constants::gas_cost,
     context::Context,
     executor::Executor,
     program::{Operation, Program},
