@@ -73,6 +73,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
+        Operation::Sstore => todo!(),
     }
 }
 
