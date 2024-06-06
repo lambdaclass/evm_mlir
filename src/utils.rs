@@ -23,6 +23,7 @@ use crate::{
     syscall::ExitStatusCode,
 };
 
+// NOTE: the value is of type i64
 pub fn get_remaining_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,

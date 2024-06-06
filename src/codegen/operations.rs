@@ -2210,7 +2210,16 @@ fn codegen_gas<'c, 'r>(
 
     let gas = get_remaining_gas(context, &ok_block)?;
 
-    stack_push(context, &ok_block, gas)?;
+    let gas_extended = ok_block
+        .append_operation(arith::extui(
+            gas,
+            IntegerType::new(context, 256).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, gas_extended)?;
 
     Ok((start_block, ok_block))
 }
