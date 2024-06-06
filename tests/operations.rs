@@ -1,9 +1,9 @@
 use evm_mlir::{
-    constants::{gas_cost, REVERT_EXIT_CODE},
+    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
-    syscall::SyscallContext,
+    syscall::{ExecutionResult, SyscallContext},
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -13,7 +13,7 @@ fn run_program_assert_result_with_gas(
     operations: Vec<Operation>,
     expected_result: u8,
     initial_gas: u64,
-) {
+) -> ExecutionResult {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
@@ -31,6 +31,7 @@ fn run_program_assert_result_with_gas(
     let result = executor.execute(&mut context, initial_gas);
 
     assert_eq!(result, expected_result);
+    context.get_result()
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -1982,7 +1983,6 @@ fn slt_stack_underflow() {
     run_program_assert_revert(program);
 }
 
-
 #[test]
 fn jump_with_gas_cost() {
     // this test is equivalent to the following bytecode program
@@ -2040,7 +2040,7 @@ fn mstore_mload_with_zero_address() {
     let stored_value = BigUint::from(10_u8);
     let program = vec![
         Operation::Push((1_u8, stored_value.clone())), // value
-        Operation::Push0,                      // offset
+        Operation::Push0,                              // offset
         Operation::Mstore,
         Operation::Push0, // offset
         Operation::Mload,
