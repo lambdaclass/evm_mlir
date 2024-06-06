@@ -320,6 +320,7 @@ pub enum Operation {
 #[derive(Debug, Clone)]
 pub struct Program {
     pub(crate) operations: Vec<Operation>,
+    pub(crate) code_size: u32,
 }
 
 impl Program {
@@ -599,12 +600,34 @@ impl Program {
             operations.push(op);
             pc += 1;
         }
-        Program { operations }
+
+        let code_size = Self::get_codesize(&operations);
+
+        Program {
+            operations,
+            code_size,
+        }
+    }
+
+    fn get_codesize(operations: &[Operation]) -> u32 {
+        operations
+            .iter()
+            .map(|op| match op {
+                // the size in bytes to push + 1 from the PUSHN opcode
+                Operation::Push((size, _)) => (size + 1) as u32,
+                _ => 1,
+            })
+            .sum()
     }
 }
 
 impl From<Vec<Operation>> for Program {
     fn from(operations: Vec<Operation>) -> Self {
-        Program { operations }
+        let code_size = Self::get_codesize(&operations);
+
+        Program {
+            operations,
+            code_size,
+        }
     }
 }

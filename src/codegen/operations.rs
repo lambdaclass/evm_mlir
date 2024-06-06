@@ -1549,21 +1549,10 @@ fn codegen_codesize<'c, 'r>(
         location,
     ));
 
-    let program = &op_ctx.program.operations;
-
-    let codesize: u32 = program
-        .iter()
-        .map(|op| match op {
-            // the size in bytes to push + 1 from the PUSHN opcode
-            Operation::Push((size, _)) => (size + 1) as u32,
-            _ => 1,
-        })
-        .sum();
-
     let codesize = ok_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), codesize as i64).into(),
+            IntegerAttribute::new(uint32.into(), op_ctx.program.code_size as i64).into(),
             location,
         ))
         .result(0)?
