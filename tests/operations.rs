@@ -1990,3 +1990,70 @@ fn jump_with_gas_cost() {
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
     run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
+
+#[test]
+fn mload_with_stack_underflow() {
+    let program = vec![Operation::Mload];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore_with_stack_underflow() {
+    let program = vec![Operation::Mstore];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore8_with_stack_underflow() {
+    let program = vec![Operation::Mstore8];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore8_mload_with_zero_address() {
+    let stored_value = BigUint::from(44_u8);
+    let program = vec![
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push(BigUint::from(31_u8)), // offset
+        Operation::Mstore8,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mstore_mload_with_zero_address() {
+    let stored_value = BigUint::from(10_u8);
+    let program = vec![
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push0,                      // offset
+        Operation::Mstore,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mstore_mload_with_memory_extension() {
+    let stored_value = BigUint::from(25_u8);
+    let program = vec![
+        Operation::Push(stored_value.clone()), // value
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mstore,
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mload_not_allocated_address() {
+    // When offset for MLOAD is bigger than the current memory size, memory is extended with zeros
+    let program = vec![
+        Operation::Push(BigUint::from(32_u8)), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, 0_u8);
+}
