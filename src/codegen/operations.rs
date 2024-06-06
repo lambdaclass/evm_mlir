@@ -66,6 +66,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Msize => codegen_msize(op_ctx, region),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
+        Operation::Mcopy => codegen_mcopy(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),

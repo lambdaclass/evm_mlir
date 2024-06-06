@@ -41,6 +41,7 @@ pub mod gas_cost {
     pub const MSIZE: i64 = 2;
     pub const GAS: i64 = 2;
     pub const JUMPDEST: i64 = 1;
+    pub const MCOPY: i64 = 3;
     pub const PUSH0: i64 = 2;
     pub const PUSHN: i64 = 3;
     pub const JUMP: i64 = 8;
