@@ -26,10 +26,13 @@ pub struct Evm {
 }
 
 impl Evm {
+    /// Creates a new EVM instance with the given environment and program.
+    // TODO: the program should be loaded from the bytecode of the configured transaction.
     pub fn new(env: Env, program: Program) -> Self {
         Self { env, program }
     }
 
+    /// Executes [the configured transaction](Env::tx).
     pub fn transact(&self) -> u8 {
         let output_file = PathBuf::from("output");
 
