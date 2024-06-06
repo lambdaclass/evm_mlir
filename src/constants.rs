@@ -37,6 +37,7 @@ pub mod gas_cost {
     pub const SAR: i64 = 3;
     pub const POP: i64 = 2;
     pub const PC: i64 = 2;
+    pub const MSIZE: i64 = 2;
     pub const GAS: i64 = 2;
     pub const JUMPDEST: i64 = 1;
     pub const PUSH0: i64 = 2;
