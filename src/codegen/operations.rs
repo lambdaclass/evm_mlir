@@ -1539,7 +1539,7 @@ fn codegen_mload<'c, 'r>(
         .append_operation(llvm::load(
             context,
             memory_ptr_ptr.into(),
-            ptr_type.into(),
+            ptr_type,
             location,
             LoadStoreOptions::default(),
         ))
@@ -2515,7 +2515,7 @@ fn codegen_mstore<'c, 'r>(
         .append_operation(llvm::load(
             context,
             memory_ptr_ptr.into(),
-            ptr_type.into(),
+            ptr_type,
             location,
             LoadStoreOptions::default(),
         ))
@@ -2697,7 +2697,7 @@ fn codegen_mstore8<'c, 'r>(
         .append_operation(llvm::load(
             context,
             memory_ptr_ptr.into(),
-            ptr_type.into(),
+            ptr_type,
             location,
             LoadStoreOptions::default(),
         ))
