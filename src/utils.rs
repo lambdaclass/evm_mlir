@@ -276,9 +276,9 @@ pub fn stack_push<'ctx>(
 pub fn get_nth_from_stack<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    nth: u32,
+    nth: u8,
 ) -> Result<(Value<'ctx, 'ctx>, OperationResult<'ctx, 'ctx>), CodegenError> {
-    debug_assert!(nth < MAX_STACK_SIZE as u32);
+    debug_assert!((nth as u32) < MAX_STACK_SIZE as u32);
     let uint256 = IntegerType::new(context, 256);
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
@@ -334,11 +334,11 @@ pub fn get_nth_from_stack<'ctx>(
 pub fn swap_stack_elements<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    position_1: u32,
-    position_2: u32,
+    position_1: u8,
+    position_2: u8,
 ) -> Result<(), CodegenError> {
-    debug_assert!(position_1 < MAX_STACK_SIZE as u32);
-    debug_assert!(position_2 < MAX_STACK_SIZE as u32);
+    debug_assert!((position_1 as u32) < MAX_STACK_SIZE as u32);
+    debug_assert!((position_2 as u32) < MAX_STACK_SIZE as u32);
     let location = Location::unknown(context);
 
     let (first_element, first_elem_address) = get_nth_from_stack(context, block, position_1)?;
