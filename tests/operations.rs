@@ -1,9 +1,9 @@
 use evm_mlir::{
-    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
+    constants::{gas_cost, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
-    syscall::{ExecutionResult, SyscallContext},
+    syscall::SyscallContext,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
