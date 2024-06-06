@@ -1523,7 +1523,7 @@ fn codegen_codesize<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32);
+    let uint256 = IntegerType::new(context, 256);
 
     // Check there's stack overflow
     let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
@@ -1550,7 +1550,7 @@ fn codegen_codesize<'c, 'r>(
     let codesize = ok_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), op_ctx.program.code_size as i64).into(),
+            IntegerAttribute::new(uint256.into(), op_ctx.program.code_size as i64).into(),
             location,
         ))
         .result(0)?
@@ -1954,7 +1954,9 @@ fn codegen_msize<'c>(
     let start_block = region.append_block(Block::new(&[]));
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
+
     let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
     let uint256 = IntegerType::new(context, 256).into();
 
     let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
@@ -1992,14 +1994,19 @@ fn codegen_msize<'c>(
         .append_operation(llvm::load(
             context,
             memory_ptr.into(),
-            uint256,
+            uint32,
             location,
             LoadStoreOptions::default(),
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, memory_size)?;
+    let memory_size_extended = ok_block
+        .append_operation(arith::extui(memory_size, uint256, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, memory_size_extended)?;
 
     Ok((start_block, ok_block))
 }

@@ -48,11 +48,12 @@ fn run_program_assert_stack_top_with_gas(
     expected_result: BigUint,
     initial_gas: u64,
 ) {
+    // NOTE: modifying this will break codesize related tests
     operations.extend([
         Operation::Push0,
         Operation::Mstore,
-        Operation::Push0,
         Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
         Operation::Return,
     ]);
     let mut result_bytes = [0_u8; 32];
@@ -783,7 +784,9 @@ fn sar_with_stack_underflow() {
 fn check_codesize() {
     let mut a: BigUint;
     let mut program = vec![Operation::Push0, Operation::Codesize];
-    let mut codesize = 2;
+    // This is the size of the push + mstore + return code added inside the function.
+    let return_code_size = 6;
+    let mut codesize = 2 + return_code_size;
 
     run_program_assert_stack_top(program, codesize.into());
 
@@ -793,7 +796,7 @@ fn check_codesize() {
 
         program = vec![Operation::Push((i / 8 + 1, a.clone())), Operation::Codesize];
 
-        codesize = 1 + (i / 8 + 1) + 1; // OPERATION::PUSHN + N + CODESIZE
+        codesize = 1 + (i / 8 + 1) + 1 + return_code_size; // OPERATION::PUSHN + N + CODESIZE
 
         run_program_assert_stack_top(program, codesize.into());
     }
@@ -1679,14 +1682,15 @@ fn push_push_exp() {
 
 #[test]
 fn exp_with_overflow_should_wrap() {
-    let a = BigUint::from(3_u8);
-    let b = BigUint::from(256_u16);
+    let a = 3_u8;
+    let b = 256_u32;
     let program = vec![
-        Operation::Push((1_u8, a.clone())),
-        Operation::Push((16_u8, b.clone())),
+        Operation::Push((1, a.into())),
+        Operation::Push((2, b.into())),
         Operation::Exp,
     ];
-    run_program_assert_stack_top(program, 1_u8.into());
+    let expected_result = b.pow(b);
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
