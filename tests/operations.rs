@@ -1,9 +1,9 @@
 use evm_mlir::{
-    constants::{gas_cost, REVERT_EXIT_CODE},
+    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
-    syscall::SyscallContext,
+    syscall::{ExecutionResult, SyscallContext},
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -181,6 +181,15 @@ fn dup_with_stack_underflow() {
 }
 
 #[test]
+fn dup_out_of_gas() {
+    let a = BigUint::from(2_u8);
+    let program = vec![Operation::Push((1_u8, a.clone())), Operation::Dup(1)];
+    let gas_needed = gas_cost::PUSHN + gas_cost::DUPN;
+
+    run_program_assert_gas_exact(program, 2, gas_needed as _);
+}
+
+#[test]
 fn push_push_shl() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
@@ -286,6 +295,19 @@ fn swap_stack_underflow() {
 }
 
 #[test]
+fn swap_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let program = vec![
+        Operation::Push((1_u8, a.clone())),
+        Operation::Push((1_u8, b.clone())),
+        Operation::Swap(1),
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SWAPN;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
@@ -295,6 +317,11 @@ fn push_push_add() {
         Operation::Add,
     ];
     run_program_assert_result(program, (a + b).try_into().unwrap());
+}
+
+#[test]
+fn add_with_stack_underflow() {
+    run_program_assert_revert(vec![Operation::Add]);
 }
 
 #[test]
@@ -340,8 +367,16 @@ fn sub_add_wrapping() {
 }
 
 #[test]
-fn add_with_stack_underflow() {
-    run_program_assert_revert(vec![Operation::Add]);
+fn sub_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let program = vec![
+        Operation::Push((1_u8, a.clone())),
+        Operation::Push((1_u8, b.clone())),
+        Operation::Sub,
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SUB;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
 }
 
 #[test]
@@ -1945,4 +1980,160 @@ fn slt_gas_should_revert() {
 fn slt_stack_underflow() {
     let program = vec![Operation::Slt];
     run_program_assert_revert(program);
+}
+
+
+#[test]
+fn jump_with_gas_cost() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 3
+    // [02] JUMP
+    // [03] JUMPDEST
+    let jumpdest: u8 = 3;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(0_u8))),
+        Operation::Push((1_u8, BigUint::from(jumpdest))),
+        Operation::Jump,
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+    ];
+    let expected_result = 0;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+}
+
+#[test]
+fn mload_with_stack_underflow() {
+    let program = vec![Operation::Mload];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore_with_stack_underflow() {
+    let program = vec![Operation::Mstore];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore8_with_stack_underflow() {
+    let program = vec![Operation::Mstore8];
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn mstore8_mload_with_zero_address() {
+    let stored_value = BigUint::from(44_u8);
+    let program = vec![
+        Operation::Push((1_u8, stored_value.clone())), // value
+        Operation::Push((1_u8, BigUint::from(31_u8))), // offset
+        Operation::Mstore8,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mstore_mload_with_zero_address() {
+    let stored_value = BigUint::from(10_u8);
+    let program = vec![
+        Operation::Push((1_u8, stored_value.clone())), // value
+        Operation::Push0,                      // offset
+        Operation::Mstore,
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mstore_mload_with_memory_extension() {
+    let stored_value = BigUint::from(25_u8);
+    let program = vec![
+        Operation::Push((1_u8, stored_value.clone())), // value
+        Operation::Push((1_u8, BigUint::from(32_u8))), // offset
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, stored_value.try_into().unwrap());
+}
+
+#[test]
+fn mload_not_allocated_address() {
+    // When offset for MLOAD is bigger than the current memory size, memory is extended with zeros
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(32_u8))), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_result(program, 0_u8);
+}
+
+#[test]
+fn check_initial_memory_size() {
+    let program = vec![Operation::Msize];
+
+    run_program_assert_result(program, 0)
+}
+
+#[test]
+fn check_memory_size_after_store() {
+    let a = (BigUint::from(1_u8) << 256) - 1_u8;
+    let b = (BigUint::from(1_u8) << 256) - 1_u8;
+    let program = vec![
+        Operation::Push((32_u8, a)),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((32_u8, b)),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Msize,
+    ];
+
+    run_program_assert_result(program, 64);
+}
+
+#[test]
+fn msize_out_of_gas() {
+    let program = vec![Operation::Msize];
+    let gas_needed = gas_cost::MSIZE;
+
+    run_program_assert_gas_exact(program, 0, gas_needed as _);
+}
+
+#[test]
+fn test_return_with_gas() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push((1_u8, BigUint::from(2_u8))),
+        Operation::Return,
+    ];
+    let execution_result = run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, 20);
+
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Success {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
+}
+
+#[test]
+fn test_revert_with_gas() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push((1_u8, BigUint::from(2_u8))),
+        Operation::Revert,
+    ];
+    let execution_result = run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, 20);
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Revert {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
 }
