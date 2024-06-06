@@ -8,15 +8,17 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE}, MEMORY_SIZE_GLOBAL},
+    constants::{
+        MEMORY_SIZE_GLOBAL, {gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
+    },
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, integer_constant_from_u8, llvm_mlir, stack_pop,
-        stack_push, swap_stack_elements,
+        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, stack_pop, stack_push,
+        swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1913,7 +1915,7 @@ fn codegen_return<'c>(
     let reason = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, reason as i8).into(),
+            integer_constant_from_u8(context, reason).into(),
             location,
         ))
         .result(0)?
@@ -1924,7 +1926,7 @@ fn codegen_return<'c>(
     let return_exit_code = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, RETURN_EXIT_CODE as i8).into(),
+            integer_constant_from_u8(context, RETURN_EXIT_CODE).into(),
             location,
         ))
         .result(0)?
@@ -2012,7 +2014,7 @@ fn codegen_revert<'c>(
     let revert_exit_code = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, REVERT_EXIT_CODE as i8).into(),
+            integer_constant_from_u8(context, REVERT_EXIT_CODE).into(),
             location,
         ))
         .result(0)?
@@ -2036,7 +2038,7 @@ fn codegen_stop<'c, 'r>(
     let zero = start_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, 0).into(),
+            integer_constant_from_u8(context, 0).into(),
             location,
         ))
         .result(0)?
