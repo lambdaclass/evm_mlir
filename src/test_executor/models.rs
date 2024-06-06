@@ -1,4 +1,6 @@
-use serde::{de, Deserialize, Serialize};
+use super::primitives::Address;
+use alloy_primitives::{Bytes, B256, U256};
+use serde::{de, Deserialize};
 use std::collections::{BTreeMap, HashMap};
 
 /*
@@ -33,8 +35,6 @@ where
 }
 
 pub type SpecName = String; //TODO: maybe we should check if the SpecName is valid
-
-use alloy_primitives::{Address, Bytes, B256, U256};
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct TestSuite(pub BTreeMap<String, TestUnit>);
@@ -102,7 +102,7 @@ pub struct Env {
     pub current_excess_blob_gas: Option<U256>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransactionParts {
     pub data: Vec<Bytes>,
@@ -125,7 +125,7 @@ pub struct TransactionParts {
     pub max_fee_per_blob_gas: Option<U256>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccessListItem {
     pub address: Address,
