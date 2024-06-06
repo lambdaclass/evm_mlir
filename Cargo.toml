@@ -8,15 +8,32 @@ license = "LICENSE"
 keywords = ["ethereum", "evm"]
 
 [dependencies]
+alloy-primitives = { version = "0.7.5", features = [ "rlp" ] }
 llvm-sys = "180.0.0"
 melior = { version = "0.18.1", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"
 num-bigint = "0.4.5"
+serde = { version = "1.0.203", features = ["derive", "rc"] }
+serde_json = { version = "1.0.117" }
 tempfile = "3.10.1"
 thiserror = "1.0.57"
+walkdir = "2.5.0"
 
 [dev-dependencies]
 rstest = "0.21.0"
 
 [build-dependencies]
 cc = "1.0.83"
+
+[features]
+default = ["std"]
+
+std = [
+    "serde/std",
+    "alloy-primitives/std",
+]
+
+serde = [
+    "alloy-primitives/serde",
+]
+
