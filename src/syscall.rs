@@ -35,7 +35,7 @@ pub struct SyscallContext {
     result: Option<(usize, usize)>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    env: Env,
+    pub env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
