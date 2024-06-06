@@ -2574,6 +2574,7 @@ fn codegen_mcopy<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
@@ -2616,6 +2617,12 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)
         .unwrap()
         .into();
+    
+    let size = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
 
     // required_size = offset + size
     let required_size = ok_block
@@ -2623,7 +2630,7 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let mut memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
     let memory_copy_destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
