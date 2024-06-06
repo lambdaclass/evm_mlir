@@ -1,9 +1,5 @@
 use melior::{
-    dialect::{
-        arith, cf, func,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
-        ods,
-    },
+    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
