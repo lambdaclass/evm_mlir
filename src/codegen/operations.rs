@@ -2520,3 +2520,66 @@ fn codegen_mstore8<'c, 'r>(
 
     Ok((start_block, ok_block))
 }
+
+fn codegen_mcopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::MCOPY)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block);
+    // where to copy from
+    let offset = stack_pop(context, &ok_block);
+    let size = stack_pop(context, &ok_block);
+
+    // truncate offset and dest_offset to 32 bits
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    // required_size = offset + size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+}
