@@ -2047,3 +2047,20 @@ fn mload_not_allocated_address() {
     ];
     run_program_assert_result(program, 0_u8);
 }
+
+
+#[test]
+fn mstore_mcopy_mload_with_zero_address() {
+    let value = BigUint::from(10_u8);
+    let program = vec![
+        Operation::Push((1_u8, value)),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload
+    ];
+
+    run_program_assert_result(program, value.try_into().unwrap());
+}

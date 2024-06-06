@@ -2532,9 +2532,7 @@ fn codegen_mcopy<'c, 'r>(
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
-    // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    // Check there's enough gas
     let gas_flag = consume_gas(context, &start_block, gas_cost::MCOPY)?;
 
     let condition = start_block
@@ -2555,13 +2553,12 @@ fn codegen_mcopy<'c, 'r>(
     ));
 
     // where to copy
-    let dest_offset = stack_pop(context, &ok_block);
+    let dest_offset = stack_pop(context, &ok_block)?;
     // where to copy from
-    let offset = stack_pop(context, &ok_block);
-    let size = stack_pop(context, &ok_block);
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
 
     // truncate offset and dest_offset to 32 bits
-
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
         .result(0)
@@ -2582,4 +2579,71 @@ fn codegen_mcopy<'c, 'r>(
 
     let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
+    let memory_copy_destination = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let read_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            memory_copy_destination,
+            uint256.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    // check system endianness before storing the value
+    let read_value = if cfg!(target_endian = "little") {
+        // if the system is little endian, we convert the value to big endian
+        ok_block
+            .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        // if the system is big endian, there is no need to convert the value
+        read_value
+    };
+
+    // dest_required_size = dest_offset + size
+    let dest_required_size = ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+
+    memory_ptr = extend_memory(op_ctx, &ok_block, dest_required_size)?;
+
+    // memory_destination = memory_ptr + offset
+    let memory_write_destination = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[dest_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(llvm::store(
+        context,
+        read_value,
+        memory_write_destination,
+        location,
+        LoadStoreOptions::new()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
+    Ok((start_block, ok_block))
 }
