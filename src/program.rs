@@ -38,7 +38,7 @@ pub enum Opcode {
     // CALLER = 0x33,
     // CALLVALUE = 0x34,
     // CALLDATALOAD = 0x35,
-    // CALLDATASIZE = 0x36,
+    CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     // CODESIZE = 0x38,
     // CODECOPY = 0x39,
@@ -310,6 +310,7 @@ pub enum Operation {
     Return,
     Mstore,
     Mstore8,
+    CallDataSize,
 }
 
 #[derive(Debug, Clone)]
@@ -586,6 +587,7 @@ impl Program {
                 Opcode::RETURN => Operation::Return,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
+                Opcode::CALLDATASIZE => Operation::CallDataSize, 
                 Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);
