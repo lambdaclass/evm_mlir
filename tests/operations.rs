@@ -66,6 +66,17 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
     }
 }
 
+
+#[test]
+fn test_calldatasize_with_gas() {
+    let program = vec![
+        Operation::CallDataSize,
+    ];
+    let expected_result = 0_u64;
+
+    run_program_assert_result(program, expected_result as _);
+}
+
 #[test]
 fn test_return_with_gas() {
     let program = vec![

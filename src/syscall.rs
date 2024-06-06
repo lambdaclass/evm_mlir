@@ -87,6 +87,10 @@ impl SyscallContext {
         &self.memory[offset..offset + size]
     }
 
+    pub fn get_size_call_data(&self) -> u64 {
+        self.env.tx.calldata.len() as u64
+    }   
+
     pub fn get_result(&self) -> ExecutionResult {
         let gas_remaining = self.gas_remaining.unwrap_or(0);
         let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
@@ -258,7 +262,6 @@ pub(crate) mod mlir {
         block: &'c Block,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        //let ptr_type = pointer(mlir_ctx, 0);
         let uint64 = IntegerType::new(mlir_ctx, 64).into();
         let value = block
             .append_operation(func::call(
