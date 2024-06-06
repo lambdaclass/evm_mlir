@@ -1204,7 +1204,7 @@ fn and_with_stack_underflow() {
 #[test]
 fn mod_with_non_zero_result() {
     let (num, den) = (BigUint::from(31_u8), BigUint::from(10_u8));
-    let expected_result = (&num % &den).try_into().unwrap();
+    let expected_result = &num % &den;
 
     let program = vec![
         Operation::Push((1_u8, den)),
@@ -1217,7 +1217,7 @@ fn mod_with_non_zero_result() {
 #[test]
 fn mod_with_result_zero() {
     let (num, den) = (BigUint::from(10_u8), BigUint::from(2_u8));
-    let expected_result = (&num % &den).try_into().unwrap();
+    let expected_result = &num % &den;
 
     let program = vec![
         Operation::Push((1_u8, den)),

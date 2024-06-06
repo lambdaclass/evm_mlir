@@ -678,7 +678,7 @@ pub(crate) fn return_empty_result(
 
     return_result_with_offset_and_size(
         op_ctx,
-        &block,
+        block,
         zero_constant,
         zero_constant,
         reason_code,

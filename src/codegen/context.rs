@@ -59,9 +59,9 @@ impl<'c> OperationCtx<'c> {
         let initial_gas = setup_block.add_argument(uint64, location);
 
         // Append setup code to be run at the start
-        generate_stack_setup_code(context, module, &setup_block)?;
-        generate_memory_setup_code(context, module, &setup_block)?;
-        generate_gas_counter_setup_code(context, module, &setup_block, initial_gas)?;
+        generate_stack_setup_code(context, module, setup_block)?;
+        generate_memory_setup_code(context, module, setup_block)?;
+        generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
         syscall::mlir::declare_syscalls(context, module);
 
