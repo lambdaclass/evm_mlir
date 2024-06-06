@@ -1,5 +1,13 @@
+use core::slice;
+
 use melior::{
-    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        arith,
+        cf::{self, br, cond_br},
+        func,
+        llvm::{self, r#type::pointer, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -2317,6 +2325,7 @@ fn codegen_calldataload<'c, 'r>(
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
     let uint8 = IntegerType::new(context, 8);
+    let uint32 = IntegerType::new(context, 32);
     let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
@@ -2347,8 +2356,64 @@ fn codegen_calldataload<'c, 'r>(
 
     // TODO: check that offset < calldatasize
 
+    // `slice` is the result of reading calldata from offset to offset + 32
+    // i.e  slice = calldata[offset..offset + 32];
+    // so the slice width always equals 32 (bytes)
+    let slice_width = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // offset + 32
+    let offset_plus_slice_width = ok_block
+        .append_operation(arith::addi(offset, slice_width, location))
+        .result(0)?
+        .into();
+
+    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+
+    let calldata_size = ok_block
+        .append_operation(arith::constant(context, calldata_size.into(), location))
+        .result(0)?
+        .into();
+
+    // flag = offset_plus_slice_width > calldata_size?
+    let flag = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ugt,
+            offset_plus_slice_width,
+            calldata_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let out_of_bounds_block = region.append_block(Block::new(&[]));
+    let slice_ok_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cond_br(
+        context,
+        flag,
+        &out_of_bounds_block,
+        &slice_ok_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let end_block = region.append_block(Block::new(&[]));
+
+    /********************************* slice_ok_block *****************************************/
+    // in this case offset + 32 <= calldatasize so we simply read the calldata and push the slice
+    // to the stack
+
     // calldata_ptr_at_offset = calldata_ptr + offset
-    let calldata_ptr_at_offset = ok_block
+    let calldata_ptr_at_offset = slice_ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             calldata_ptr,
@@ -2361,7 +2426,7 @@ fn codegen_calldataload<'c, 'r>(
         .into();
 
     // calldata_slice = calldata[offset..offset + 32bytes]
-    let calldata_slice = ok_block
+    let calldata_slice = slice_ok_block
         .append_operation(llvm::load(
             context,
             calldata_ptr_at_offset,
@@ -2376,7 +2441,7 @@ fn codegen_calldataload<'c, 'r>(
     // check system endianness before storing the value
     let calldata_slice = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        ok_block
+        slice_ok_block
             .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
             .result(0)?
             .into()
@@ -2385,6 +2450,92 @@ fn codegen_calldataload<'c, 'r>(
         calldata_slice
     };
 
-    stack_push(context, &ok_block, calldata_slice)?;
-    Ok((start_block, ok_block))
+    stack_push(context, &slice_ok_block, calldata_slice)?;
+
+    slice_ok_block.append_operation(br(&end_block, &[], location));
+    // both blocks (slice_ok_block and out_of_bounds_block meet at end_block)
+
+    /********************************* out_of_bounds_block *****************************************/
+    // in this case, offset + 32 > calldata_size so we have to adjust the offset in order to not read outside of calldata
+    // and then make a left shift to place the result correctly, and finally push the result into the stack
+
+    // we adjust the offset as follows
+    //
+    //      (1) new_offset = calldata_size - slice_width
+    //
+    // so that the last byte of the slice matches the last byte of the calldata
+    // i.e the last byte we read is the last byte of calldata.
+    //
+    // for example, lets say calldata is 48 bytes long
+    //
+    //      calldata = [0, 1, ... 47]
+    //
+    // and lets say offset = 32 so we want to read from calldata[32] to calldata[64], but that's out of bounds
+    // so what we do is move the offset to the left (following (1)) so that is not out of bounds, that is
+    //
+    //      offset = 48 - 32 = 16
+    //
+    // so we are reading from calldata[16] up to calldata[47], but in this case the last 16 bytes must be zeroes according
+    // to the documentation, so we perform a left shift of (offset + 32) - calldatasize = 64 - 48 = 16 bytes
+
+    let new_offset = out_of_bounds_block
+        .append_operation(arith::subi(calldata_size, slice_width, location))
+        .result(0)?
+        .into();
+
+    // calldata_ptr_at_new_offset = calldata_ptr + new_offset
+    let calldata_ptr_at_new_offset = slice_ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            calldata_ptr,
+            &[new_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let slice = out_of_bounds_block
+        .append_operation(llvm::load(
+            context,
+            calldata_ptr_at_new_offset,
+            uint256.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    // shift = offset_plus_slice_width - calldatasize
+    //
+    // for example, if calldatasize = 32, and offset = 1 then offset_plus_slice_width = 1 + 32 = 33
+    // so we have to shift the slice 33 - 32 = 1 byte = 8 bits to the left
+    let shift_in_bytes = out_of_bounds_block
+        .append_operation(arith::subi(
+            offset_plus_slice_width,
+            calldata_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let bits_per_byte = constant_value_from_i64(context, &out_of_bounds_block, 8)?;
+
+    let shift_in_bits = out_of_bounds_block
+        .append_operation(arith::muli(shift_in_bytes, bits_per_byte, location))
+        .result(0)?
+        .into();
+
+    let shifted_slice = out_of_bounds_block
+        .append_operation(arith::shli(slice, shift_in_bits, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &out_of_bounds_block, shifted_slice)?;
+
+    slice_ok_block.append_operation(br(&end_block, &[], location));
+
+    Ok((start_block, end_block))
 }
