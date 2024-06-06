@@ -1570,7 +1570,7 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    // check system endianness before storing the value
+    // check system endianness before pushing the value
     let read_value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
         memory_access_block
@@ -2464,14 +2464,14 @@ fn codegen_mstore<'c, 'r>(
 
     // Compare current memory_size and required_size
     let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
-    let store_block = region.append_block(Block::new(&[]));
+    let memory_access_block = region.append_block(Block::new(&[]));
     let extension_block = region.append_block(Block::new(&[]));
 
     ok_block.append_operation(cf::cond_br(
         context,
         extension_flag,
         &extension_block,
-        &store_block,
+        &memory_access_block,
         &[],
         &[],
         location,
@@ -2498,7 +2498,7 @@ fn codegen_mstore<'c, 'r>(
     extension_block.append_operation(cf::cond_br(
         context,
         flag,
-        &store_block,
+        &memory_access_block,
         &op_ctx.revert_block,
         &[],
         &[],
@@ -2507,11 +2507,11 @@ fn codegen_mstore<'c, 'r>(
 
     // Memory access
     // TODO: loading the memory_ptr can be avoided passing it as a block parameter
-    let memory_ptr_ptr = store_block
+    let memory_ptr_ptr = memory_access_block
         .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
         .result(0)?;
 
-    let memory_ptr = store_block
+    let memory_ptr = memory_access_block
         .append_operation(llvm::load(
             context,
             memory_ptr_ptr.into(),
@@ -2523,7 +2523,7 @@ fn codegen_mstore<'c, 'r>(
         .into();
 
     // memory_destination = memory_ptr + offset
-    let memory_destination = store_block
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2540,7 +2540,7 @@ fn codegen_mstore<'c, 'r>(
     // check system endianness before storing the value
     let value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        store_block
+        memory_access_block
             .append_operation(llvm::intr_bswap(value, uint256.into(), location))
             .result(0)?
             .into()
@@ -2550,7 +2550,7 @@ fn codegen_mstore<'c, 'r>(
     };
 
     // store the value in the memory
-    store_block.append_operation(llvm::store(
+    memory_access_block.append_operation(llvm::store(
         context,
         value,
         memory_destination,
@@ -2559,7 +2559,7 @@ fn codegen_mstore<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
-    Ok((start_block, store_block))
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_mstore8<'c, 'r>(
