@@ -61,9 +61,9 @@ pub enum Opcode {
     // BLOBBASEFEE = 0x4A,
     // unused 0x4B-0x4F
     POP = 0x50,
-    MLOAD = 0x51,
-    MSTORE = 0x52,
-    MSTORE8 = 0x53,
+    // MLOAD = 0x51,
+    // MSTORE = 0x52,
+    // MSTORE8 = 0x53,
     // SLOAD = 0x54,
     // SSTORE = 0x55,
     JUMP = 0x56,
@@ -319,9 +319,6 @@ impl Program {
                 break;
             };
             let op = match Opcode::from(opcode) {
-                Opcode::MLOAD => Operation::Stop,
-                Opcode::MSTORE => Operation::Stop,
-                Opcode::MSTORE8 => Operation::Stop,
                 Opcode::STOP => Operation::Stop,
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
