@@ -62,7 +62,6 @@ impl<'c> OperationCtx<'c> {
         reason: Value,
         location: Location,
     ) {
-        println!("[en op_ctx] reason: {:?}", reason);
         syscall::mlir::write_result_syscall(
             self.mlir_context,
             self.syscall_ctx,

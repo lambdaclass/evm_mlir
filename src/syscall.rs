@@ -116,7 +116,6 @@ impl SyscallContext {
         remaining_gas: u64,
         execution_result: u8,
     ) {
-        println!("[en syscall_ctx] execution_result: {:?}", execution_result);
         self.return_data = Some((offset as usize, bytes_len as usize));
         self.gas_remaining = Some(remaining_gas);
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
@@ -226,7 +225,6 @@ pub(crate) mod mlir {
         reason: Value,
         location: Location,
     ) {
-        println!("[en mod mlir] reason: {:?}", reason);
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),

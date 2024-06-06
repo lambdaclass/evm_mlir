@@ -1997,7 +1997,6 @@ fn codegen_revert<'c>(
 
     let remaining_gas = get_remaining_gas(context, &ok_block)?;
     let reason = ExitStatusCode::Revert.to_u8();
-    println!("[en op revert:] REVERT REASON: {}", reason);
     let reason = ok_block
         .append_operation(arith::constant(
             context,
@@ -2006,7 +2005,6 @@ fn codegen_revert<'c>(
         ))
         .result(0)?
         .into();
-    println!("[en op revert:] reason pasado a value: {:?}", reason);
 
     op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
 
