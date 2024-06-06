@@ -17,9 +17,10 @@ use crate::{
     codegen::context::OperationCtx,
     constants::{
         GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
+    syscall::ExitStatusCode,
 };
 
 pub fn get_remaining_gas<'ctx>(
@@ -565,24 +566,6 @@ pub fn check_is_greater_than<'ctx>(
     Ok(flag.into())
 }
 
-pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: return result via write_result syscall
-    let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
-
-    let revert_block = Block::new(&[]);
-
-    let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
-
-    let exit_code = revert_block
-        .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?
-        .into();
-
-    revert_block.append_operation(func::r#return(&[exit_code], location));
-    Ok(revert_block)
-}
-
 pub fn check_if_zero<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -672,6 +655,32 @@ pub(crate) fn extend_memory<'c>(
     assert!(res.verify());
 
     Ok(memory_ptr)
+}
+
+pub(crate) fn return_result(
+    op_ctx: &mut OperationCtx,
+    block: &Block,
+    offset: Value,
+    size: Value,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let remaining_gas = get_remaining_gas(context, &block)?;
+
+    let reason = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, reason_code.to_u8()).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.write_result_syscall(&block, offset, size, remaining_gas, reason, location);
+
+    block.append_operation(func::r#return(&[reason], location));
+    Ok(())
 }
 
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {

@@ -8,17 +8,15 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{
-        MEMORY_SIZE_GLOBAL, {gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
-    },
+    constants::{gas_cost, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, stack_pop, stack_push,
-        swap_stack_elements,
+        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, return_result, stack_pop,
+        stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -2055,29 +2053,14 @@ fn codegen_return<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    let remaining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExitStatusCode::Return.to_u8();
-    let reason = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_u8(context, reason).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
-
-    let return_exit_code = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_u8(context, RETURN_EXIT_CODE).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    ok_block.append_operation(func::r#return(&[return_exit_code], location));
+    return_result(
+        op_ctx,
+        &ok_block,
+        offset,
+        size,
+        ExitStatusCode::Return,
+        location,
+    )?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2140,30 +2123,14 @@ fn codegen_revert<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    let remaining_gas = get_remaining_gas(context, &ok_block)?;
-    let reason = ExitStatusCode::Revert.to_u8();
-    let reason = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_u8(context, reason).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
-
-    // Terminar la ejecución después del revert
-    let revert_exit_code = ok_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_u8(context, REVERT_EXIT_CODE).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+    return_result(
+        op_ctx,
+        &ok_block,
+        offset,
+        size,
+        ExitStatusCode::Revert,
+        location,
+    )?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
