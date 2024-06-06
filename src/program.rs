@@ -544,19 +544,19 @@ impl Program {
                     pc += 1;
                     let x = bytecode[pc..(pc + 30)].try_into().unwrap();
                     pc += 29;
-                    Operation::Push((31, (BigUint::from_bytes_be(x))))
+                    Operation::Push((30, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::PUSH31 => {
                     pc += 1;
                     let x = bytecode[pc..(pc + 31)].try_into().unwrap();
                     pc += 30;
-                    Operation::Push((32, (BigUint::from_bytes_be(x))))
+                    Operation::Push((31, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::PUSH32 => {
                     pc += 1;
                     let x = bytecode[pc..(pc + 32)].try_into().unwrap();
                     pc += 31;
-                    Operation::Push((1, (BigUint::from_bytes_be(x))))
+                    Operation::Push((32, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::DUP1 => Operation::Dup(1),
                 Opcode::DUP2 => Operation::Dup(2),

@@ -33,7 +33,7 @@ pub fn generate_code_for_op<'c>(
     match op {
         Operation::Stop => codegen_stop(op_ctx, region),
         Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
-        Operation::Push(x) => codegen_push(op_ctx, region, x, false),
+        Operation::Push((_, x)) => codegen_push(op_ctx, region, x, false),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
@@ -58,6 +58,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shr => codegen_shr(op_ctx, region),
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
+        Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -504,7 +505,7 @@ fn codegen_push<'c, 'r>(
 fn codegen_dup<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
-    nth: u32,
+    nth: u8,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
     let start_block = region.append_block(Block::new(&[]));
@@ -512,7 +513,7 @@ fn codegen_dup<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, nth)?;
+    let flag = check_stack_has_at_least(context, &start_block, nth as u32)?;
 
     let gas_flag = consume_gas(context, &start_block, gas_cost::DUPN)?;
 
@@ -542,7 +543,7 @@ fn codegen_dup<'c, 'r>(
 fn codegen_swap<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
-    nth: u32,
+    nth: u8,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
     let start_block = region.append_block(Block::new(&[]));
@@ -550,7 +551,7 @@ fn codegen_swap<'c, 'r>(
     let location = Location::unknown(context);
 
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, nth + 1)?;
+    let flag = check_stack_has_at_least(context, &start_block, (nth + 1) as u32)?;
 
     let gas_flag = consume_gas(context, &start_block, gas_cost::SWAPN)?;
 
