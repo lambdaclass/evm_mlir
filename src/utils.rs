@@ -657,7 +657,73 @@ pub(crate) fn extend_memory<'c>(
     Ok(memory_ptr)
 }
 
-pub(crate) fn return_result(
+pub(crate) fn return_empty_result(
+    op_ctx: &OperationCtx,
+    block: &Block,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let zero_constant = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    return_result_with_offset_and_size(
+        op_ctx,
+        &block,
+        zero_constant,
+        zero_constant,
+        reason_code,
+        location,
+    )?;
+
+    Ok(())
+}
+
+pub(crate) fn return_result_from_stack(
+    op_ctx: &OperationCtx,
+    block: &Block,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint32 = IntegerType::new(context, 32);
+
+    let offset_u256 = stack_pop(context, &block)?;
+    let size_u256 = stack_pop(context, &block)?;
+
+    let offset = block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &block, required_size)?;
+
+    return_result_with_offset_and_size(op_ctx, &block, offset, size, reason_code, location)?;
+
+    Ok(())
+}
+
+pub(crate) fn return_result_with_offset_and_size(
     op_ctx: &OperationCtx,
     block: &Block,
     offset: Value,

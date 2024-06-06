@@ -27,19 +27,22 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
-    Revert = 1,
-    Error = 2,
+    Stop,
+    Revert,
+    Error,
     Default,
 }
 impl ExitStatusCode {
+    #[inline(always)]
     pub fn to_u8(self) -> u8 {
         self as u8
     }
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => Self::Return,
-            1 => Self::Revert,
-            2 => Self::Error,
+            x if x == Self::Return.to_u8() => Self::Return,
+            x if x == Self::Stop.to_u8() => Self::Stop,
+            x if x == Self::Revert.to_u8() => Self::Revert,
+            x if x == Self::Error.to_u8() => Self::Error,
             _ => Self::Default,
         }
     }
@@ -91,7 +94,7 @@ impl SyscallContext {
         let gas_remaining = self.gas_remaining.unwrap_or(0);
         let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
         match exit_status {
-            ExitStatusCode::Return => ExecutionResult::Success {
+            ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
             },

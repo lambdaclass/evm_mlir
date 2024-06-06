@@ -1,5 +1,5 @@
 use melior::{
-    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{arith, cf, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -15,8 +15,8 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, return_result, stack_pop,
-        stack_push, swap_stack_elements,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -2012,8 +2012,6 @@ fn codegen_return<'c>(
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let uint32 = IntegerType::new(context, 32);
-
     let start_block = region.append_block(Block::new(&[]));
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -2029,38 +2027,7 @@ fn codegen_return<'c>(
         location,
     ));
 
-    let offset_u256 = stack_pop(context, &ok_block)?;
-    let size_u256 = stack_pop(context, &ok_block)?;
-
-    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
-    // If any of them were bigger than a u32, we would have ran out of gas before here.
-    let offset = ok_block
-        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let size = ok_block
-        .append_operation(arith::trunci(size_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
-        .result(0)?
-        .into();
-
-    extend_memory(op_ctx, &ok_block, required_size)?;
-
-    return_result(
-        op_ctx,
-        &ok_block,
-        offset,
-        size,
-        ExitStatusCode::Return,
-        location,
-    )?;
+    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Return, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2082,8 +2049,6 @@ fn codegen_revert<'c>(
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let uint32 = IntegerType::new(context, 32);
-
     let start_block = region.append_block(Block::new(&[]));
     let ok_block = region.append_block(Block::new(&[]));
 
@@ -2099,38 +2064,7 @@ fn codegen_revert<'c>(
         location,
     ));
 
-    let offset_u256 = stack_pop(context, &ok_block)?;
-    let size_u256 = stack_pop(context, &ok_block)?;
-
-    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
-    // If any of them were bigger than a u32, we would have ran out of gas before here.
-    let offset = ok_block
-        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let size = ok_block
-        .append_operation(arith::trunci(size_u256, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
-        .result(0)?
-        .into();
-
-    extend_memory(op_ctx, &ok_block, required_size)?;
-
-    return_result(
-        op_ctx,
-        &ok_block,
-        offset,
-        size,
-        ExitStatusCode::Revert,
-        location,
-    )?;
+    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Revert, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2145,16 +2079,8 @@ fn codegen_stop<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let zero = start_block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_u8(context, 0).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    return_empty_result(op_ctx, &start_block, ExitStatusCode::Stop, location)?;
 
-    start_block.append_operation(func::r#return(&[zero], location));
     let empty_block = region.append_block(Block::new(&[]));
 
     Ok((start_block, empty_block))
