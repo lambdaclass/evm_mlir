@@ -30,7 +30,7 @@ pub fn generate_code_for_op<'c>(
     match op {
         Operation::Stop => codegen_stop(op_ctx, region),
         Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
-        Operation::Push((x, _)) => codegen_push(op_ctx, region, x, false),
+        Operation::Push((_, x)) => codegen_push(op_ctx, region, x, false),
         Operation::Add => codegen_add(op_ctx, region),
         Operation::Mul => codegen_mul(op_ctx, region),
         Operation::Sub => codegen_sub(op_ctx, region),
@@ -1429,7 +1429,7 @@ fn codegen_codesize<'c, 'r>(
         .iter()
         .map(|op| match op {
             // the size in bytes to push + 1 from the PUSHN opcode
-            Operation::Push((_, size)) => (size + 1) as u32,
+            Operation::Push((size, _)) => (size + 1) as u32,
             _ => 1,
         })
         .sum();
