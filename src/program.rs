@@ -26,7 +26,7 @@ pub enum Opcode {
     XOR = 0x18,
     // NOT = 0x19,
     BYTE = 0x1A,
-    // SHL = 0x1B,
+    SHL = 0x1B,
     SHR = 0x1C,
     SAR = 0x1D,
     // unused 0x1E-0x1F
@@ -62,8 +62,8 @@ pub enum Opcode {
     // unused 0x4B-0x4F
     POP = 0x50,
     // MLOAD = 0x51,
-    // MSTORE = 0x52,
-    // MSTORE8 = 0x53,
+    MSTORE = 0x52,
+    MSTORE8 = 0x53,
     // SLOAD = 0x54,
     // SSTORE = 0x55,
     JUMP = 0x56,
@@ -187,6 +187,7 @@ impl From<u8> for Opcode {
             x if x == Opcode::XOR as u8 => Opcode::XOR,
             x if x == Opcode::BYTE as u8 => Opcode::BYTE,
             x if x == Opcode::SHR as u8 => Opcode::SHR,
+            x if x == Opcode::SHL as u8 => Opcode::SHL,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::JUMP as u8 => Opcode::JUMP,
@@ -260,6 +261,8 @@ impl From<u8> for Opcode {
             x if x == Opcode::SWAP15 as u8 => Opcode::SWAP15,
             x if x == Opcode::SWAP16 as u8 => Opcode::SWAP16,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
+            x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
             _ => Opcode::UNUSED,
         }
     }
@@ -271,6 +274,7 @@ pub enum Operation {
     Add,
     Mul,
     Sub,
+    Sgt,
     Div,
     Sdiv,
     Mod,
@@ -282,7 +286,6 @@ pub enum Operation {
     Lt,
     Gt,
     Slt,
-    Sgt,
     Eq,
     IsZero,
     And,
@@ -290,6 +293,7 @@ pub enum Operation {
     Xor,
     Byte,
     Shr,
+    Shl,
     Sar,
     Pop,
     Jump,
@@ -302,6 +306,8 @@ pub enum Operation {
     Dup(u32),
     Swap(u32),
     Return,
+    Mstore,
+    Mstore8,
 }
 
 #[derive(Debug, Clone)]
@@ -342,6 +348,7 @@ impl Program {
                 Opcode::XOR => Operation::Xor,
                 Opcode::BYTE => Operation::Byte,
                 Opcode::SHR => Operation::Shr,
+                Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
                 Opcode::POP => Operation::Pop,
                 Opcode::JUMP => Operation::Jump,
@@ -574,6 +581,8 @@ impl Program {
                 Opcode::SWAP15 => Operation::Swap(15),
                 Opcode::SWAP16 => Operation::Swap(16),
                 Opcode::RETURN => Operation::Return,
+                Opcode::MSTORE => Operation::Mstore,
+                Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);

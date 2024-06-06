@@ -176,6 +176,56 @@ fn dup_with_stack_underflow() {
 }
 
 #[test]
+fn dup_out_of_gas() {
+    let a = BigUint::from(2_u8);
+    let program = vec![Operation::Push(a.clone()), Operation::Dup(1)];
+    let gas_needed = gas_cost::PUSHN + gas_cost::DUPN;
+
+    run_program_assert_gas_exact(program, 2, gas_needed as _);
+}
+
+#[test]
+fn push_push_shl() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Shl,
+    ];
+
+    run_program_assert_result(program, 16);
+}
+
+#[test]
+fn shl_shift_grater_than_255() {
+    let program = vec![
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Push(BigUint::from(256_u16)),
+        Operation::Shl,
+    ];
+
+    run_program_assert_result(program, 0);
+}
+
+#[test]
+fn shl_with_stack_underflow() {
+    let program = vec![Operation::Shl];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
+fn shl_out_of_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(4_u8)),
+        Operation::Shl,
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SHL;
+
+    run_program_assert_gas_exact(program, 16, gas_needed as _);
+}
+
+#[test]
 fn swap_first() {
     let program = vec![
         Operation::Push(BigUint::from(1_u8)),
@@ -240,6 +290,19 @@ fn swap_stack_underflow() {
 }
 
 #[test]
+fn swap_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Swap(1),
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SWAPN;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
+}
+
+#[test]
 fn push_push_add() {
     let (a, b) = (BigUint::from(11_u8), BigUint::from(31_u8));
 
@@ -291,6 +354,19 @@ fn sub_add_wrapping() {
     ];
 
     run_program_assert_result(program, 1);
+}
+
+#[test]
+fn sub_out_of_gas() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let program = vec![
+        Operation::Push(a.clone()),
+        Operation::Push(b.clone()),
+        Operation::Sub,
+    ];
+    let gas_needed = gas_cost::PUSHN * 2 + gas_cost::SUB;
+
+    run_program_assert_gas_exact(program, 1, gas_needed as _);
 }
 
 #[test]
@@ -380,6 +456,23 @@ fn div_with_zero_numerator() {
 #[test]
 fn div_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Div]);
+}
+
+#[test]
+fn div_gas_should_revert() {
+    let (a, b) = (BigUint::from(21_u8), BigUint::from(5_u8));
+
+    let expected_result = (&a / &b).try_into().unwrap();
+
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Div,
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::DIV;
+
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -520,6 +613,20 @@ fn mul_wraps_result() {
 #[test]
 fn mul_with_stack_underflow() {
     run_program_assert_revert(vec![Operation::Mul]);
+}
+
+#[test]
+fn mul_gas_should_revert() {
+    let (a, b) = (BigUint::from(1_u8), BigUint::from(2_u8));
+    let expected_result = (&a * &b).try_into().unwrap();
+    let program = vec![
+        Operation::Push(b), // <No collapse>
+        Operation::Push(a), // <No collapse>
+        Operation::Mul,     // <No collapse>
+    ];
+
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MUL;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
 
 #[test]
@@ -1783,4 +1890,25 @@ fn slt_gas_should_revert() {
 fn slt_stack_underflow() {
     let program = vec![Operation::Slt];
     run_program_assert_revert(program);
+}
+
+#[test]
+fn jump_with_gas_cost() {
+    // this test is equivalent to the following bytecode program
+    //
+    // [00] PUSH1 3
+    // [02] JUMP
+    // [03] JUMPDEST
+    let jumpdest: u8 = 3;
+    let program = vec![
+        Operation::Push(BigUint::from(0_u8)),
+        Operation::Push(BigUint::from(jumpdest)),
+        Operation::Jump,
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+    ];
+    let expected_result = 0;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::JUMPDEST + gas_cost::JUMP;
+    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
 }
