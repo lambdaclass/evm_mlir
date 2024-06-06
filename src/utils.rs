@@ -658,7 +658,7 @@ pub(crate) fn extend_memory<'c>(
 }
 
 pub(crate) fn return_result(
-    op_ctx: &mut OperationCtx,
+    op_ctx: &OperationCtx,
     block: &Block,
     offset: Value,
     size: Value,

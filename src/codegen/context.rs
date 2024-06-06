@@ -20,8 +20,8 @@ use crate::{
     },
     errors::CodegenError,
     program::{Operation, Program},
-    syscall,
-    utils::llvm_mlir,
+    syscall::{self, ExitStatusCode},
+    utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
 };
 
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ impl<'c> OperationCtx<'c> {
         syscall::mlir::declare_syscalls(context, module);
 
         // Generate helper blocks
-        let revert_block = region.append_block(generate_revert_block(context)?);
+        let revert_block = region.append_block(generate_revert_block(context, syscall_ctx)?);
         let jumptable_block = region.append_block(create_jumptable_landing_block(context));
 
         let op_ctx = OperationCtx {
@@ -101,7 +101,7 @@ impl<'c> OperationCtx<'c> {
             })
             .collect();
 
-        let arg = start_block.argument(0).unwrap();
+        let arg = start_block.argument(0)?;
 
         let case_destinations: Vec<_> = self
             .jumpdest_blocks
@@ -112,19 +112,15 @@ impl<'c> OperationCtx<'c> {
             })
             .collect();
 
-        let op = start_block.append_operation(
-            cf::switch(
-                context,
-                &jumpdest_pcs,
-                arg.into(),
-                uint256.into(),
-                (&self.revert_block, &[]),
-                &case_destinations,
-                location,
-            )
-            // TODO
-            .unwrap(),
-        );
+        let op = start_block.append_operation(cf::switch(
+            context,
+            &jumpdest_pcs,
+            arg.into(),
+            uint256.into(),
+            (&self.revert_block, &[]),
+            &case_destinations,
+            location,
+        )?);
 
         assert!(op.verify());
 
@@ -344,21 +340,47 @@ fn create_jumptable_landing_block(context: &MeliorContext) -> Block {
     Block::new(&[(uint256.into(), location)])
 }
 
-pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: return result via write_result syscall
+pub fn generate_revert_block<'c>(
+    context: &'c MeliorContext,
+    syscall_ctx: Value<'c, 'c>,
+) -> Result<Block<'c>, CodegenError> {
     let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
+    let uint32 = IntegerType::new(context, 32).into();
 
     let revert_block = Block::new(&[]);
+    let remaining_gas = get_remaining_gas(context, &revert_block)?;
 
-    let constant_value = IntegerAttribute::new(uint8.into(), 255 as _).into();
-
-    let exit_code = revert_block
-        .append_operation(arith::constant(context, constant_value, location))
+    let zero_constant = revert_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
         .result(0)?
         .into();
 
-    revert_block.append_operation(func::r#return(&[exit_code], location));
+    let reason = revert_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, ExitStatusCode::Error.to_u8()).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    syscall::mlir::write_result_syscall(
+        context,
+        syscall_ctx,
+        &revert_block,
+        zero_constant,
+        zero_constant,
+        remaining_gas,
+        reason,
+        location,
+    );
+
+    revert_block.append_operation(func::r#return(&[reason], location));
+
     Ok(revert_block)
 }
 
