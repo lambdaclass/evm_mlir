@@ -1063,6 +1063,24 @@ fn check_initial_memory_size() {
 }
 
 #[test]
+fn check_memory_size_after_store() {
+    let a = (BigUint::from(1_u8) << 256) - 1_u8;
+    let b = (BigUint::from(1_u8) << 256) - 1_u8;
+    let c = (BigUint::from(1_u8) << 256) - 1_u8;
+    let program = vec![
+        Operation::Push(a),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push(b),
+        Operation::Push(BigUint::from(32_u8)),
+        Operation::Mstore,
+        Operation::Msize
+    ];
+
+    run_program_assert_result(program, 64);   
+}
+
+#[test]
 fn msize_out_of_gas() {
     let program = vec![Operation::Msize];
     let gas_needed = gas_cost::MSIZE;
