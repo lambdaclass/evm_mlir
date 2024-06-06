@@ -696,8 +696,8 @@ pub(crate) fn return_result_from_stack(
     let context = op_ctx.mlir_context;
     let uint32 = IntegerType::new(context, 32);
 
-    let offset_u256 = stack_pop(context, &block)?;
-    let size_u256 = stack_pop(context, &block)?;
+    let offset_u256 = stack_pop(context, block)?;
+    let size_u256 = stack_pop(context, block)?;
 
     let offset = block
         .append_operation(arith::trunci(offset_u256, uint32.into(), location))
@@ -716,9 +716,9 @@ pub(crate) fn return_result_from_stack(
         .result(0)?
         .into();
 
-    extend_memory(op_ctx, &block, required_size)?;
+    extend_memory(op_ctx, block, required_size)?;
 
-    return_result_with_offset_and_size(op_ctx, &block, offset, size, reason_code, location)?;
+    return_result_with_offset_and_size(op_ctx, block, offset, size, reason_code, location)?;
 
     Ok(())
 }
@@ -732,7 +732,7 @@ pub(crate) fn return_result_with_offset_and_size(
     location: Location,
 ) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
-    let remaining_gas = get_remaining_gas(context, &block)?;
+    let remaining_gas = get_remaining_gas(context, block)?;
 
     let reason = block
         .append_operation(arith::constant(
@@ -743,7 +743,7 @@ pub(crate) fn return_result_with_offset_and_size(
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&block, offset, size, remaining_gas, reason, location);
+    op_ctx.write_result_syscall(block, offset, size, remaining_gas, reason, location);
 
     block.append_operation(func::r#return(&[reason], location));
     Ok(())

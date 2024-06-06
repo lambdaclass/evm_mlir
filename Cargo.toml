@@ -17,6 +17,7 @@ thiserror = "1.0.57"
 
 [dev-dependencies]
 rstest = "0.21.0"
+assert_matches = "1.5.0"
 
 [build-dependencies]
 cc = "1.0.83"
