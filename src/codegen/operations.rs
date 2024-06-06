@@ -2373,6 +2373,18 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
+    // check system endianness before storing the value
+    let calldata_slice = if cfg!(target_endian = "little") {
+        // if the system is little endian, we convert the value to big endian
+        ok_block
+            .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        // if the system is big endian, there is no need to convert the value
+        calldata_slice
+    };
+
     stack_push(context, &ok_block, calldata_slice)?;
     Ok((start_block, ok_block))
 }
