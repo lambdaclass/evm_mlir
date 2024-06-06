@@ -8,13 +8,16 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_SIZE_GLOBAL},
+    constants::{
+        MEMORY_SIZE_GLOBAL, {gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
+    },
     errors::CodegenError,
     program::Operation,
+    syscall::ExitStatusCode,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
+        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -65,6 +68,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),
+        Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
         Operation::CallDataSize => todo!(),
@@ -1907,9 +1911,119 @@ fn codegen_return<'c>(
 
     extend_memory(op_ctx, &ok_block, required_size)?;
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, location);
+    let remaining_gas = get_remaining_gas(context, &ok_block)?;
+    let reason = ExitStatusCode::Return.to_u8();
+    let reason = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, reason).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    Ok((start_block, ok_block))
+    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
+
+    let return_exit_code = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, RETURN_EXIT_CODE).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(func::r#return(&[return_exit_code], location));
+
+    let empty_block = region.append_block(Block::new(&[]));
+
+    Ok((start_block, empty_block))
+}
+
+// Stop the current context execution, revert the state changes
+// (see STATICCALL for a list of state changing opcodes) and
+// return the unused gas to the caller. It also reverts the gas refund to i
+// ts value before the current context. If the execution is stopped with REVERT,
+// the value 0 is put on the stack of the calling context, which continues to execute normally.
+// The return data of the calling context is set as the given
+// chunk of memory of this context.
+fn codegen_revert<'c>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'c Region<'c>,
+) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+    //TODO: compute gas cost for memory expansion
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let uint32 = IntegerType::new(context, 32);
+
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    // NOTE: for simplicity, we're truncating both offset and size to 32 bits here.
+    // If any of them were bigger than a u32, we would have ran out of gas before here.
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+
+    let remaining_gas = get_remaining_gas(context, &ok_block)?;
+    let reason = ExitStatusCode::Revert.to_u8();
+    let reason = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, reason).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
+
+    // Terminar la ejecución después del revert
+    let revert_exit_code = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, REVERT_EXIT_CODE).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+
+    let empty_block = region.append_block(Block::new(&[]));
+
+    Ok((start_block, empty_block))
 }
 
 fn codegen_stop<'c, 'r>(
@@ -1923,7 +2037,7 @@ fn codegen_stop<'c, 'r>(
     let zero = start_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i8(context, 0).into(),
+            integer_constant_from_u8(context, 0).into(),
             location,
         ))
         .result(0)?

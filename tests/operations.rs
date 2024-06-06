@@ -1,9 +1,9 @@
 use evm_mlir::{
-    constants::{gas_cost, REVERT_EXIT_CODE},
+    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
-    syscall::SyscallContext,
+    syscall::{ExecutionResult, SyscallContext},
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -13,7 +13,7 @@ fn run_program_assert_result_with_gas(
     operations: Vec<Operation>,
     expected_result: u8,
     initial_gas: u64,
-) {
+) -> ExecutionResult {
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
@@ -31,6 +31,7 @@ fn run_program_assert_result_with_gas(
     let result = executor.execute(&mut context, initial_gas);
 
     assert_eq!(result, expected_result);
+    context.get_result()
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: u8) {
@@ -63,6 +64,41 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
         buffer[start..finish].copy_from_slice(&bytes);
         BigUint::from_bytes_be(&buffer)
     }
+}
+
+#[test]
+fn test_return_with_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Return,
+    ];
+    let execution_result = run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, 20);
+
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Success {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
+}
+
+#[test]
+fn test_revert_with_gas() {
+    let program = vec![
+        Operation::Push(BigUint::from(1_u8)),
+        Operation::Push(BigUint::from(2_u8)),
+        Operation::Revert,
+    ];
+    let execution_result = run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, 20);
+    assert_eq!(
+        execution_result,
+        ExecutionResult::Revert {
+            return_data: vec![0],
+            gas_remaining: 14
+        }
+    );
 }
 
 #[test]
