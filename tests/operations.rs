@@ -1066,7 +1066,6 @@ fn check_initial_memory_size() {
 fn check_memory_size_after_store() {
     let a = (BigUint::from(1_u8) << 256) - 1_u8;
     let b = (BigUint::from(1_u8) << 256) - 1_u8;
-    let c = (BigUint::from(1_u8) << 256) - 1_u8;
     let program = vec![
         Operation::Push(a),
         Operation::Push0,
@@ -1074,10 +1073,10 @@ fn check_memory_size_after_store() {
         Operation::Push(b),
         Operation::Push(BigUint::from(32_u8)),
         Operation::Mstore,
-        Operation::Msize
+        Operation::Msize,
     ];
 
-    run_program_assert_result(program, 64);   
+    run_program_assert_result(program, 64);
 }
 
 #[test]
