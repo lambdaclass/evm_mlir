@@ -1798,15 +1798,15 @@ fn jumpi_with_gas_cost() {
     let condition = BigUint::from(1_u8);
     let expected_result: u8 = 0;
     let program = vec![
-        Operation::Push(BigUint::from(expected_result)),
-        Operation::Push(condition),
-        Operation::Push(BigUint::from(pc)),
+        Operation::Push((1_u8, BigUint::from(expected_result))),
+        Operation::Push((1_u8, condition)),
+        Operation::Push((1_u8, BigUint::from(pc))),
         Operation::Jumpi,
-        Operation::Push(BigUint::from(10_u8)), // this should not be executed
+        Operation::Push((1_u8, BigUint::from(10_u8))), // this should not be executed
         Operation::Jumpdest { pc },
     ];
     let needed_gas = gas_cost::PUSHN * 3 + gas_cost::JUMPI + gas_cost::JUMPDEST;
-    run_program_assert_gas_exact(program, expected_result, needed_gas as _);
+    run_program_assert_gas_exact(program, needed_gas as _);
 }
 
 #[test]
