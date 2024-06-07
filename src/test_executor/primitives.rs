@@ -30,6 +30,9 @@ pub struct Address {
 }
 
 impl Address {
+    /// Creates an Address from a Big Endian bytes slice
+    /// The received slice must have a size equal to 20 bytes, which is
+    /// the size of an Ethereum Address.
     pub fn from_bytes_exact(data: &[u8]) -> Address {
         if data.len() != ADDRESS_SIZE {
             panic!("Addresses are 20 bytes long");
@@ -40,6 +43,11 @@ impl Address {
         Address { bytes }
     }
 
+    /// Creates an Address from a String slice.
+    /// The received string:
+    ///     - Must represent the bytes's address in hex format.
+    ///     - Must be of size 42 if it starts with "0x".
+    ///     - Must be of size 40 if it doesn't start with "0x".
     pub fn from_string_exact(data: &str) -> Address {
         match data.len() {
             40 => {
