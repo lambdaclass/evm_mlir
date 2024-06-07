@@ -2188,3 +2188,14 @@ fn mload_gas_cost_with_memory_extension() {
     let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
+
+#[test]
+fn mload_gas_cost_with_memory_extension2() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))), // offset
+        Operation::Mload,
+    ];
+    let dynamic_gas = 6_i64;
+    let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
