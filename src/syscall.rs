@@ -15,9 +15,10 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{collections::HashMap, ffi::c_void, hash::Hash};
 
 use melior::ExecutionEngine;
+use num_bigint::{BigInt, BigUint};
 
 use crate::env::Env;
 
@@ -97,6 +98,7 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     env: Env,
+    storage: HashMap<BigUint, BigUint>,
 }
 
 /// Accessors for disponibilizing the execution results
