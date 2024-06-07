@@ -74,7 +74,9 @@ impl Address {
     }
 
     fn bytes_to_hex(bytes: &[u8]) -> String {
-        bytes.iter().map(|byte| format!("{:02x}", byte)).collect()
+        bytes
+            .iter()
+            .fold(String::new(), |acc, byte| format!("{}{:02x}", acc, byte))
     }
 }
 
@@ -88,7 +90,7 @@ impl From<String> for Address {
 impl From<&[u8]> for Address {
     #[inline]
     fn from(value: &[u8]) -> Self {
-        Address::from_bytes_exact(&value)
+        Address::from_bytes_exact(value)
     }
 }
 
