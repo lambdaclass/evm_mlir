@@ -66,7 +66,6 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
     }
 }
 
-
 #[test]
 fn push_once() {
     let value = BigUint::from(5_u8);

@@ -105,7 +105,6 @@ fn codegen_calldatacopy<'c, 'r>(
         location,
     ));
 
-    let uint256 = IntegerType::new(context, 256);
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
@@ -138,7 +137,7 @@ fn codegen_calldatacopy<'c, 'r>(
 
     //required size = call_data_offset + size
     let required_size = ok_block
-        .append_operation(arith::addi(call_data_offset, size, location))
+        .append_operation(arith::addi(dest_offset, size, location))
         .result(0)?
         .into();
 
@@ -164,7 +163,7 @@ fn codegen_calldatacopy<'c, 'r>(
     let cmp = ok_block
         .append_operation(arith::cmpi(
             context,
-            arith::CmpiPredicate::Uge,
+            arith::CmpiPredicate::Ugt,
             required_size,
             calldata_size,
             location,
@@ -174,6 +173,8 @@ fn codegen_calldatacopy<'c, 'r>(
 
     let continue_block = region.append_block(Block::new(&[]));
 
+    //TODO: if calldatasize >= required: for out of bound bytes, 0s will be copied.
+    
     ok_block.append_operation(cf::cond_br(
         context,
         cmp,
@@ -198,37 +199,17 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let calldata_slice = continue_block
-        .append_operation(llvm::load(
+    continue_block.append_operation(
+        ods::llvm::intr_memcpy(
             context,
+            memory_dest,
             calldata_src,
-            uint256.into(),
+            size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
             location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    println!("calldata_slice = {:?}", calldata_slice);
-
-    // // check system endianness before storing the value
-    // let calldata_slice = if cfg!(target_endian = "little") {
-    //     // if the system is little endian, we convert the value to big endian
-    //     continue_block
-    //         .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
-    //         .result(0)?
-    //         .into()
-    // } else {
-    //     // if the system is big endian, there is no need to convert the value
-    //     calldata_slice
-    // };
-
-    continue_block.append_operation(llvm::store(
-        context,
-        calldata_slice,
-        memory_dest,
-        location,
-        LoadStoreOptions::default(),
-    ));
+        )
+        .into(),
+    );
 
     Ok((start_block, continue_block))
 }

@@ -31,7 +31,7 @@ fn main() {
     let output_file = PathBuf::from("output");
 
     let program = vec![
-        Operation::Push((1, BigUint::from(4_u8))),
+        Operation::Push((1, BigUint::from(32_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
         Operation::CallDataCopy,
@@ -47,7 +47,7 @@ fn main() {
 
     // calldata = vec = [0,1,2, ..., 30, 31]
     let mut vec: Vec<u8> = vec![];
-    for i in 0..32 {
+    for i in 0..34 {
         vec.push(i as u8);
     }
 
