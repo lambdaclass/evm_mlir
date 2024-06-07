@@ -5,7 +5,6 @@ use melior::{
         Region,
     },
 };
-
 use super::context::OperationCtx;
 use crate::{
     constants::{
@@ -73,9 +72,149 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
-        Operation::CallDataCopy => todo!(),
+        Operation::CallDataCopy => codegen_calldatacopy(op_ctx, region),
     }
 }
+
+fn codegen_calldatacopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CALLDATACOPY)?;
+
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let uint256 = IntegerType::new(context, 256);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    // byte offset in the memory where the result will be copied
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // byte offset in the calldata to copy from
+    let call_data_offset = stack_pop(context, &ok_block)?;
+    // byte size to copy
+    let size = stack_pop(context, &ok_block)?;
+
+    // truncate offsets and size to 32 bits
+    let call_data_offset = ok_block
+        .append_operation(arith::trunci(call_data_offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    // let dest_offset = ok_block
+    //     .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+    //     .result(0)
+    //     .unwrap()
+    //     .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+
+    //required size = call_data_offset + size
+    let required_size = ok_block
+        .append_operation(arith::addi(call_data_offset, size, location))
+        .result(0)?
+        .into();
+
+    // get pointer to calldata
+    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+
+    let calldata_src:melior::ir::Value = ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            calldata_ptr,
+            &[call_data_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // Check that required_size <= calldatasize
+
+    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;  
+
+    let cmp = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Uge,
+            required_size,
+            calldata_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let continue_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        cmp,
+        &op_ctx.revert_block,
+        &continue_block,
+        &[],
+        &[],
+        location,
+    ));
+
+
+    let memory_ptr = extend_memory(op_ctx, &continue_block, required_size)?;
+
+    let memory_dest:melior::ir::Value = continue_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[dest_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memcpy: melior::ir::Value = ok_block.append_operation(ods::llvm::intr_memcpy(&op_ctx.mlir_context,
+        memory_dest,
+        calldata_src,
+        size,
+        IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into(),
+        location,
+    ).into())
+    .result(0)?
+    .into();
+
+
+    Ok((start_block, continue_block))
+}
+
+
 
 fn codegen_exp<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
