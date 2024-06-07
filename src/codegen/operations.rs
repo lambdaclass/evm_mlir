@@ -22,8 +22,8 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_i8, llvm_mlir, stack_pop, stack_push,
-        swap_stack_elements,
+        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, integer_constant_from_i8,
+        llvm_mlir, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -2326,6 +2326,7 @@ fn codegen_calldataload<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let uint8 = IntegerType::new(context, 8);
     let uint32 = IntegerType::new(context, 32);
+    let uint1 = IntegerType::new(context, 1);
     let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
@@ -2352,14 +2353,12 @@ fn codegen_calldataload<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
 
+    // TODO: add a calldata_ptr and size setup
+
     let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
 
-    // TODO: check that offset < calldatasize
-
-    // `slice` is the result of reading calldata from offset to offset + 32
-    // i.e  slice = calldata[offset..offset + 32];
-    // so the slice width always equals 32 (bytes)
-    let slice_width = ok_block
+    // max_slice_width = 32
+    let max_slice_width = ok_block
         .append_operation(arith::constant(
             context,
             integer_constant_from_i64(context, 32).into(),
@@ -2368,52 +2367,48 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    // offset + 32
-    let offset_plus_slice_width = ok_block
-        .append_operation(arith::addi(offset, slice_width, location))
+    //let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    // push and pop the calldata_size to convert it to uint256 (the syscall returns a uint32)
+    // stack_push(context, &ok_block, calldata_size);
+    // let calldata_size = stack_pop(context, &ok_block)?;
+    /*let calldata_size = ok_block
+        .append_operation(llvm::intr_bswap(calldata_size, uint256.into(), location))
         .result(0)?
         .into();
+    */
 
-    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
-
+    // TODO: change this by calling the actual syscall
     let calldata_size = ok_block
-        .append_operation(arith::constant(context, calldata_size.into(), location))
-        .result(0)?
-        .into();
-
-    // flag = offset_plus_slice_width > calldata_size?
-    let flag = ok_block
-        .append_operation(arith::cmpi(
+        .append_operation(arith::constant(
             context,
-            arith::CmpiPredicate::Ugt,
-            offset_plus_slice_width,
-            calldata_size,
+            IntegerAttribute::new(uint256.into(), 32).into(),
             location,
         ))
         .result(0)?
         .into();
 
-    let out_of_bounds_block = region.append_block(Block::new(&[]));
-    let slice_ok_block = region.append_block(Block::new(&[]));
+    let stack_ptr = get_stack_pointer(context, &ok_block)?;
 
-    ok_block.append_operation(cond_br(
+    let zero = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // fill the top of the stack with 0s
+    ok_block.append_operation(llvm::store(
         context,
-        flag,
-        &out_of_bounds_block,
-        &slice_ok_block,
-        &[],
-        &[],
+        zero,
+        stack_ptr,
         location,
+        LoadStoreOptions::new(),
     ));
 
-    let end_block = region.append_block(Block::new(&[]));
-
-    /********************************* slice_ok_block *****************************************/
-    // in this case offset + 32 <= calldatasize so we simply read the calldata and push the slice
-    // to the stack
-
-    // calldata_ptr_at_offset = calldata_ptr + offset
-    let calldata_ptr_at_offset = slice_ok_block
+    // calldata_ptr_at_offset = calldata_ptr + new_offset
+    let calldata_ptr_at_offset = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             calldata_ptr,
@@ -2425,117 +2420,49 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    // calldata_slice = calldata[offset..offset + 32bytes]
-    let calldata_slice = slice_ok_block
-        .append_operation(llvm::load(
-            context,
-            calldata_ptr_at_offset,
-            uint256.into(),
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ))
+    // len is the length of the slice (len is maximum 32 bytes)
+    let len = ok_block
+        .append_operation(arith::subi(calldata_size, offset, location))
         .result(0)?
         .into();
 
-    // check system endianness before storing the value
-    let calldata_slice = if cfg!(target_endian = "little") {
-        // if the system is little endian, we convert the value to big endian
-        slice_ok_block
+    // len = min(calldata_size - offset, 32 bytes)
+    let len = ok_block
+        .append_operation(arith::minui(len, max_slice_width, location))
+        .result(0)?
+        .into();
+
+    // copy calldata[offset..len] to the top of the stack
+    ok_block.append_operation(
+        ods::llvm::intr_memcpy(
+            context,
+            stack_ptr,
+            calldata_ptr_at_offset,
+            len,
+            IntegerAttribute::new(uint1.into(), 0).into(),
+            location,
+        )
+        .into(),
+    );
+
+    // increment the stack pointer so calldata[offset..len] is placed at the top of the stack
+    inc_stack_pointer(context, &ok_block)?;
+
+    // if the system is little endian, we have to convert the result to big endian
+    // pop calldata_slice, change to big endian and push it again
+    if cfg!(target_endian = "little") {
+        // pop the slice
+        let calldata_slice = stack_pop(context, &ok_block)?;
+        // convert it to big endian
+        let calldata_slice = ok_block
             .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
             .result(0)?
-            .into()
-    } else {
-        // if the system is big endian, there is no need to convert the value
-        calldata_slice
-    };
-
-    stack_push(context, &slice_ok_block, calldata_slice)?;
-
-    slice_ok_block.append_operation(br(&end_block, &[], location));
-    // both blocks (slice_ok_block and out_of_bounds_block meet at end_block)
-
-    /********************************* out_of_bounds_block *****************************************/
-    // in this case, offset + 32 > calldata_size so we have to adjust the offset in order to not read outside of calldata
-    // and then make a left shift to place the result correctly, and finally push the result into the stack
-
-    // we adjust the offset as follows
-    //
-    //      (1) new_offset = calldata_size - slice_width
-    //
-    // so that the last byte of the slice matches the last byte of the calldata
-    // i.e the last byte we read is the last byte of calldata.
-    //
-    // for example, lets say calldata is 48 bytes long
-    //
-    //      calldata = [0, 1, ... 47]
-    //
-    // and lets say offset = 32 so we want to read from calldata[32] to calldata[64], but that's out of bounds
-    // so what we do is move the offset to the left (following (1)) so that is not out of bounds, that is
-    //
-    //      offset = 48 - 32 = 16
-    //
-    // so we are reading from calldata[16] up to calldata[47], but in this case the last 16 bytes must be zeroes according
-    // to the documentation, so we perform a left shift of (offset + 32) - calldatasize = 64 - 48 = 16 bytes
-
-    let new_offset = out_of_bounds_block
-        .append_operation(arith::subi(calldata_size, slice_width, location))
-        .result(0)?
-        .into();
-
-    // calldata_ptr_at_new_offset = calldata_ptr + new_offset
-    let calldata_ptr_at_new_offset = slice_ok_block
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            calldata_ptr,
-            &[new_offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let slice = out_of_bounds_block
-        .append_operation(llvm::load(
-            context,
-            calldata_ptr_at_new_offset,
-            uint256.into(),
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ))
-        .result(0)?
-        .into();
-
-    // shift = offset_plus_slice_width - calldatasize
-    //
-    // for example, if calldatasize = 32, and offset = 1 then offset_plus_slice_width = 1 + 32 = 33
-    // so we have to shift the slice 33 - 32 = 1 byte = 8 bits to the left
-    let shift_in_bytes = out_of_bounds_block
-        .append_operation(arith::subi(
-            offset_plus_slice_width,
-            calldata_size,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let bits_per_byte = constant_value_from_i64(context, &out_of_bounds_block, 8)?;
-
-    let shift_in_bits = out_of_bounds_block
-        .append_operation(arith::muli(shift_in_bytes, bits_per_byte, location))
-        .result(0)?
-        .into();
-
-    let shifted_slice = out_of_bounds_block
-        .append_operation(arith::shli(slice, shift_in_bits, location))
-        .result(0)?
-        .into();
-
-    stack_push(context, &out_of_bounds_block, shifted_slice)?;
-
-    slice_ok_block.append_operation(br(&end_block, &[], location));
+            .into();
+        // push it back on the stack
+        stack_push(context, &ok_block, calldata_slice);
+    }
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(br(&end_block, &[], location));
 
     Ok((start_block, end_block))
 }
