@@ -309,7 +309,6 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
-
     /// Extends the memory segment of the syscall context.
     /// Returns a pointer to the start of the memory segment.
     pub(crate) fn extend_memory_syscall<'c>(

@@ -31,16 +31,15 @@ fn main() {
     let output_file = PathBuf::from("output");
 
     let program = vec![
-        Operation::Push((1,BigUint::from(4_u8))),
-        Operation::Push((1,BigUint::from(0_u8))),
-        Operation::Push((1,BigUint::from(0_u8))),
+        Operation::Push((1, BigUint::from(4_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
         Operation::CallDataCopy,
     ]
     .into();
 
     let context = Context::new();
-    let module = context
-        .compile(&program, &output_file);
+    let module = context.compile(&program, &output_file);
 
     let executor = Executor::new(&module.unwrap());
 

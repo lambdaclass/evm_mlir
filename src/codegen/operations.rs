@@ -1,10 +1,3 @@
-use melior::{
-    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
-    ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
-    },
-};
 use super::context::OperationCtx;
 use crate::{
     constants::{
@@ -18,6 +11,13 @@ use crate::{
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
+    },
+};
+use melior::{
+    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    ir::{
+        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        Region,
     },
 };
 use num_bigint::BigUint;
@@ -136,7 +136,6 @@ fn codegen_calldatacopy<'c, 'r>(
         .unwrap()
         .into();
 
-
     //required size = call_data_offset + size
     let required_size = ok_block
         .append_operation(arith::addi(call_data_offset, size, location))
@@ -146,7 +145,7 @@ fn codegen_calldatacopy<'c, 'r>(
     // get pointer to calldata
     let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
 
-    let calldata_src:melior::ir::Value = ok_block
+    let calldata_src: melior::ir::Value = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             calldata_ptr,
@@ -160,7 +159,7 @@ fn codegen_calldatacopy<'c, 'r>(
 
     // Check that required_size <= calldatasize
 
-    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;  
+    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
 
     let cmp = ok_block
         .append_operation(arith::cmpi(
@@ -185,10 +184,9 @@ fn codegen_calldatacopy<'c, 'r>(
         location,
     ));
 
-
     let memory_ptr = extend_memory(op_ctx, &continue_block, required_size)?;
 
-    let memory_dest:melior::ir::Value = continue_block
+    let memory_dest: melior::ir::Value = continue_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -200,21 +198,40 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let memcpy: melior::ir::Value = continue_block.append_operation(ods::llvm::intr_memcpy(&op_ctx.mlir_context,
-        memory_dest,
-        calldata_src,
-        size,
-        IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
-        location,
-    ).into())
-    .result(0)?
-    .into();
+    let calldata_slice = continue_block
+        .append_operation(llvm::load(
+            context,
+            calldata_src,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    println!("calldata_slice = {:?}", calldata_slice);
 
+    // // check system endianness before storing the value
+    // let calldata_slice = if cfg!(target_endian = "little") {
+    //     // if the system is little endian, we convert the value to big endian
+    //     continue_block
+    //         .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
+    //         .result(0)?
+    //         .into()
+    // } else {
+    //     // if the system is big endian, there is no need to convert the value
+    //     calldata_slice
+    // };
+
+    continue_block.append_operation(llvm::store(
+        context,
+        calldata_slice,
+        memory_dest,
+        location,
+        LoadStoreOptions::default(),
+    ));
 
     Ok((start_block, continue_block))
 }
-
-
 
 fn codegen_exp<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
