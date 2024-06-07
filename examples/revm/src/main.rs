@@ -4,7 +4,7 @@ use revm::{
     Evm,
 };
 
-const PROGRAM: Bytes = bytes!("7f00000000000000000000000000000000000000000000000000000000000003e75f60015b82156039578181019150909160019003916024565b9150505f5260205ff3");
+const PROGRAM: Bytes = bytes!("7f0000000000000000000000000000000000000000000000000000000000000080600260025b8215603b57906001018091029160019003916025565b9150505f5260205ff3");
 
 fn main() {
     const RUNS: usize = 100000;
@@ -22,5 +22,6 @@ fn main() {
     for _ in 0..RUNS {
         let result = evm.transact().unwrap();
         assert!(result.result.is_success());
+        // dbg!(result.result);
     }
 }
