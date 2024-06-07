@@ -115,7 +115,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
-            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
+            SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
     };
 }
