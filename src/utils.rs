@@ -915,12 +915,12 @@ pub(crate) fn return_empty_result(
     Ok(())
 }
 
-pub(crate) fn return_result_from_stack<'c>(
+pub(crate) fn return_result_from_stack(
     op_ctx: &OperationCtx,
     block: &Block,
     reason_code: ExitStatusCode,
     location: Location,
-    region: &Region<'c>,
+    region: &Region<'_>,
 ) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let uint32 = IntegerType::new(context, 32);
