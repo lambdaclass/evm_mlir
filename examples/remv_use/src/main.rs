@@ -17,7 +17,8 @@ fn main() {
         })
         .build();
 
-    let result = evm.transact().unwrap();
-    dbg!(result.result);
-    // assert!(result.result.is_success());
+    for _ in 0..1000 {
+        let result = evm.transact().unwrap();
+        assert!(result.result.is_success());
+    }
 }
