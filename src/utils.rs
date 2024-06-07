@@ -17,11 +17,13 @@ use crate::{
     codegen::context::OperationCtx,
     constants::{
         GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        REVERT_EXIT_CODE, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
+    syscall::ExitStatusCode,
 };
 
+// NOTE: the value is of type i64
 pub fn get_remaining_gas<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -276,9 +278,9 @@ pub fn stack_push<'ctx>(
 pub fn get_nth_from_stack<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    nth: u32,
+    nth: u8,
 ) -> Result<(Value<'ctx, 'ctx>, OperationResult<'ctx, 'ctx>), CodegenError> {
-    debug_assert!(nth < MAX_STACK_SIZE as u32);
+    debug_assert!((nth as u32) < MAX_STACK_SIZE as u32);
     let uint256 = IntegerType::new(context, 256);
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
@@ -334,11 +336,11 @@ pub fn get_nth_from_stack<'ctx>(
 pub fn swap_stack_elements<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
-    position_1: u32,
-    position_2: u32,
+    position_1: u8,
+    position_2: u8,
 ) -> Result<(), CodegenError> {
-    debug_assert!(position_1 < MAX_STACK_SIZE as u32);
-    debug_assert!(position_2 < MAX_STACK_SIZE as u32);
+    debug_assert!((position_1 as u32) < MAX_STACK_SIZE as u32);
+    debug_assert!((position_2 as u32) < MAX_STACK_SIZE as u32);
     let location = Location::unknown(context);
 
     let (first_element, first_elem_address) = get_nth_from_stack(context, block, position_1)?;
@@ -565,24 +567,6 @@ pub fn check_is_greater_than<'ctx>(
     Ok(flag.into())
 }
 
-pub fn generate_revert_block(context: &MeliorContext) -> Result<Block, CodegenError> {
-    // TODO: return result via write_result syscall
-    let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
-
-    let revert_block = Block::new(&[]);
-
-    let constant_value = IntegerAttribute::new(uint8.into(), REVERT_EXIT_CODE as _).into();
-
-    let exit_code = revert_block
-        .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?
-        .into();
-
-    revert_block.append_operation(func::r#return(&[exit_code], location));
-    Ok(revert_block)
-}
-
 pub fn check_if_zero<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
@@ -672,6 +656,98 @@ pub(crate) fn extend_memory<'c>(
     assert!(res.verify());
 
     Ok(memory_ptr)
+}
+
+pub(crate) fn return_empty_result(
+    op_ctx: &OperationCtx,
+    block: &Block,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let zero_constant = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    return_result_with_offset_and_size(
+        op_ctx,
+        block,
+        zero_constant,
+        zero_constant,
+        reason_code,
+        location,
+    )?;
+
+    Ok(())
+}
+
+pub(crate) fn return_result_from_stack(
+    op_ctx: &OperationCtx,
+    block: &Block,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint32 = IntegerType::new(context, 32);
+
+    let offset_u256 = stack_pop(context, block)?;
+    let size_u256 = stack_pop(context, block)?;
+
+    let offset = block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let required_size = block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, block, required_size)?;
+
+    return_result_with_offset_and_size(op_ctx, block, offset, size, reason_code, location)?;
+
+    Ok(())
+}
+
+pub(crate) fn return_result_with_offset_and_size(
+    op_ctx: &OperationCtx,
+    block: &Block,
+    offset: Value,
+    size: Value,
+    reason_code: ExitStatusCode,
+    location: Location,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let remaining_gas = get_remaining_gas(context, block)?;
+
+    let reason = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_u8(context, reason_code.to_u8()).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.write_result_syscall(block, offset, size, remaining_gas, reason, location);
+
+    block.append_operation(func::r#return(&[reason], location));
+    Ok(())
 }
 
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
