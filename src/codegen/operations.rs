@@ -1,8 +1,12 @@
 use melior::{
-    dialect::{arith, cf, func, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        self, arith, cf, func,
+        llvm::{self, r#type::pointer, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        Region, Value,
     },
 };
 
@@ -2608,20 +2612,17 @@ fn codegen_mcopy<'c, 'r>(
     // truncate offset and dest_offset to 32 bits
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
-        .result(0)
-        .unwrap()
+        .result(0)?
         .into();
 
     let dest_offset = ok_block
         .append_operation(arith::trunci(dest_offset, uint32.into(), location))
-        .result(0)
-        .unwrap()
+        .result(0)?
         .into();
-    
+
     let size = ok_block
         .append_operation(arith::trunci(size, uint32.into(), location))
-        .result(0)
-        .unwrap()
+        .result(0)?
         .into();
 
     // required_size = offset + size
@@ -2630,7 +2631,7 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let mut memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
     let memory_copy_destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
@@ -2644,29 +2645,17 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let read_value = ok_block
-        .append_operation(llvm::load(
-            context,
-            memory_copy_destination,
-            uint256.into(),
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ))
-        .result(0)?
-        .into();
-
-    // check system endianness before storing the value
-    let read_value = if cfg!(target_endian = "little") {
-        // if the system is little endian, we convert the value to big endian
-        ok_block
-            .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
-            .result(0)?
-            .into()
-    } else {
-        // if the system is big endian, there is no need to convert the value
-        read_value
-    };
+    // let read_value = ok_block
+    //     .append_operation(llvm::load(
+    //         context,
+    //         memory_copy_destination,
+    //         uint256.into(),
+    //         location,
+    //         LoadStoreOptions::new()
+    //             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    //     ))
+    //     .result(0)?
+    //     .into();
 
     // dest_required_size = dest_offset + size
     let dest_required_size = ok_block
@@ -2674,9 +2663,9 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    memory_ptr = extend_memory(op_ctx, &ok_block, dest_required_size)?;
+    let memory_ptr = extend_memory(op_ctx, &ok_block, dest_required_size)?;
 
-    // memory_destination = memory_ptr + offset
+    // memory_destination = memory_ptr + dest_offset
     let memory_write_destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
@@ -2689,14 +2678,29 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(llvm::store(
-        context,
-        read_value,
-        memory_write_destination,
-        location,
-        LoadStoreOptions::new()
-            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-    ));
+    let _: Value = ok_block
+        .append_operation(
+            ods::llvm::intr_memcpy(
+                &op_ctx.mlir_context,
+                memory_write_destination,
+                memory_copy_destination,
+                size,
+                IntegerAttribute::new(IntegerType::new(context, 1).into(), 0).into(),
+                location,
+            )
+            .into(),
+        )
+        .result(0)?
+        .into();
+
+    // ok_block.append_operation(llvm::store(
+    //     context,
+    //     read_value,
+    //     memory_write_destination,
+    //     location,
+    //     LoadStoreOptions::new()
+    //         .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    // ));
 
     Ok((start_block, ok_block))
 }

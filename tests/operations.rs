@@ -2062,6 +2062,60 @@ fn mstore_mload_with_memory_extension() {
 }
 
 #[test]
+fn mstore_mcopy_mload_with_with_gas_cost() {
+    let value = BigUint::from(10_u8);
+    let value1 = BigUint::from(12_u8);
+    let program = vec![
+        Operation::Push((1_u8, value.clone())),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, value1.clone())),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Mcopy,
+        Operation::Push0,
+        Operation::Mload,
+    ];
+    let gas_needed = gas_cost::PUSH0 * 3
+        + gas_cost::PUSHN * 5
+        + gas_cost::MSTORE * 2
+        + gas_cost::MCOPY
+        + gas_cost::MLOAD;
+
+    run_program_assert_result_with_gas(program, value1.try_into().unwrap(), gas_needed as _);
+}
+
+// #[test]
+// fn mcopy_arbitrary_size() {
+//     let value = BigUint::from(1_u8) << ; // value of 17 bytes
+//     let value1 = BigUint::from(12_u8);
+//     let program = vec![
+//         Operation::Push((1_u8, value.clone())),
+//         Operation::Push0,
+//         Operation::Mstore,
+//         Operation::Push((1_u8, value1.clone())),
+//         Operation::Push((1_u8, BigUint::from(32_u8))),
+//         Operation::Mstore,
+//         Operation::Push((1_u8, BigUint::from(32_u8))),
+//         Operation::Push((1_u8, BigUint::from(32_u8))),
+//         Operation::Push0,
+//         Operation::Mcopy,
+//         Operation::Push0,
+//         Operation::Mload,
+//     ];
+// }
+
+#[test]
+fn mcopy_with_stack_underflow() {
+    let program = vec![Operation::Mcopy];
+
+    run_program_assert_revert(program);
+}
+
+#[test]
 fn mload_not_allocated_address() {
     // When offset for MLOAD is bigger than the current memory size, memory is extended with zeros
     let program = vec![
@@ -2136,22 +2190,4 @@ fn test_revert_with_gas() {
             gas_remaining: 14
         }
     );
-}
-
-#[test]
-fn mstore_mcopy_mload_with_zero_address() {
-    let value = BigUint::from(10_u8);
-    let program = vec![
-        Operation::Push((1_u8, value.clone())),
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((1_u8, BigUint::from(32_u8))),
-        Operation::Push0,
-        Operation::Push((1_u8, BigUint::from(32_u8))),
-        Operation::Mcopy,
-        Operation::Push((1_u8, BigUint::from(32_u8))),
-        Operation::Mload
-    ];
-
-    run_program_assert_result(program, value.try_into().unwrap());
 }
