@@ -15,10 +15,10 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::{collections::HashMap, ffi::c_void, hash::Hash};
+use std::{collections::HashMap, ffi::c_void};
 
 use melior::ExecutionEngine;
-use num_bigint::{BigInt, BigUint};
+use num_bigint::BigUint;
 
 use crate::env::Env;
 
@@ -98,7 +98,7 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     env: Env,
-    storage: HashMap<BigUint, BigUint>,
+    storage: HashMap<[u8; 32], [u8; 32]>,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -166,11 +166,21 @@ impl SyscallContext {
             }
         }
     }
+
+    pub extern "C" fn write_storage(&mut self, key: [u8; 32], value: [u8; 32]) {
+        if let Some(value) = self.storage.get_mut(k) {
+            value = &mut stg_value;
+        }
+    }
+
+    pub extern "C" fn read_storage(&self, key: [u64; 4]) {}
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const STORAGE_WRITE: &str = "evm_mlir__storage_write";
+    pub const STORAGE_READ: &str = "evm_mlir__storage_read";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -185,6 +195,14 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORAGE_READ,
+            SyscallContext::read_storage as *const fn(*const c_void, BigUint) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORAGE_WRITE,
+            SyscallContext::write_storage as *const fn(*mut c_void, BigUint, BigUint) as *mut (),
         );
     };
 }
@@ -210,6 +228,7 @@ pub(crate) mod mlir {
 
         // Type declarations
         let ptr_type = pointer(context, 0);
+        let uint256 = IntegerType::new(context, 256).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
@@ -235,6 +254,28 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORAGE_READ),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint256], &[ptr_type]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORAGE_WRITE),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint256, uint256], &[ptr_type]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -281,6 +322,47 @@ pub(crate) mod mlir {
                 location,
             ))
             .result(0)?;
+        Ok(value.into())
+    }
+
+    pub(crate) fn storage_read_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+                &[syscall_ctx, key],
+                &[],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(value.into())
+    }
+
+    pub(crate) fn storage_write_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
+                &[syscall_ctx, key, value],
+                &[],
+                location,
+            ))
+            .result(0)?;
+
         Ok(value.into())
     }
 }
