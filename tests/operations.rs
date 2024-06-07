@@ -1,5 +1,8 @@
 use evm_mlir::{
-    constants::{gas_cost, RETURN_EXIT_CODE, REVERT_EXIT_CODE},
+    constants::{
+        gas_cost::{self, PUSHN},
+        RETURN_EXIT_CODE, REVERT_EXIT_CODE,
+    },
     context::Context,
     executor::Executor,
     program::{Operation, Program},
@@ -73,13 +76,19 @@ fn test_return_with_gas() {
         Operation::Push(BigUint::from(2_u8)),
         Operation::Return,
     ];
-    let execution_result = run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, 20);
+    let dynamic_gas = 3;
+    let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
+    let initial_gas = 20;
+    let expected_used_gas = initial_gas - needed_gas as u64;
+
+    let execution_result =
+        run_program_assert_result_with_gas(program, RETURN_EXIT_CODE, initial_gas);
 
     assert_eq!(
         execution_result,
         ExecutionResult::Success {
             return_data: vec![0],
-            gas_remaining: 14
+            gas_remaining: expected_used_gas
         }
     );
 }
@@ -91,12 +100,18 @@ fn test_revert_with_gas() {
         Operation::Push(BigUint::from(2_u8)),
         Operation::Revert,
     ];
-    let execution_result = run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, 20);
+    let dynamic_gas = 3;
+    let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
+    let initial_gas = 20;
+    let expected_used_gas = initial_gas - needed_gas as u64;
+
+    let execution_result =
+        run_program_assert_result_with_gas(program, REVERT_EXIT_CODE, initial_gas);
     assert_eq!(
         execution_result,
         ExecutionResult::Revert {
             return_data: vec![0],
-            gas_remaining: 14
+            gas_remaining: expected_used_gas
         }
     );
 }

@@ -16,9 +16,9 @@ use crate::{
     syscall::ExitStatusCode,
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
-        extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
-        integer_constant_from_u8, llvm_mlir::addressof, stack_pop, stack_push, swap_stack_elements,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
+        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir::addressof, stack_pop,
+        stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1431,18 +1431,12 @@ fn codegen_mload<'c, 'r>(
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
-    let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MLOAD)?;
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
+    let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        stack_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -1452,13 +1446,12 @@ fn codegen_mload<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
 
-    // truncate offset to 32 bits
+    // Compute required memory size
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
         .result(0)
         .unwrap()
         .into();
-
     let value_size = ok_block
         .append_operation(arith::constant(
             context,
@@ -1467,67 +1460,21 @@ fn codegen_mload<'c, 'r>(
         ))
         .result(0)?
         .into();
-
-    // required_size = offset + value_size
     let required_size = ok_block
         .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
-    // Get current memory size
-    let memory_size_ptr = ok_block
-        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
-        .result(0)?
-        .into();
-
-    let memory_size = ok_block
-        .append_operation(llvm::load(
-            context,
-            memory_size_ptr,
-            uint32.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    // Compare current memory_size and required_size
-    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
     let memory_access_block = region.append_block(Block::new(&[]));
-    let extension_block = region.append_block(Block::new(&[]));
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        extension_flag,
-        &extension_block,
+    extend_memory(
+        op_ctx,
+        &ok_block,
         &memory_access_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    // Extend memory path (extension_block)
-    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block)?;
-
-    extend_memory(op_ctx, &extension_block, required_size)?;
-
-    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block)?;
-
-    let gas_cost = extension_block
-        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
-        .result(0)?
-        .into();
-    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
-
-    extension_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &memory_access_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
+        region,
+        required_size,
+        gas_cost::MLOAD,
+    )?;
 
     // Memory access
     // TODO: loading the memory_ptr can be avoided passing it as a block parameter
@@ -2029,7 +1976,6 @@ fn codegen_return<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
-    // TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -2072,11 +2018,13 @@ fn codegen_return<'c>(
         .result(0)?
         .into();
 
-    extend_memory(op_ctx, &ok_block, required_size)?;
+    let return_block = region.append_block(Block::new(&[]));
 
-    let remaining_gas = get_remaining_gas(context, &ok_block)?;
+    extend_memory(op_ctx, &ok_block, &return_block, region, required_size, 0)?;
+
+    let remaining_gas = get_remaining_gas(context, &return_block)?;
     let reason = ExitStatusCode::Return.to_u8();
-    let reason = ok_block
+    let reason = return_block
         .append_operation(arith::constant(
             context,
             integer_constant_from_u8(context, reason).into(),
@@ -2085,9 +2033,9 @@ fn codegen_return<'c>(
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
+    op_ctx.write_result_syscall(&return_block, offset, size, remaining_gas, reason, location);
 
-    let return_exit_code = ok_block
+    let return_exit_code = return_block
         .append_operation(arith::constant(
             context,
             integer_constant_from_u8(context, RETURN_EXIT_CODE).into(),
@@ -2096,7 +2044,7 @@ fn codegen_return<'c>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(func::r#return(&[return_exit_code], location));
+    return_block.append_operation(func::r#return(&[return_exit_code], location));
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2114,7 +2062,6 @@ fn codegen_revert<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
-    //TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -2157,11 +2104,13 @@ fn codegen_revert<'c>(
         .result(0)?
         .into();
 
-    extend_memory(op_ctx, &ok_block, required_size)?;
+    let revert_block = region.append_block(Block::new(&[]));
 
-    let remaining_gas = get_remaining_gas(context, &ok_block)?;
+    extend_memory(op_ctx, &ok_block, &revert_block, region, required_size, 0)?;
+
+    let remaining_gas = get_remaining_gas(context, &revert_block)?;
     let reason = ExitStatusCode::Revert.to_u8();
-    let reason = ok_block
+    let reason = revert_block
         .append_operation(arith::constant(
             context,
             integer_constant_from_u8(context, reason).into(),
@@ -2170,10 +2119,10 @@ fn codegen_revert<'c>(
         .result(0)?
         .into();
 
-    op_ctx.write_result_syscall(&ok_block, offset, size, remaining_gas, reason, location);
+    op_ctx.write_result_syscall(&revert_block, offset, size, remaining_gas, reason, location);
 
     // Terminar la ejecución después del revert
-    let revert_exit_code = ok_block
+    let revert_exit_code = revert_block
         .append_operation(arith::constant(
             context,
             integer_constant_from_u8(context, REVERT_EXIT_CODE).into(),
@@ -2182,7 +2131,7 @@ fn codegen_revert<'c>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(func::r#return(&[revert_exit_code], location));
+    revert_block.append_operation(func::r#return(&[revert_exit_code], location));
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2398,19 +2347,11 @@ fn codegen_mstore<'c, 'r>(
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
 
-    // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2445,68 +2386,18 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
-    // Get current memory size
-    let memory_size_ptr = ok_block
-        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
-        .result(0)?
-        .into();
-
-    let memory_size = ok_block
-        .append_operation(llvm::load(
-            context,
-            memory_size_ptr,
-            uint32.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    // Compare current memory_size and required_size
-    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
     let memory_access_block = region.append_block(Block::new(&[]));
-    let extension_block = region.append_block(Block::new(&[]));
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        extension_flag,
-        &extension_block,
+    extend_memory(
+        op_ctx,
+        &ok_block,
         &memory_access_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    let memory_cost_before_expansion = compute_memory_cost(op_ctx, &extension_block)?;
-
-    // maybe we could check if there is already enough memory before extending it
-    extend_memory(op_ctx, &extension_block, required_size)?;
-
-    let memory_cost = compute_memory_cost(op_ctx, &extension_block)?;
-
-    let gas_cost = extension_block
-        .append_operation(arith::subi(
-            memory_cost,
-            memory_cost_before_expansion,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
-
-    extension_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &memory_access_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
+        region,
+        required_size,
+        gas_cost::MSTORE,
+    )?;
 
     // Memory access
-    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
     let memory_ptr_ptr = memory_access_block
         .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
         .result(0)?;
@@ -2575,19 +2466,12 @@ fn codegen_mstore8<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE8)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2632,63 +2516,18 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    // Get current memory size
-    let memory_size_ptr = ok_block
-        .append_operation(addressof(context, MEMORY_SIZE_GLOBAL, ptr_type, location))
-        .result(0)?
-        .into();
-
-    let memory_size = ok_block
-        .append_operation(llvm::load(
-            context,
-            memory_size_ptr,
-            uint32.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    // Compare current memory_size and required_size
-    let extension_flag = check_is_greater_than(context, &ok_block, memory_size, required_size)?;
     let memory_access_block = region.append_block(Block::new(&[]));
-    let extension_block = region.append_block(Block::new(&[]));
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        extension_flag,
-        &extension_block,
+    extend_memory(
+        op_ctx,
+        &ok_block,
         &memory_access_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    // Extend memory path (extension_block)
-    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block)?;
-
-    extend_memory(op_ctx, &extension_block, required_size)?;
-
-    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block)?;
-
-    let gas_cost = extension_block
-        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
-        .result(0)?
-        .into();
-    let flag = consume_gas_as_value(context, &extension_block, gas_cost)?;
-
-    extension_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &memory_access_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
+        region,
+        required_size,
+        gas_cost::MSTORE8,
+    )?;
 
     // Memory access
-    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
     let memory_ptr_ptr = memory_access_block
         .append_operation(addressof(context, MEMORY_PTR_GLOBAL, ptr_type, location))
         .result(0)?;

@@ -1,14 +1,14 @@
 use melior::{
     dialect::{
-        arith, func,
+        arith, cf, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
-        ods::{self},
+        ods,
     },
     ir::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Value,
+        Block, Location, Region, Value,
     },
     Context as MeliorContext,
 };
@@ -131,7 +131,7 @@ pub fn consume_gas_as_value<'ctx>(
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
-    let uint64 = IntegerType::new(context, 64).into();
+    let uint32 = IntegerType::new(context, 32).into();
 
     // Get address of gas counter global
     let gas_counter_ptr = block
@@ -148,7 +148,7 @@ pub fn consume_gas_as_value<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            uint64,
+            uint32,
             location,
             LoadStoreOptions::default(),
         ))
@@ -685,6 +685,7 @@ pub fn check_if_zero<'ctx>(
 pub(crate) fn compute_memory_cost<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
+    memory_byte_size: Value<'c, 'c>,
 ) -> Result<Value<'c, 'c>, CodegenError> {
     // this function computes memory cost, which is given by the following equations
     // memory_size_word = (memory_byte_size + 31) / 32
@@ -693,33 +694,14 @@ pub(crate) fn compute_memory_cost<'c>(
     //
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let ptr_type = pointer(context, 0);
-    let uint64 = IntegerType::new(context, 64);
-    let memory_size_ptr = block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            MEMORY_SIZE_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
+    let uint32 = IntegerType::new(context, 32).into();
 
-    let memory_byte_size = block
-        .append_operation(llvm::load(
-            context,
-            memory_size_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::new(),
-        ))
-        .result(0)?
-        .into();
+    // Esta bien usar 32 bits para el cost? sino usar 64 y extender memory_byte_size
 
     let thirty_one = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint64.into(), 31).into(),
+            IntegerAttribute::new(uint32, 31).into(),
             location,
         ))
         .result(0)?
@@ -728,7 +710,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let five_hundred_and_twelve = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint64.into(), 512).into(),
+            IntegerAttribute::new(uint32, 512).into(),
             location,
         ))
         .result(0)?
@@ -737,7 +719,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let thirty_two = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint64.into(), 32).into(),
+            IntegerAttribute::new(uint32, 32).into(),
             location,
         ))
         .result(0)?
@@ -746,7 +728,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let three = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint64.into(), 3).into(),
+            IntegerAttribute::new(uint32, 3).into(),
             location,
         ))
         .result(0)?
@@ -794,18 +776,21 @@ pub(crate) fn compute_memory_cost<'c>(
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
+/// Extends memory only if the current memory size is less than the required size, consuming the corresponding gas.
 pub(crate) fn extend_memory<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
-    new_size: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
+    finish_block: &'c Block,
+    region: &Region<'c>,
+    required_size: Value<'c, 'c>,
+    static_gas: i64,
+) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
-
     let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32);
 
-    let memory_ptr = op_ctx.extend_memory_syscall(block, new_size, location)?;
-
+    // Load memory size
     let memory_size_ptr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -813,18 +798,47 @@ pub(crate) fn extend_memory<'c>(
             ptr_type,
             location,
         ))
-        .result(0)?;
+        .result(0)?
+        .into();
+    let memory_size = block
+        .append_operation(llvm::load(
+            context,
+            memory_size_ptr,
+            uint32.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
-    let res = block.append_operation(llvm::store(
+    // Compare current memory size and required size
+    let extension_flag = check_is_greater_than(context, block, memory_size, required_size)?;
+    let extension_block = region.append_block(Block::new(&[]));
+    let no_extension_block = region.append_block(Block::new(&[]));
+
+    block.append_operation(cf::cond_br(
         context,
-        new_size,
-        memory_size_ptr.into(),
+        extension_flag,
+        &extension_block,
+        &no_extension_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Extend memory
+    let memory_ptr = op_ctx.extend_memory_syscall(&extension_block, required_size, location)?; // TODO: memory extension should be in 32 byte words?
+
+    // Store new memory size and pointer
+    let res = extension_block.append_operation(llvm::store(
+        context,
+        required_size,
+        memory_size_ptr,
         location,
         LoadStoreOptions::default(),
     ));
     assert!(res.verify());
-
-    let memory_ptr_ptr = block
+    let memory_ptr_ptr = extension_block
         .append_operation(llvm_mlir::addressof(
             context,
             MEMORY_PTR_GLOBAL,
@@ -832,8 +846,7 @@ pub(crate) fn extend_memory<'c>(
             location,
         ))
         .result(0)?;
-
-    let res = block.append_operation(llvm::store(
+    let res = extension_block.append_operation(llvm::store(
         context,
         memory_ptr,
         memory_ptr_ptr.into(),
@@ -842,7 +855,53 @@ pub(crate) fn extend_memory<'c>(
     ));
     assert!(res.verify());
 
-    Ok(memory_ptr)
+    // Consume gas for memory extension case
+    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block, memory_size)?;
+    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block, required_size)?;
+
+    let dynamic_gas_value = extension_block
+        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
+        .result(0)?
+        .into();
+    let static_gas_value = extension_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), static_gas).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let total_gas = extension_block
+        .append_operation(arith::addi(dynamic_gas_value, static_gas_value, location))
+        .result(0)?
+        .into();
+    let gas_flag = consume_gas_as_value(context, &extension_block, total_gas)?;
+
+    extension_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        finish_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Consume gas for no memory extension case
+    let gas_flag = consume_gas(context, &no_extension_block, static_gas)?;
+
+    no_extension_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        finish_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // TODO: cargar memory_ptr en caso de extension se puede ahorrar, pasandolo como parametro al finish_block/
+    Ok(())
 }
 
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
