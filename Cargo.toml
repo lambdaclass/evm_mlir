@@ -8,8 +8,8 @@ license = "LICENSE"
 keywords = ["ethereum", "evm"]
 
 [dependencies]
-alloy-primitives = { version = "0.7.5", features = [ "rlp" ] }
 bytes = { version = "1.6.0", features = ["serde"] }
+ethereum-types = "0.14.1"
 llvm-sys = "180.0.0"
 melior = { version = "0.18.1", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"
@@ -31,10 +31,10 @@ default = ["std", "serde"]
 
 std = [
     "serde/std",
-    "alloy-primitives/std",
+
 ]
 
 serde = [
-    "alloy-primitives/serde",
+
 ]
 

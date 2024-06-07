@@ -1,5 +1,4 @@
-use super::primitives::{Address, Bytes};
-use alloy_primitives::{B256, U256};
+use super::primitives::{Address, Bytes, H256, U256};
 use serde::{de, Deserialize};
 use std::collections::{BTreeMap, HashMap};
 
@@ -59,10 +58,10 @@ pub struct TestUnit {
 pub struct Test {
     pub expect_exception: Option<String>,
     pub indexes: TxPartIndices,
-    pub hash: B256,
+    pub hash: H256,
     #[serde(default)]
     pub post_state: HashMap<Address, AccountInfo>,
-    pub logs: B256,
+    pub logs: H256,
     pub txbytes: Option<Bytes>,
 }
 
@@ -93,10 +92,10 @@ pub struct Env {
     pub current_number: U256,
     pub current_timestamp: U256,
     pub current_base_fee: Option<U256>,
-    pub previous_hash: Option<B256>,
-    pub current_random: Option<B256>,
-    pub current_beacon_root: Option<B256>,
-    pub current_withdrawals_root: Option<B256>,
+    pub previous_hash: Option<H256>,
+    pub current_random: Option<H256>,
+    pub current_beacon_root: Option<H256>,
+    pub current_withdrawals_root: Option<H256>,
     pub parent_blob_gas_used: Option<U256>,
     pub parent_excess_blob_gas: Option<U256>,
     pub current_excess_blob_gas: Option<U256>,
@@ -109,7 +108,7 @@ pub struct TransactionParts {
     pub gas_limit: Vec<U256>,
     pub gas_price: Option<U256>,
     pub nonce: U256,
-    pub secret_key: B256,
+    pub secret_key: H256,
     /// if sender is not present we need to derive it from secret key.
     #[serde(default)]
     pub sender: Option<Address>,
@@ -121,7 +120,7 @@ pub struct TransactionParts {
     #[serde(default)]
     pub access_lists: Vec<Option<AccessList>>,
     #[serde(default)]
-    pub blob_versioned_hashes: Vec<B256>,
+    pub blob_versioned_hashes: Vec<H256>,
     pub max_fee_per_blob_gas: Option<U256>,
 }
 
@@ -129,7 +128,7 @@ pub struct TransactionParts {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccessListItem {
     pub address: Address,
-    pub storage_keys: Vec<B256>,
+    pub storage_keys: Vec<H256>,
 }
 
 pub type AccessList = Vec<AccessListItem>;
