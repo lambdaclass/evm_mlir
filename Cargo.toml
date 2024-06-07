@@ -9,6 +9,7 @@ keywords = ["ethereum", "evm"]
 
 [dependencies]
 alloy-primitives = { version = "0.7.5", features = [ "rlp" ] }
+bytes = { version = "1.6.0", features = ["serde"] }
 llvm-sys = "180.0.0"
 melior = { version = "0.18.1", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"

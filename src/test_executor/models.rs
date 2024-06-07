@@ -1,5 +1,5 @@
-use super::primitives::Address;
-use alloy_primitives::{Bytes, B256, U256};
+use super::primitives::{Address, Bytes};
+use alloy_primitives::{B256, U256};
 use serde::{de, Deserialize};
 use std::collections::{BTreeMap, HashMap};
 

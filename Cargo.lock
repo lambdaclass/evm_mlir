@@ -625,6 +625,7 @@ name = "evm_mlir"
 version = "0.1.0"
 dependencies = [
  "alloy-primitives",
+ "bytes",
  "cc",
  "llvm-sys",
  "melior",

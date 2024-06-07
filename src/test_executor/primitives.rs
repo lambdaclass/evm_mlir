@@ -6,6 +6,8 @@ const ADDRESS_SIZE: usize = 20;
 use std::fmt;
 use std::num::ParseIntError;
 
+pub use bytes::Bytes;
+
 /*
 TODO:
 
