@@ -50,7 +50,12 @@ fn get_fibonacci_program(n: u64) -> Vec<Operation> {
 
 #[test]
 fn fibonacci_example() {
-    let program = Program::from(get_fibonacci_program(10));
+    let operations = get_fibonacci_program(10);
+
+    let bytecode: Vec<u8> = operations.iter().flat_map(Operation::to_bytecode).collect();
+    std::fs::write("fibonacci.bytecode", bytecode).unwrap();
+
+    let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
