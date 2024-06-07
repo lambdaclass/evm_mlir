@@ -53,7 +53,7 @@ fn get_fibonacci_program(n: u64) -> Vec<Operation> {
 }
 
 fn main() {
-    const RUNS: usize = 10000;
+    const RUNS: usize = 100000;
     // let args: Vec<String> = std::env::args().collect();
     // let path = args.get(1).expect("No path provided").as_str();
     // let bytecode = std::fs::read(path).expect("Could not read file");
