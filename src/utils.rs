@@ -949,7 +949,7 @@ pub(crate) fn return_result_from_stack(
 
     extend_memory(op_ctx, block, &return_block, region, required_size, 0)?;
 
-    return_result_with_offset_and_size(op_ctx, block, offset, size, reason_code, location)?;
+    return_result_with_offset_and_size(op_ctx, &return_block, offset, size, reason_code, location)?;
 
     Ok(())
 }

@@ -118,6 +118,13 @@ fn test_revert_with_gas() {
         Operation::Push((1, 2_u8.into())),
         Operation::Revert,
     ];
+    let dynamic_gas = 3;
+    let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
+
+    // When gas is not enough, exits as halt instead of revert.
+    let result = run_program_get_result_with_gas(program.clone(), (needed_gas - 1) as _);
+    assert!(result.is_halt());
+
     run_program_assert_revert(program, &[0]);
 }
 
