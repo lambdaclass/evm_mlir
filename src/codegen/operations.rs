@@ -124,11 +124,11 @@ fn codegen_calldatacopy<'c, 'r>(
         .unwrap()
         .into();
 
-    // let dest_offset = ok_block
-    //     .append_operation(arith::trunci(dest_offset, uint32.into(), location))
-    //     .result(0)
-    //     .unwrap()
-    //     .into();
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
 
     let size = ok_block
         .append_operation(arith::trunci(size, uint32.into(), location))
@@ -200,11 +200,11 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let memcpy: melior::ir::Value = ok_block.append_operation(ods::llvm::intr_memcpy(&op_ctx.mlir_context,
+    let memcpy: melior::ir::Value = continue_block.append_operation(ods::llvm::intr_memcpy(&op_ctx.mlir_context,
         memory_dest,
         calldata_src,
         size,
-        IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into(),
+        IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
         location,
     ).into())
     .result(0)?
