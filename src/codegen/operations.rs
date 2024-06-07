@@ -2367,26 +2367,12 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    //let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
     // push and pop the calldata_size to convert it to uint256 (the syscall returns a uint32)
-    // stack_push(context, &ok_block, calldata_size);
-    // let calldata_size = stack_pop(context, &ok_block)?;
-    /*let calldata_size = ok_block
-        .append_operation(llvm::intr_bswap(calldata_size, uint256.into(), location))
-        .result(0)?
-        .into();
-    */
-
-    // TODO: change this by calling the actual syscall
-    let calldata_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 32).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
+    // TODO: change this, maybe there's a better way to do the conversion
+    stack_push(context, &ok_block, calldata_size);
+    let calldata_size = stack_pop(context, &ok_block)?;
+    
     let stack_ptr = get_stack_pointer(context, &ok_block)?;
 
     let zero = ok_block
@@ -2398,7 +2384,7 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    // fill the top of the stack with 0s
+    // fill the top of the stack with 0s to remove any garbage bytes it could have
     ok_block.append_operation(llvm::store(
         context,
         zero,
@@ -2427,12 +2413,13 @@ fn codegen_calldataload<'c, 'r>(
         .into();
 
     // len = min(calldata_size - offset, 32 bytes)
+    // this is done to fix the len so that  offset + len <= calldata_size
     let len = ok_block
         .append_operation(arith::minui(len, max_slice_width, location))
         .result(0)?
         .into();
 
-    // copy calldata[offset..len] to the top of the stack
+    // copy calldata[offset..offset + len] to the top of the stack
     ok_block.append_operation(
         ods::llvm::intr_memcpy(
             context,
