@@ -162,8 +162,12 @@ pub enum Opcode {
 }
 
 #[derive(Error, Debug)]
-#[error("The opcode `{0}` is not valid")]
+#[error("The opcode `{:02X}` is not valid", self.0)]
 pub struct OpcodeParseError(u8);
+
+#[derive(Error, Debug)]
+#[error("The following opcodes are not valid: `{:#?}`", self.0)]
+pub struct ParseError(Vec<OpcodeParseError>);
 
 impl TryFrom<u8> for Opcode {
     type Error = OpcodeParseError;
@@ -331,7 +335,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, Vec<OpcodeParseError>> {
+    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, ParseError> {
         let mut operations = vec![];
         let mut pc = 0;
         let mut failed_opcodes = vec![];
@@ -624,7 +628,7 @@ impl Program {
                 code_size,
             })
         } else {
-            Err(failed_opcodes)
+            Err(ParseError(failed_opcodes))
         }
     }
 
