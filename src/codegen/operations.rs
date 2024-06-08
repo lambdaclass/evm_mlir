@@ -2506,17 +2506,15 @@ fn codegen_not<'c, 'r>(
         location,
     ));
 
-    let  mask: [u8; 32] = [0xff; 32];
     let lhs = stack_pop(context, &ok_block)?;
     let mask = ok_block
-    .append_operation(arith::constant(
-        context,
-        integer_constant(context, mask),
-        location,
-    ))
-    .result(0)?
-    .into();
-
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0xff).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
     let result = ok_block
         .append_operation(arith::xori(lhs, mask, location))
