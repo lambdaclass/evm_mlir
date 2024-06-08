@@ -71,6 +71,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
+        Operation::Not => codegen_not(op_ctx, region),
     }
 }
 
@@ -2477,6 +2478,52 @@ fn codegen_mstore8<'c, 'r>(
         LoadStoreOptions::new()
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
+
+    Ok((start_block, ok_block))
+}
+
+// from the understanding of the not operator , A xor 1 == Not A
+fn codegen_not<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let  mask: [u8; 32] = [0xff; 32];
+    let lhs = stack_pop(context, &ok_block)?;
+    let mask = ok_block
+    .append_operation(arith::constant(
+        context,
+        integer_constant(context, mask),
+        location,
+    ))
+    .result(0)?
+    .into();
+
+
+    let result = ok_block
+        .append_operation(arith::xori(lhs, mask, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
 }

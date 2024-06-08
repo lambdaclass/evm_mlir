@@ -25,7 +25,7 @@ pub enum Opcode {
     AND = 0x16,
     OR = 0x17,
     XOR = 0x18,
-    // NOT = 0x19,
+    NOT = 0x19,
     BYTE = 0x1A,
     SHL = 0x1B,
     SHR = 0x1C,
@@ -275,6 +275,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
+            x if x == Opcode::NOT as u8 => Opcode::NOT,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -326,6 +327,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
+    Not
 }
 
 #[derive(Debug, Clone)]
@@ -579,6 +581,7 @@ impl Program {
                     pc += 31;
                     Operation::Push((32, (BigUint::from_bytes_be(x))))
                 }
+                Opcode::NOT => Operation::Not,
                 Opcode::DUP1 => Operation::Dup(1),
                 Opcode::DUP2 => Operation::Dup(2),
                 Opcode::DUP3 => Operation::Dup(3),

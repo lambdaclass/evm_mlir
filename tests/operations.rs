@@ -2167,3 +2167,12 @@ fn mload_not_allocated_address() {
     ];
     run_program_assert_stack_top(program, 0_u8.into());
 }
+
+fn not_with_stack_underflow() {
+    run_program_assert_halt(vec![Operation::Not]);
+}
+fn push_push_normal_not() {
+    let a = BigUint::from(90_u8);
+    let program = vec![Operation::Push(a.clone()), Operation::Not];
+    run_program_assert_result(program, !90);
+}
