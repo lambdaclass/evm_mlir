@@ -327,7 +327,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
-    Not
+    Not,
 }
 
 #[derive(Debug, Clone)]
