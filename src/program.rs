@@ -329,6 +329,62 @@ pub enum Operation {
     CallDataCopy,
 }
 
+impl Operation {
+    pub fn to_bytecode(&self) -> Vec<u8> {
+        match self {
+            Operation::Stop => vec![Opcode::STOP as u8],
+            Operation::Add => vec![Opcode::ADD as u8],
+            Operation::Mul => vec![Opcode::MUL as u8],
+            Operation::Sub => vec![Opcode::SUB as u8],
+            Operation::Div => vec![Opcode::DIV as u8],
+            Operation::Sdiv => vec![Opcode::SDIV as u8],
+            Operation::Mod => vec![Opcode::MOD as u8],
+            Operation::SMod => vec![Opcode::SMOD as u8],
+            Operation::Addmod => vec![Opcode::ADDMOD as u8],
+            Operation::Mulmod => vec![Opcode::MULMOD as u8],
+            Operation::Exp => vec![Opcode::EXP as u8],
+            Operation::SignExtend => vec![Opcode::SIGNEXTEND as u8],
+            Operation::Lt => vec![Opcode::LT as u8],
+            Operation::Gt => vec![Opcode::GT as u8],
+            Operation::Slt => vec![Opcode::SLT as u8],
+            Operation::Eq => vec![Opcode::EQ as u8],
+            Operation::IsZero => vec![Opcode::ISZERO as u8],
+            Operation::And => vec![Opcode::AND as u8],
+            Operation::Or => vec![Opcode::OR as u8],
+            Operation::Xor => vec![Opcode::XOR as u8],
+            Operation::Byte => vec![Opcode::BYTE as u8],
+            Operation::Shr => vec![Opcode::SHR as u8],
+            Operation::Shl => vec![Opcode::SHL as u8],
+            Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Codesize => vec![Opcode::CODESIZE as u8],
+            Operation::Pop => vec![Opcode::POP as u8],
+            Operation::Mload => vec![Opcode::MLOAD as u8],
+            Operation::Jump => vec![Opcode::JUMP as u8],
+            Operation::Jumpi => vec![Opcode::JUMPI as u8],
+            Operation::PC { pc: _ } => vec![Opcode::PC as u8],
+            Operation::Msize => vec![Opcode::MSIZE as u8],
+            Operation::Gas => vec![Opcode::GAS as u8],
+            Operation::Jumpdest { pc: _ } => vec![Opcode::JUMPDEST as u8],
+            Operation::Push0 => vec![Opcode::PUSH0 as u8],
+            Operation::Push((n, x)) => {
+                let len = 1 + *n as usize;
+                let mut opcode_bytes = vec![0; len];
+                opcode_bytes[0] = Opcode::PUSH0 as u8 + n;
+                let bytes = x.to_bytes_be();
+                opcode_bytes[len - bytes.len()..].copy_from_slice(&bytes);
+                opcode_bytes
+            }
+            Operation::Sgt => vec![Opcode::SGT as u8],
+            Operation::Dup(n) => vec![Opcode::DUP1 as u8 + n - 1],
+            Operation::Swap(n) => vec![Opcode::SWAP1 as u8 + n - 1],
+            Operation::Return => vec![Opcode::RETURN as u8],
+            Operation::Revert => vec![Opcode::REVERT as u8],
+            Operation::Mstore => vec![Opcode::MSTORE as u8],
+            Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub(crate) operations: Vec<Operation>,
