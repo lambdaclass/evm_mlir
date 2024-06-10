@@ -2143,3 +2143,13 @@ fn mload_not_allocated_address() {
     ];
     run_program_assert_stack_top(program, 0_u8.into());
 }
+
+#[test]
+fn sload() {
+    let program = vec![
+        Operation::Push0,
+        Operation::Sload
+    ];
+    let result = BigUint::from(23_u8);
+    run_program_assert_stack_top(program, result);
+}

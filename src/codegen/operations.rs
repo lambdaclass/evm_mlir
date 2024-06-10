@@ -13,7 +13,10 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir, read_storage, return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
+        integer_constant_from_i64, llvm_mlir, read_storage, return_empty_result,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -1544,9 +1547,9 @@ fn codegen_sload<'c, 'r>(
         location,
     ));
 
-    let key = stack_pop(context, &ok_block);
+    let key = stack_pop(context, &ok_block)?;
 
-    let read_value = read_storage(op_ctx, block, key)?;
+    let read_value = read_storage(op_ctx, &ok_block, key)?;
 
     stack_push(context, &ok_block, read_value)?;
 

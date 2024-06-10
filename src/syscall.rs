@@ -18,12 +18,18 @@
 use std::{collections::HashMap, ffi::c_void};
 
 use melior::ExecutionEngine;
-use num_bigint::BigUint;
 
 use crate::env::Env;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(C, align(16))]
+pub struct U256 {
+    pub hi: u128,
+    pub lo: u128,
+}
 
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
@@ -98,14 +104,17 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     env: Env,
-    storage: HashMap<[u8; 32], [u8; 32]>,
+    storage: HashMap<U256, U256>,
 }
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
     pub fn with_env(env: Env) -> Self {
+        let mut storage = HashMap::new();
+        storage.insert(U256 { hi: 0, lo: 0 }, U256 { hi: 0, lo: 23 });
         Self {
             env,
+            storage,
             ..Self::default()
         }
     }
@@ -167,15 +176,17 @@ impl SyscallContext {
         }
     }
 
-    pub extern "C" fn write_storage(&mut self, stg_key: [u8; 32], mut stg_value: [u8; 32]) {
-        if let Some(mut value) = self.storage.get_mut(&stf_key) {
-            value = &mut stg_value;
+    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
+        self.storage.insert(*stg_key, *stg_value);
+    }
+
+    pub extern "C" fn read_storage(&self, stg_key: &U256) -> U256 {
+        match self.storage.get(stg_key) {
+            Some(v) => *v,
+            None => U256 { hi: 0, lo: 0 }
         }
     }
 
-    pub extern "C" fn read_storage(&self, stg_key: [u8; 32]) -> [u8; 32] {
-        self.storage.get(&stg_key).unwrap(); // just for now
-    }
 }
 
 pub mod symbols {
@@ -200,11 +211,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_READ,
-            SyscallContext::read_storage as *const fn(*const c_void, [u8; 32]) as *mut (),
+            SyscallContext::read_storage as *const fn(*const c_void, *const U256) as *mut (),
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage as *const fn(*mut c_void, [u8; 32], [u8; 32]) as *mut (),
+            SyscallContext::write_storage as *const fn(*mut c_void,  *const U256,  *const U256) as *mut (),
         );
     };
 }
@@ -214,14 +225,12 @@ pub(crate) mod mlir {
     use melior::{
         dialect::{func, llvm::r#type::pointer},
         ir::{
-            attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
-            r#type::{FunctionType, IntegerType},
-            Block, Identifier, Location, Module as MeliorModule, Region, Value,
+            attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute}, r#type::{FunctionType, IntegerType}, Block, Identifier, Location, Module as MeliorModule, Region, Type, Value
         },
         Context as MeliorContext,
     };
 
-    use crate::{codegen::context, errors::CodegenError};
+    use crate::errors::CodegenError;
 
     use super::symbols;
 
@@ -230,7 +239,6 @@ pub(crate) mod mlir {
 
         // Type declarations
         let ptr_type = pointer(context, 0);
-        let uint256 = IntegerType::new(context, 256).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
@@ -265,7 +273,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_READ),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint256], &[ptr_type, uint256]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type], &[ptr_type]).into(),
             ),
             Region::new(),
             attributes,
@@ -276,7 +284,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint256, uint256], &[ptr_type]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
             ),
             Region::new(),
             attributes,
@@ -335,13 +343,13 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint256 = IntegerType::new(&mlir_ctx, 256);
+        let ptr_type = pointer(mlir_ctx, 0);
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
                 &[syscall_ctx, key],
-                &[uint256],
+                &[ptr_type],
                 location,
             ))
             .result(0)?;
@@ -371,8 +379,3 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 }
-
-// #[test]
-// fn storage_write_syscall_return_type() {
-//     let return_type = ;
-// }

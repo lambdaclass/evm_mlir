@@ -363,6 +363,7 @@ impl Program {
                 Opcode::CODESIZE => Operation::Codesize,
                 Opcode::POP => Operation::Pop,
                 Opcode::MLOAD => Operation::Mload,
+                Opcode::SLOAD => Operation::Sload,
                 Opcode::JUMP => Operation::Jump,
                 Opcode::JUMPI => Operation::Jumpi,
                 Opcode::PC => Operation::PC { pc },
