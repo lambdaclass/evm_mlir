@@ -2185,7 +2185,7 @@ fn mload_gas_cost_with_memory_extension() {
         Operation::Mload,
     ];
     let dynamic_gas = 3_i64;
-    let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
+    let needed_gas = gas_cost::PUSH0 + gas_cost::MLOAD + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
 
