@@ -1,5 +1,6 @@
 use evm_mlir::{
     program::{Operation, Program},
+    syscall::Log,
     Env, Evm,
 };
 use num_bigint::BigUint;
@@ -63,4 +64,36 @@ fn fibonacci_example() {
     assert!(&result.is_success());
     let number = BigUint::from_bytes_be(result.return_data().unwrap());
     println!("{number}");
+}
+
+#[test]
+fn log0() {
+    let data: [u8; 32] = [0xff; 32];
+    let size = 32_u8;
+    let memory_offset = 0_u8;
+    let program = Program::from(vec![
+        // store data in memory
+        Operation::Push((32_u8, BigUint::from_bytes_be(&data))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Mstore,
+        // execute log0
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Log0,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let logs = result.return_logs().unwrap();
+    let expected_logs: Vec<Log> = vec![Log {
+        data: [0xff_u8; 32].into(),
+        topics: vec![],
+    }];
+    assert_eq!(logs.to_owned(), expected_logs);
 }
