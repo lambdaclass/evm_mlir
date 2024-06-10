@@ -680,7 +680,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32).into();
 
-    let thirty_one = block
+    let constant_31 = block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 31).into(),
@@ -689,7 +689,7 @@ pub(crate) fn compute_memory_cost<'c>(
         .result(0)?
         .into();
 
-    let five_hundred_and_twelve = block
+    let constant_512 = block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 512).into(),
@@ -698,7 +698,7 @@ pub(crate) fn compute_memory_cost<'c>(
         .result(0)?
         .into();
 
-    let thirty_two = block
+    let constant_32 = block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 32).into(),
@@ -707,7 +707,7 @@ pub(crate) fn compute_memory_cost<'c>(
         .result(0)?
         .into();
 
-    let three = block
+    let constant_3 = block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 3).into(),
@@ -717,12 +717,16 @@ pub(crate) fn compute_memory_cost<'c>(
         .into();
 
     let memory_byte_size_plus_31 = block
-        .append_operation(arith::addi(memory_byte_size, thirty_one, location))
+        .append_operation(arith::addi(memory_byte_size, constant_31, location))
         .result(0)?
         .into();
 
     let memory_size_word = block
-        .append_operation(arith::divui(memory_byte_size_plus_31, thirty_two, location))
+        .append_operation(arith::divui(
+            memory_byte_size_plus_31,
+            constant_32,
+            location,
+        ))
         .result(0)?
         .into();
 
@@ -734,21 +738,21 @@ pub(crate) fn compute_memory_cost<'c>(
     let memory_size_word_squared_divided_by_512 = block
         .append_operation(arith::divui(
             memory_size_word_squared,
-            five_hundred_and_twelve,
+            constant_512,
             location,
         ))
         .result(0)?
         .into();
 
-    let memory_size_word_x_3 = block
-        .append_operation(arith::muli(memory_size_word, three, location))
+    let memory_size_word_times_3 = block
+        .append_operation(arith::muli(memory_size_word, constant_3, location))
         .result(0)?
         .into();
 
     let memory_cost = block
         .append_operation(arith::addi(
             memory_size_word_squared_divided_by_512,
-            memory_size_word_x_3,
+            memory_size_word_times_3,
             location,
         ))
         .result(0)?
@@ -765,7 +769,7 @@ pub(crate) fn extend_memory<'c>(
     finish_block: &'c Block,
     region: &Region<'c>,
     required_size: Value<'c, 'c>,
-    static_gas: i64,
+    fixed_gas: i64,
 ) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -848,7 +852,7 @@ pub(crate) fn extend_memory<'c>(
     let static_gas_value = extension_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), static_gas).into(),
+            IntegerAttribute::new(uint32.into(), fixed_gas).into(),
             location,
         ))
         .result(0)?
@@ -870,7 +874,7 @@ pub(crate) fn extend_memory<'c>(
     ));
 
     // Consume gas for no memory extension case
-    let gas_flag = consume_gas(context, &no_extension_block, static_gas)?;
+    let gas_flag = consume_gas(context, &no_extension_block, fixed_gas)?;
 
     no_extension_block.append_operation(cf::cond_br(
         context,
