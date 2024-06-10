@@ -27,19 +27,22 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
-    Revert = 1,
-    Error = 2,
+    Stop,
+    Revert,
+    Error,
     Default,
 }
 impl ExitStatusCode {
+    #[inline(always)]
     pub fn to_u8(self) -> u8 {
         self as u8
     }
     pub fn from_u8(value: u8) -> Self {
         match value {
-            0 => Self::Return,
-            1 => Self::Revert,
-            2 => Self::Error,
+            x if x == Self::Return.to_u8() => Self::Return,
+            x if x == Self::Stop.to_u8() => Self::Stop,
+            x if x == Self::Revert.to_u8() => Self::Revert,
+            x if x == Self::Error.to_u8() => Self::Error,
             _ => Self::Default,
         }
     }
@@ -58,6 +61,29 @@ pub enum ExecutionResult {
     Halt,
 }
 
+impl ExecutionResult {
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Success { .. })
+    }
+
+    pub fn is_revert(&self) -> bool {
+        matches!(self, Self::Revert { .. })
+    }
+
+    pub fn is_halt(&self) -> bool {
+        matches!(self, Self::Halt { .. })
+    }
+
+    pub fn return_data(&self) -> Option<&[u8]> {
+        match self {
+            Self::Success { return_data, .. } | Self::Revert { return_data, .. } => {
+                Some(return_data)
+            }
+            Self::Halt => None,
+        }
+    }
+}
+
 /// The context passed to syscalls
 #[derive(Debug, Default)]
 pub struct SyscallContext {
@@ -70,7 +96,7 @@ pub struct SyscallContext {
     exit_status: Option<ExitStatusCode>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    env: Env,
+    pub env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -91,7 +117,7 @@ impl SyscallContext {
         let gas_remaining = self.gas_remaining.unwrap_or(0);
         let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
         match exit_status {
-            ExitStatusCode::Return => ExecutionResult::Success {
+            ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
             },
@@ -121,6 +147,12 @@ impl SyscallContext {
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    pub extern "C" fn get_calldata_size(&self) -> u32 {
+        let size = self.env.tx.calldata.len();
+        print!("Calldata size: {}", size as u32);
+        self.env.tx.calldata.len() as u32
+    }
+
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
         if new_size <= self.memory.len() {
@@ -143,6 +175,7 @@ impl SyscallContext {
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -157,6 +190,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_SIZE,
+            SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
     };
 }
@@ -205,6 +242,15 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
             Region::new(),
@@ -232,6 +278,25 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    pub(crate) fn get_calldata_size_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
+                &[syscall_ctx],
+                &[uint32],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Extends the memory segment of the syscall context.

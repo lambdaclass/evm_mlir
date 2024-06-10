@@ -1,13 +1,10 @@
 pub const MAX_STACK_SIZE: usize = 1024;
-pub const GAS_COUNTER_GLOBAL: &str = "emv_mlir__gas_counter";
-pub const STACK_BASEPTR_GLOBAL: &str = "emv_mlir__stack_baseptr";
-pub const STACK_PTR_GLOBAL: &str = "emv_mlir__stack_ptr";
-pub const MEMORY_PTR_GLOBAL: &str = "emv_mlir__memory_ptr";
-pub const MEMORY_SIZE_GLOBAL: &str = "emv_mlir__memory_size";
+pub const GAS_COUNTER_GLOBAL: &str = "evm_mlir__gas_counter";
+pub const STACK_BASEPTR_GLOBAL: &str = "evm_mlir__stack_baseptr";
+pub const STACK_PTR_GLOBAL: &str = "evm_mlir__stack_ptr";
+pub const MEMORY_PTR_GLOBAL: &str = "evm_mlir__memory_ptr";
+pub const MEMORY_SIZE_GLOBAL: &str = "evm_mlir__memory_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
-
-pub const REVERT_EXIT_CODE: u8 = 255;
-pub const RETURN_EXIT_CODE: u8 = 0;
 
 /// Contains the gas costs of the EVM instructions
 pub mod gas_cost {
@@ -49,4 +46,6 @@ pub mod gas_cost {
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
     pub const BYTE: i64 = 3;
+    pub const CALLDATASIZE: i64 = 2;
+    pub const JUMPI: i64 = 10;
 }

@@ -4,8 +4,8 @@
 [![rust](https://github.com/lambdaclass/evm_mlir/actions/workflows/ci.yml/badge.svg)](https://github.com/lambdaclass/emv_mlir/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lambdaclass/evm_mlir)](/LICENSE)
 
-[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Frust_ethereum%2F&logo=telegram&label=chat&color=neon
-[tg-url]: https://t.me/rust_ethereum
+[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fethereum_rust%2F&logo=telegram&label=chat&color=neon
+[tg-url]: https://t.me/ethereum_rust
 
 An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
@@ -39,6 +39,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
+1. (0x36) CALLDATASIZE
 1. (0x38) CODESIZE
 1. (0x50) POP
 1. (0x51) MLOAD
@@ -116,6 +117,8 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x9D) SWAP14
 1. (0x9E) SWAP15
 1. (0x9F) SWAP16
+1. (0xF3) RETURN
+1. (0xFD) REVERT
 
 </details>
 
@@ -130,7 +133,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x33) CALLER
 1. (0x34) CALLVALUE
 1. (0x35) CALLDATALOAD
-1. (0x36) CALLDATASIZE
 1. (0x37) CALLDATACOPY
 1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
@@ -162,11 +164,9 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE
-1. (0xF3) RETURN
 1. (0xF4) DELEGATECALL
 1. (0xF5) CREATE2
 1. (0xFA) STATICCALL
-1. (0xFD) REVERT
 1. (0xFE) INVALID
 1. (0xFF) SELFDESTRUCT
 

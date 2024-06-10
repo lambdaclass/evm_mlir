@@ -1,4 +1,5 @@
 use num_bigint::BigUint;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub enum Opcode {
@@ -38,7 +39,7 @@ pub enum Opcode {
     // CALLER = 0x33,
     // CALLVALUE = 0x34,
     // CALLDATALOAD = 0x35,
-    // CALLDATASIZE = 0x36,
+    CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
     // CODECOPY = 0x39,
@@ -158,12 +159,20 @@ pub enum Opcode {
     REVERT = 0xFD,
     // INVALID = 0xFE,
     // SELFDESTRUCT = 0xFF,
-    UNUSED,
 }
 
-impl From<u8> for Opcode {
-    fn from(opcode: u8) -> Opcode {
-        match opcode {
+#[derive(Error, Debug)]
+#[error("The opcode `{:02X}` is not valid", self.0)]
+pub struct OpcodeParseError(u8);
+
+#[derive(Error, Debug)]
+#[error("The following opcodes are not valid: `{:#?}`", self.0)]
+pub struct ParseError(Vec<OpcodeParseError>);
+
+impl TryFrom<u8> for Opcode {
+    type Error = OpcodeParseError;
+    fn try_from(opcode: u8) -> Result<Opcode, Self::Error> {
+        let op = match opcode {
             x if x == Opcode::STOP as u8 => Opcode::STOP,
             x if x == Opcode::ADD as u8 => Opcode::ADD,
             x if x == Opcode::MUL as u8 => Opcode::MUL,
@@ -267,8 +276,10 @@ impl From<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
-            _ => Opcode::UNUSED,
-        }
+            x => return Err(OpcodeParseError(x)),
+        };
+
+        Ok(op)
     }
 }
 
@@ -317,6 +328,64 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
+    CallDataSize,
+}
+
+impl Operation {
+    pub fn to_bytecode(&self) -> Vec<u8> {
+        match self {
+            Operation::Stop => vec![Opcode::STOP as u8],
+            Operation::Add => vec![Opcode::ADD as u8],
+            Operation::Mul => vec![Opcode::MUL as u8],
+            Operation::Sub => vec![Opcode::SUB as u8],
+            Operation::Div => vec![Opcode::DIV as u8],
+            Operation::Sdiv => vec![Opcode::SDIV as u8],
+            Operation::Mod => vec![Opcode::MOD as u8],
+            Operation::SMod => vec![Opcode::SMOD as u8],
+            Operation::Addmod => vec![Opcode::ADDMOD as u8],
+            Operation::Mulmod => vec![Opcode::MULMOD as u8],
+            Operation::Exp => vec![Opcode::EXP as u8],
+            Operation::SignExtend => vec![Opcode::SIGNEXTEND as u8],
+            Operation::Lt => vec![Opcode::LT as u8],
+            Operation::Gt => vec![Opcode::GT as u8],
+            Operation::Slt => vec![Opcode::SLT as u8],
+            Operation::Eq => vec![Opcode::EQ as u8],
+            Operation::IsZero => vec![Opcode::ISZERO as u8],
+            Operation::And => vec![Opcode::AND as u8],
+            Operation::Or => vec![Opcode::OR as u8],
+            Operation::Xor => vec![Opcode::XOR as u8],
+            Operation::Byte => vec![Opcode::BYTE as u8],
+            Operation::Shr => vec![Opcode::SHR as u8],
+            Operation::Shl => vec![Opcode::SHL as u8],
+            Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Codesize => vec![Opcode::CODESIZE as u8],
+            Operation::Pop => vec![Opcode::POP as u8],
+            Operation::Mload => vec![Opcode::MLOAD as u8],
+            Operation::Jump => vec![Opcode::JUMP as u8],
+            Operation::Jumpi => vec![Opcode::JUMPI as u8],
+            Operation::PC { pc: _ } => vec![Opcode::PC as u8],
+            Operation::Msize => vec![Opcode::MSIZE as u8],
+            Operation::Gas => vec![Opcode::GAS as u8],
+            Operation::Jumpdest { pc: _ } => vec![Opcode::JUMPDEST as u8],
+            Operation::Push0 => vec![Opcode::PUSH0 as u8],
+            Operation::Push((n, x)) => {
+                let len = 1 + *n as usize;
+                let mut opcode_bytes = vec![0; len];
+                opcode_bytes[0] = Opcode::PUSH0 as u8 + n;
+                let bytes = x.to_bytes_be();
+                opcode_bytes[len - bytes.len()..].copy_from_slice(&bytes);
+                opcode_bytes
+            }
+            Operation::Sgt => vec![Opcode::SGT as u8],
+            Operation::Dup(n) => vec![Opcode::DUP1 as u8 + n - 1],
+            Operation::Swap(n) => vec![Opcode::SWAP1 as u8 + n - 1],
+            Operation::Return => vec![Opcode::RETURN as u8],
+            Operation::Revert => vec![Opcode::REVERT as u8],
+            Operation::Mstore => vec![Opcode::MSTORE as u8],
+            Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+            Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -326,15 +395,24 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn from_bytecode(bytecode: &[u8]) -> Self {
+    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, ParseError> {
         let mut operations = vec![];
         let mut pc = 0;
+        let mut failed_opcodes = vec![];
 
         while pc < bytecode.len() {
             let Some(opcode) = bytecode.get(pc).copied() else {
                 break;
             };
-            let op = match Opcode::from(opcode) {
+
+            let opcode = Opcode::try_from(opcode);
+
+            if let Err(e) = opcode {
+                failed_opcodes.push(e);
+                continue;
+            }
+
+            let op = match opcode.unwrap() {
                 Opcode::STOP => Operation::Stop,
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
@@ -598,7 +676,7 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
+                Opcode::CALLDATASIZE => Operation::CallDataSize,
             };
             operations.push(op);
             pc += 1;
@@ -606,9 +684,13 @@ impl Program {
 
         let code_size = Self::get_codesize(&operations);
 
-        Program {
-            operations,
-            code_size,
+        if failed_opcodes.is_empty() {
+            Ok(Program {
+                operations,
+                code_size,
+            })
+        } else {
+            Err(ParseError(failed_opcodes))
         }
     }
 
