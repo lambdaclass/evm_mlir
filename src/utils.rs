@@ -1,6 +1,7 @@
 use melior::{
     dialect::{
-        arith, cf, func,
+        arith::{self, CmpiPredicate},
+        cf, func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
@@ -605,23 +606,17 @@ pub fn check_stack_has_at_least<'ctx>(
     Ok(flag.into())
 }
 
-// Generates code for checking if lhs < rhs
-pub fn check_is_greater_than<'ctx>(
+pub fn compare_values<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
+    predicate: CmpiPredicate,
     lhs: Value<'ctx, 'ctx>,
     rhs: Value<'ctx, 'ctx>,
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
 
     let flag = block
-        .append_operation(arith::cmpi(
-            context,
-            arith::CmpiPredicate::Ugt,
-            rhs,
-            lhs,
-            location,
-        ))
+        .append_operation(arith::cmpi(context, predicate, lhs, rhs, location))
         .result(0)?;
 
     Ok(flag.into())
@@ -798,7 +793,13 @@ pub(crate) fn extend_memory<'c>(
         .into();
 
     // Compare current memory size and required size
-    let extension_flag = check_is_greater_than(context, block, memory_size, required_size)?;
+    let extension_flag = compare_values(
+        context,
+        block,
+        CmpiPredicate::Ult,
+        memory_size,
+        required_size,
+    )?;
     let extension_block = region.append_block(Block::new(&[]));
     let no_extension_block = region.append_block(Block::new(&[]));
 

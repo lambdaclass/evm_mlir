@@ -1,5 +1,11 @@
 use melior::{
-    dialect::{arith, cf, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        arith::{self, CmpiPredicate},
+        cf, llvm,
+        llvm::r#type::pointer,
+        llvm::LoadStoreOptions,
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -13,7 +19,7 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
         stack_pop, stack_push, swap_stack_elements,
@@ -1252,7 +1258,7 @@ fn codegen_shr<'c, 'r>(
         .result(0)?
         .into();
 
-    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+    flag = compare_values(context, &ok_block, CmpiPredicate::Ult, shift, value_255)?;
 
     let ok_ok_block = region.append_block(Block::new(&[]));
     let altv_block = region.append_block(Block::new(&[]));
@@ -1339,7 +1345,7 @@ fn codegen_shl<'c, 'r>(
         .result(0)?
         .into();
 
-    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+    flag = compare_values(context, &ok_block, CmpiPredicate::Ult, shift, value_255)?;
 
     let ok_ok_block = region.append_block(Block::new(&[]));
     let altv_block = region.append_block(Block::new(&[]));
