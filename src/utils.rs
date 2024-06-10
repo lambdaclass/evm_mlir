@@ -843,7 +843,7 @@ pub(crate) fn extend_memory<'c>(
         .result(0)?
         .into();
 
-    let rounded_required_size = round_up_32(op_ctx, &block, required_size)?;
+    let rounded_required_size = round_up_32(op_ctx, block, required_size)?;
 
     // Compare current memory size and required size
     let extension_flag = compare_values(
