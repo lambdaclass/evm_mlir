@@ -27,6 +27,11 @@ fn main() {
     // println!("Execution result: {result}");
     use evm_mlir::program::Operation;
 
+    if let Err(err) = program {
+        eprintln!("{:#?}", err);
+        return;
+    }
+
     // This is for intermediate files
     let output_file = PathBuf::from("output");
 
@@ -39,7 +44,9 @@ fn main() {
     .into();
 
     let context = Context::new();
-    let module = context.compile(&program, &output_file);
+    let module = context
+        .compile(&program.unwrap(), &output_file)
+        .expect("failed to compile program");
 
     let executor = Executor::new(&module.unwrap());
 
