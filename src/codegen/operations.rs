@@ -211,7 +211,7 @@ fn codegen_calldatacopy<'c, 'r>(
             memory_dest,
             calldata_src,
             size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
             location,
         )
         .into(),
@@ -241,7 +241,7 @@ fn codegen_calldatacopy<'c, 'r>(
             memory_dest,
             calldata_src,
             remaining_calldata_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
             location,
         )
         .into(),
@@ -279,7 +279,7 @@ fn codegen_calldatacopy<'c, 'r>(
             zero_fill_dest,
             zero_value,
             zero_fill_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
             location,
         )
         .into(),

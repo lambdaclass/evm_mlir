@@ -89,14 +89,14 @@ impl ExecutionResult {
 pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    pub memory: Vec<u8>,
+    memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    pub env: Env,
+    env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
