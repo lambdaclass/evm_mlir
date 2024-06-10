@@ -1,5 +1,3 @@
-use core::slice;
-
 use melior::{
     dialect::{
         arith,
@@ -2325,7 +2323,6 @@ fn codegen_calldataload<'c, 'r>(
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
     let uint8 = IntegerType::new(context, 8);
-    let uint32 = IntegerType::new(context, 32);
     let uint1 = IntegerType::new(context, 1);
     let ptr_type = pointer(context, 0);
 
@@ -2370,10 +2367,8 @@ fn codegen_calldataload<'c, 'r>(
     let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
     // push and pop the calldata_size to convert it to uint256 (the syscall returns a uint32)
     // TODO: change this, maybe there's a better way to do the conversion
-    stack_push(context, &ok_block, calldata_size);
+    stack_push(context, &ok_block, calldata_size)?;
     let calldata_size = stack_pop(context, &ok_block)?;
-    
-    let stack_ptr = get_stack_pointer(context, &ok_block)?;
 
     let zero = ok_block
         .append_operation(arith::constant(
@@ -2384,8 +2379,48 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
+    let offset_ok_block = region.append_block(Block::new(&[]));
+    let offset_bad_block = region.append_block(Block::new(&[]));
+    let end_block = region.append_block(Block::new(&[]));
+
+    // offset < calldata_size =>  offset_ok
+    let offset_ok = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ult,
+            offset,
+            calldata_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // if offset < calldata_size => offset_ok_block
+    // else => offset_bad_block
+    ok_block.append_operation(cond_br(
+        context,
+        offset_ok,
+        &offset_ok_block,
+        &offset_bad_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    /******************** offset_bad_block *******************/
+
+    // offset >= calldata_size => push 0
+    stack_push(context, &offset_bad_block, zero)?;
+    offset_bad_block.append_operation(br(&end_block, &[], location));
+
+    /******************** offset_bad_block *******************/
+
+    /******************** offset_OK_block *******************/
+
+    let stack_ptr = get_stack_pointer(context, &offset_ok_block)?;
+
     // fill the top of the stack with 0s to remove any garbage bytes it could have
-    ok_block.append_operation(llvm::store(
+    offset_ok_block.append_operation(llvm::store(
         context,
         zero,
         stack_ptr,
@@ -2394,7 +2429,7 @@ fn codegen_calldataload<'c, 'r>(
     ));
 
     // calldata_ptr_at_offset = calldata_ptr + new_offset
-    let calldata_ptr_at_offset = ok_block
+    let calldata_ptr_at_offset = offset_ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             calldata_ptr,
@@ -2407,49 +2442,51 @@ fn codegen_calldataload<'c, 'r>(
         .into();
 
     // len is the length of the slice (len is maximum 32 bytes)
-    let len = ok_block
+    let len = offset_ok_block
         .append_operation(arith::subi(calldata_size, offset, location))
         .result(0)?
         .into();
 
     // len = min(calldata_size - offset, 32 bytes)
     // this is done to fix the len so that  offset + len <= calldata_size
-    let len = ok_block
+    let len = offset_ok_block
         .append_operation(arith::minui(len, max_slice_width, location))
         .result(0)?
         .into();
 
     // copy calldata[offset..offset + len] to the top of the stack
-    ok_block.append_operation(
+    offset_ok_block.append_operation(
         ods::llvm::intr_memcpy(
             context,
             stack_ptr,
             calldata_ptr_at_offset,
             len,
-            IntegerAttribute::new(uint1.into(), 0).into(),
+            IntegerAttribute::new(uint1.into(), 0),
             location,
         )
         .into(),
     );
 
     // increment the stack pointer so calldata[offset..len] is placed at the top of the stack
-    inc_stack_pointer(context, &ok_block)?;
+    inc_stack_pointer(context, &offset_ok_block)?;
 
     // if the system is little endian, we have to convert the result to big endian
     // pop calldata_slice, change to big endian and push it again
     if cfg!(target_endian = "little") {
         // pop the slice
-        let calldata_slice = stack_pop(context, &ok_block)?;
+        let calldata_slice = stack_pop(context, &offset_ok_block)?;
         // convert it to big endian
-        let calldata_slice = ok_block
+        let calldata_slice = offset_ok_block
             .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
             .result(0)?
             .into();
         // push it back on the stack
-        stack_push(context, &ok_block, calldata_slice);
+        stack_push(context, &offset_ok_block, calldata_slice)?;
     }
-    let end_block = region.append_block(Block::new(&[]));
-    ok_block.append_operation(br(&end_block, &[], location));
+
+    offset_ok_block.append_operation(br(&end_block, &[], location));
+
+    /******************** offset_OK_block *******************/
 
     Ok((start_block, end_block))
 }
