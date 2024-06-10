@@ -24,6 +24,13 @@ use crate::env::Env;
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(C, align(16))]
+pub struct U256 {
+    pub hi: u128,
+    pub lo: u128,
+}
+
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
@@ -111,7 +118,7 @@ pub struct SyscallContext {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Log {
-    pub topics: Vec<u8>,
+    pub topics: Vec<U256>,
     pub data: Vec<u8>,
 }
 
@@ -192,12 +199,24 @@ impl SyscallContext {
         };
         self.logs.push(log);
     }
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
+        let offset = offset as usize;
+        let size = size as usize;
+        let data: Vec<u8> = self.memory[offset..offset + size].into();
+        let log = Log {
+            data,
+            topics: vec![*topic],
+        };
+        self.logs.push(log);
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
+    pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -217,6 +236,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::APPEND_LOG,
             SyscallContext::append_log as *const fn(*mut c_void, u32, u32) as *mut (),
         );
+        engine.register_symbol(
+            symbols::APPEND_LOG_ONE_TOPIC,
+            SyscallContext::append_log_with_one_topic
+                as *const fn(*mut c_void, u32, u32, *const U256) as *mut (),
+        );
     };
 }
 
@@ -234,7 +258,7 @@ pub(crate) mod mlir {
 
     use crate::errors::CodegenError;
 
-    use super::symbols;
+    use super::{symbols, U256};
 
     pub(crate) fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
         let location = Location::unknown(context);
@@ -242,6 +266,7 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
+        //let uint256 = IntegerType::new(context, 256).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
@@ -274,6 +299,16 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::APPEND_LOG),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_ONE_TOPIC),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -336,6 +371,25 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG),
             &[syscall_ctx, data, size],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data and a topic and appends a log to the logs vector
+    pub(crate) fn append_log_with_one_topic_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_ONE_TOPIC),
+            &[syscall_ctx, data, size, topic],
             &[],
             location,
         ));

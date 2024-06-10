@@ -1,5 +1,9 @@
 use melior::{
-    dialect::{arith, cf, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        arith, cf,
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -15,8 +19,9 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        integer_constant_from_i64,
+        llvm_mlir::{self, addressof},
+        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -71,7 +76,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
-        Operation::Log0 => codegen_log0(op_ctx, region),
+        Operation::Log(x) => codegen_log(op_ctx, region, x),
     }
 }
 
@@ -2482,19 +2487,24 @@ fn codegen_mstore8<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
-fn codegen_log0<'c, 'r>(
+fn codegen_log<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
+    nth: u8,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    debug_assert!(nth <= 4);
     // TODO: check if the current execution context is from a STATICCALL (since Byzantium fork).
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
+    let ptr_type = pointer(context, 0);
 
+    let required_elements = 2 + nth;
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
     // Check there's enough gas
+    // TODO: add dynamic gas computation
     let gas_flag = consume_gas(context, &start_block, gas_cost::LOG0)?;
 
     let condition = start_block
@@ -2525,7 +2535,52 @@ fn codegen_log0<'c, 'r>(
         .append_operation(arith::trunci(size_u256, uint32.into(), location))
         .result(0)?
         .into();
-    op_ctx.append_log_syscall(&ok_block, offset, size, location);
+
+    // add memory expansion and memory expansion cost
+    // required_size = offset + value_size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+
+    match nth {
+        0 => {
+            op_ctx.append_log_syscall(&ok_block, offset, size, location);
+        }
+        1 => {
+            let topic1 = stack_pop(context, &ok_block)?;
+            let width_size = ok_block
+                .append_operation(arith::constant(
+                    context,
+                    integer_constant_from_i64(context, 32).into(),
+                    location,
+                ))
+                .result(0)?
+                .into();
+            let topic1_ptr = ok_block
+                .append_operation(llvm::alloca(
+                    context,
+                    width_size,
+                    ptr_type,
+                    location,
+                    AllocaOptions::default(),
+                ))
+                .result(0)?
+                .into();
+            ok_block.append_operation(llvm::store(
+                context,
+                topic1,
+                topic1_ptr,
+                location,
+                LoadStoreOptions::default()
+                    .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+            ));
+            op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1, location);
+        }
+        _ => println!("not implemented yet"),
+    }
 
     Ok((start_block, ok_block))
 }

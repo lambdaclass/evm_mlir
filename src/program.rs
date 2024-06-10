@@ -142,10 +142,10 @@ pub enum Opcode {
     SWAP15 = 0x9E,
     SWAP16 = 0x9F,
     LOG0 = 0xA0,
-    // LOG1 = 0xA1,
-    // LOG2 = 0xA2,
-    // LOG3 = 0xA3,
-    // LOG4 = 0xA4,
+    LOG1 = 0xA1,
+    LOG2 = 0xA2,
+    LOG3 = 0xA3,
+    LOG4 = 0xA4,
     // unused 0xA5-0xEF
     // CREATE = 0xF0,
     // CALL = 0xF1,
@@ -276,6 +276,10 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
             x if x == Opcode::LOG0 as u8 => Opcode::LOG0,
+            x if x == Opcode::LOG1 as u8 => Opcode::LOG1,
+            x if x == Opcode::LOG2 as u8 => Opcode::LOG2,
+            x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
+            x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -327,7 +331,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
-    Log0,
+    Log(u8),
 }
 
 impl Operation {
@@ -382,7 +386,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::Log0 => vec![Opcode::LOG0 as u8],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
         }
     }
 }
@@ -674,7 +678,11 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::LOG0 => Operation::Log0,
+                Opcode::LOG0 => Operation::Log(0),
+                Opcode::LOG1 => Operation::Log(1),
+                Opcode::LOG2 => Operation::Log(2),
+                Opcode::LOG3 => Operation::Log(3),
+                Opcode::LOG4 => Operation::Log(4),
             };
             operations.push(op);
             pc += 1;

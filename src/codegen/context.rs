@@ -438,4 +438,23 @@ impl<'c> OperationCtx<'c> {
             location,
         );
     }
+
+    pub(crate) fn append_log_with_one_topic_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_with_one_topic_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            topic,
+            location,
+        );
+    }
 }
