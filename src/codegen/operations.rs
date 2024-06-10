@@ -2626,8 +2626,23 @@ fn codegen_mcopy<'c, 'r>(
         .into();
 
     // required_size = offset + size
-    let required_size = ok_block
+    let src_required_size = ok_block
         .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    // dest_required_size = dest_offset + size
+    let dest_required_size = ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::maxui(
+            src_required_size,
+            dest_required_size,
+            location,
+        ))
         .result(0)?
         .into();
 
@@ -2645,14 +2660,6 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    // dest_required_size = dest_offset + size
-    let dest_required_size = ok_block
-        .append_operation(arith::addi(dest_offset, size, location))
-        .result(0)?
-        .into();
-
-    let memory_ptr = extend_memory(op_ctx, &ok_block, dest_required_size)?;
-
     // memory_destination = memory_ptr + dest_offset
     let destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
@@ -2668,7 +2675,7 @@ fn codegen_mcopy<'c, 'r>(
 
     let _: Value = ok_block
         .append_operation(
-            ods::llvm::intr_memcpy(
+            ods::llvm::intr_memmove(
                 &op_ctx.mlir_context,
                 destination,
                 source,
