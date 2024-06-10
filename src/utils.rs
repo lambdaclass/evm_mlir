@@ -134,7 +134,7 @@ pub fn consume_gas_as_value<'ctx>(
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
-    let uint32 = IntegerType::new(context, 32).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
     // Get address of gas counter global
     let gas_counter_ptr = block
@@ -151,7 +151,7 @@ pub fn consume_gas_as_value<'ctx>(
         .append_operation(llvm::load(
             context,
             gas_counter_ptr.into(),
-            uint32,
+            uint64,
             location,
             LoadStoreOptions::default(),
         ))
@@ -673,12 +673,17 @@ pub(crate) fn compute_memory_cost<'c>(
     //
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32).into();
+    let uint64 = IntegerType::new(context, 64).into();
+
+    let memory_size_extended = block
+        .append_operation(arith::extui(memory_byte_size, uint64, location))
+        .result(0)?
+        .into();
 
     let constant_31 = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32, 31).into(),
+            IntegerAttribute::new(uint64, 31).into(),
             location,
         ))
         .result(0)?
@@ -687,7 +692,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let constant_512 = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32, 512).into(),
+            IntegerAttribute::new(uint64, 512).into(),
             location,
         ))
         .result(0)?
@@ -696,7 +701,7 @@ pub(crate) fn compute_memory_cost<'c>(
     let constant_32 = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32, 32).into(),
+            IntegerAttribute::new(uint64, 32).into(),
             location,
         ))
         .result(0)?
@@ -705,14 +710,14 @@ pub(crate) fn compute_memory_cost<'c>(
     let constant_3 = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32, 3).into(),
+            IntegerAttribute::new(uint64, 3).into(),
             location,
         ))
         .result(0)?
         .into();
 
     let memory_byte_size_plus_31 = block
-        .append_operation(arith::addi(memory_byte_size, constant_31, location))
+        .append_operation(arith::addi(memory_size_extended, constant_31, location))
         .result(0)?
         .into();
 
@@ -770,6 +775,7 @@ pub(crate) fn extend_memory<'c>(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
     let uint32 = IntegerType::new(context, 32);
+    let uint64 = IntegerType::new(context, 64);
 
     // Load memory size
     let memory_size_ptr = block
@@ -824,7 +830,7 @@ pub(crate) fn extend_memory<'c>(
     let fixed_gas_value = extension_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), fixed_gas).into(),
+            IntegerAttribute::new(uint64.into(), fixed_gas).into(),
             location,
         ))
         .result(0)?
