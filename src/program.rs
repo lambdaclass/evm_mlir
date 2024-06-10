@@ -31,7 +31,7 @@ pub enum Opcode {
     SHR = 0x1C,
     SAR = 0x1D,
     // unused 0x1E-0x1F
-    // KECCAK256 = 0x20,
+    KECCAK256 = 0x20,
     // unused 0x21-0x2F
     // ADDRESS = 0x30,
     // BALANCE = 0x31,
@@ -326,6 +326,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
+    Keccak256,
 }
 
 impl Operation {
@@ -380,6 +381,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+            Operation::Keccak256 => vec![Opcode::KECCAK256 as u8],
         }
     }
 }
@@ -671,6 +673,8 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
+                Opcode::KECCAK256 => Operation::Keccak256,
+
             };
             operations.push(op);
             pc += 1;
