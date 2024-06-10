@@ -2067,7 +2067,7 @@ fn codegen_return<'c>(
         location,
     ));
 
-    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Return, location, region)?;
+    return_result_from_stack(op_ctx, region, &ok_block, ExitStatusCode::Return, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2103,7 +2103,7 @@ fn codegen_revert<'c>(
         location,
     ));
 
-    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Revert, location, region)?;
+    return_result_from_stack(op_ctx, region, &ok_block, ExitStatusCode::Revert, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 

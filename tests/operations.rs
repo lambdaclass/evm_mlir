@@ -105,7 +105,7 @@ fn test_return_with_gas() {
         Operation::Push((1, 2_u8.into())),
         Operation::Return,
     ];
-    let dynamic_gas = 3;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
     let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
 
     run_program_assert_gas_exact(program, needed_gas as _);
@@ -118,7 +118,7 @@ fn test_revert_with_gas() {
         Operation::Push((1, 2_u8.into())),
         Operation::Revert,
     ];
-    let dynamic_gas = 3;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
     let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
 
     // When gas is not enough, exits as halt instead of revert.
@@ -2185,7 +2185,7 @@ fn mstore_gas_cost_with_memory_extension() {
         Operation::Push((1_u8, BigUint::from(64_u8))), // offset
         Operation::Mstore,
     ];
-    let dynamic_gas = 9_i64;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 96);
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
@@ -2197,7 +2197,7 @@ fn mstore8_gas_cost_with_memory_extension() {
         Operation::Push((1_u8, BigUint::from(31_u8))), // offset
         Operation::Mstore8,
     ];
-    let dynamic_gas = 3_i64;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
@@ -2208,7 +2208,7 @@ fn mload_gas_cost_with_memory_extension() {
         Operation::Push0, // offset
         Operation::Mload,
     ];
-    let dynamic_gas = 3_i64;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
     let needed_gas = gas_cost::PUSH0 + gas_cost::MLOAD + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
@@ -2219,7 +2219,7 @@ fn mload_gas_cost_with_memory_extension2() {
         Operation::Push((1_u8, BigUint::from(1_u8))), // offset
         Operation::Mload,
     ];
-    let dynamic_gas = 6_i64;
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
     let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
