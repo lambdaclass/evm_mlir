@@ -36,7 +36,6 @@ pub mod executor;
 pub mod module;
 pub mod program;
 pub mod syscall;
-pub mod test_executor;
 pub mod utils;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
