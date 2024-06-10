@@ -2223,3 +2223,14 @@ fn mload_gas_cost_with_memory_extension2() {
     let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
     run_program_assert_gas_exact(program, needed_gas as _);
 }
+
+#[test]
+#[ignore]
+fn mload_out_of_gas() {
+    // TODO: offset gets truncated to 32 bits, so the program doesnt halt. Fix this
+    let program = vec![
+        Operation::Push((32_u8, BigUint::from_bytes_be(&[0xff; 32]))), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_halt(program);
+}

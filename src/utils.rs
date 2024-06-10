@@ -661,6 +661,51 @@ pub fn check_if_zero<'ctx>(
     Ok(flag.into())
 }
 
+pub(crate) fn round_up_32<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let constant_31 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 31).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_32 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let size_plus_31 = block
+        .append_operation(arith::addi(size, constant_31, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word = block
+        .append_operation(arith::divui(size_plus_31, constant_32, location))
+        .result(0)?
+        .into();
+
+    let memory_size_bytes = block
+        .append_operation(arith::muli(memory_size_word, constant_32, location))
+        .result(0)?
+        .into();
+
+    Ok(memory_size_bytes)
+}
+
 pub(crate) fn compute_memory_cost<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
@@ -798,13 +843,15 @@ pub(crate) fn extend_memory<'c>(
         .result(0)?
         .into();
 
+    let rounded_required_size = round_up_32(op_ctx, &block, required_size)?;
+
     // Compare current memory size and required size
     let extension_flag = compare_values(
         context,
         block,
         CmpiPredicate::Ult,
         memory_size,
-        required_size,
+        rounded_required_size,
     )?;
     let extension_block = region.append_block(Block::new(&[]));
     let no_extension_block = region.append_block(Block::new(&[]));
@@ -821,7 +868,7 @@ pub(crate) fn extend_memory<'c>(
 
     // Consume gas for memory extension case
     let memory_cost_before = compute_memory_cost(op_ctx, &extension_block, memory_size)?;
-    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block, required_size)?;
+    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block, rounded_required_size)?;
 
     let dynamic_gas_value = extension_block
         .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
@@ -844,13 +891,13 @@ pub(crate) fn extend_memory<'c>(
     // Consume gas for no memory extension case
     let no_extension_gas_flag = consume_gas(context, &no_extension_block, fixed_gas)?;
 
-    // Extend memory
-    let memory_ptr = op_ctx.extend_memory_syscall(&extension_block, required_size, location)?; // VER MULTIPLOS 32
+    let memory_ptr =
+        op_ctx.extend_memory_syscall(&extension_block, rounded_required_size, location)?;
 
     // Store new memory size and pointer
     let res = extension_block.append_operation(llvm::store(
         context,
-        required_size,
+        rounded_required_size,
         memory_size_ptr,
         location,
         LoadStoreOptions::default(),

@@ -1482,7 +1482,6 @@ fn codegen_mload<'c, 'r>(
     )?;
 
     // Memory access
-    // TODO: loading the memory_ptr can be avoided passing it as a block parameter
     let memory_ptr_ptr = memory_access_block
         .append_operation(llvm_mlir::addressof(
             context,
