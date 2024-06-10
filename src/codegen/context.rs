@@ -407,6 +407,23 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn keccak256_hasher_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::keccak256_hasher_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            location,
+        )
+    }
+
     pub(crate) fn extend_memory_syscall(
         &'c self,
         block: &'c Block,

@@ -6,6 +6,7 @@ use melior::{
     },
 };
 
+
 use super::context::OperationCtx;
 use crate::{
     constants::{gas_cost, MEMORY_SIZE_GLOBAL},
@@ -71,8 +72,93 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
-        Operation::Keccak256 => todo!("codegen for keccak256"),
+        Operation::Keccak256 => codegen_keccak256(op_ctx, region),
     }
+}
+
+fn codegen_keccak256<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::KECCAK256)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
+
+    let uint256 = IntegerType::new(context, 256);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+    //Truncate offset to 32 bits
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    //Truncate size to 32 bits
+    let size = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(op_ctx, &ok_block, required_size)?;
+    
+    let hash = op_ctx.keccak256_hasher_syscall(&ok_block, offset, size, location)?;
+
+    stack_push(context, &ok_block, hash)?;
+
+    // let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+
+    // let memory_in_offset = ok_block
+    //     .append_operation(llvm::get_element_ptr_dynamic(
+    //         context,
+    //         memory_ptr,
+    //         &[offset],
+    //         uint8.into(),
+    //         ptr_type,
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    // //Load the value from memory size bytes
+    // let memory_value = ok_block
+    //     .append_operation(llvm::load(
+    //         context,
+    //         memory_in_offset,
+    //         uint256.into(),
+    //         location,
+    //         LoadStoreOptions::default(),
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_exp<'c, 'r>(
