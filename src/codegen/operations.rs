@@ -15,7 +15,7 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_u8,return_result_from_stack,return_empty_result ,llvm_mlir, stack_pop, stack_push,
+        integer_constant_from_i64,return_result_from_stack,return_empty_result ,llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
@@ -140,6 +140,7 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
+        
     // get pointer to calldata
     let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
 
@@ -155,29 +156,36 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-    // Check that required_size <= calldatasize
+    // Check that required_calldata_size <= calldatasize
 
     let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+
+    let remaining_calldata_size = ok_block
+        .append_operation(arith::subi(calldata_size, call_data_offset, location))
+        .result(0)?
+        .into();
 
     let cmp = ok_block
         .append_operation(arith::cmpi(
             context,
             arith::CmpiPredicate::Ugt,
-            required_size,
-            calldata_size,
+            size,
+            remaining_calldata_size,
             location,
         ))
         .result(0)?
         .into();
 
     let continue_block = region.append_block(Block::new(&[]));
+    let overflow_block = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));  
 
     //TODO: if calldatasize >= required: for out of bound bytes, 0s will be copied.
     
     ok_block.append_operation(cf::cond_br(
         context,
         cmp,
-        &op_ctx.revert_block,
+        &overflow_block,
         &continue_block,
         &[],
         &[],
@@ -210,7 +218,77 @@ fn codegen_calldatacopy<'c, 'r>(
         .into(),
     );
 
-    Ok((start_block, continue_block))
+    continue_block.append_operation(cf::br(&return_block, &[], location));
+
+    //Handle overflow case
+    let memory_ptr = extend_memory(op_ctx, &overflow_block, required_size)?;
+
+    let memory_dest = overflow_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[dest_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // copy the remaining bytes from calldata
+    overflow_block.append_operation(
+        ods::llvm::intr_memcpy(
+            context,
+            memory_dest,
+            calldata_src,
+            remaining_calldata_size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
+            location,
+        )
+        .into(),
+    );
+
+    let zero_value = overflow_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(IntegerType::new(context, 8).into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let zero_fill_size = overflow_block
+        .append_operation(arith::subi(size, remaining_calldata_size, location))
+        .result(0)?
+        .into();
+
+    let zero_fill_dest = overflow_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_dest,
+            &[remaining_calldata_size],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    overflow_block.append_operation(
+        ods::llvm::intr_memset(
+            context,
+            zero_fill_dest,
+            zero_value,
+            zero_fill_size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
+            location,
+        )
+        .into(),
+    );
+
+    overflow_block.append_operation(cf::br(&return_block, &[], location));
+
+    Ok((start_block, return_block))
 }
 
 fn codegen_exp<'c, 'r>(

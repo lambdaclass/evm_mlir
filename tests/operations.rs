@@ -99,6 +99,169 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
 }
 
 #[test]
+fn test_calldatacopy(){
+    let operations = vec![
+        Operation::Push((1, BigUint::from(10_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::CallDataCopy,
+    ];
+    let program = Program::from(operations);
+    let output_file = NamedTempFile::new()
+        .expect("failed to generate tempfile")
+        .into_temp_path();
+
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let executor = Executor::new(&module);
+
+    let mut context = SyscallContext::default();
+
+    let mut vec: Vec<u8> = vec![];
+    for i in 0..10 {
+        vec.push(i as u8);
+    }
+
+    context.env.tx.calldata = vec;
+   
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+
+    //Test that the memory is correctly copied
+    let correct_memory = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    assert_eq!(context.memory, correct_memory);
+    assert_eq!(result,1);
+}
+
+#[test]
+fn test_calldatacopy_zeros_padding(){
+    let operations = vec![
+        Operation::Push((1, BigUint::from(10_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::CallDataCopy,
+    ];
+    let program = Program::from(operations);
+    let output_file = NamedTempFile::new()
+        .expect("failed to generate tempfile")
+        .into_temp_path();
+
+    let context = Context::new();
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let executor = Executor::new(&module);
+
+    let mut context = SyscallContext::default();
+
+    let mut vec: Vec<u8> = vec![];
+    for i in 0..5 {
+        vec.push(i as u8);
+    }
+
+    context.env.tx.calldata = vec;
+   
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+
+    //Test that the memory is correctly copied
+    let correct_memory = vec![0, 1, 2, 3, 4, 0, 0, 0, 0, 0];
+    assert_eq!(context.memory, correct_memory);
+    assert_eq!(result,1);
+}
+
+
+#[test]
+fn test_calldatacopy_memory_offset(){
+    let operations = vec![
+        Operation::Push((1, BigUint::from(5_u8))),
+        Operation::Push((1, BigUint::from(1_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::CallDataCopy,
+    ];
+    
+    let program = Program::from(operations);
+    let output_file = NamedTempFile::new()
+        .expect("failed to generate tempfile")
+        .into_temp_path();
+
+    let context = Context::new();
+
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let executor = Executor::new(&module);
+
+    let mut context = SyscallContext::default();
+
+    let mut vec: Vec<u8> = vec![];
+
+    for i in 0..10 {
+        vec.push(i as u8);
+    }
+
+    context.env.tx.calldata = vec;
+
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+
+    //Test that the memory is correctly copied
+    let correct_memory = vec![1, 2, 3, 4, 5];
+    assert_eq!(context.memory, correct_memory);
+    assert_eq!(result,1);
+}
+
+#[test]
+fn test_calldatacopy_calldataoffset(){
+    let operations = vec![
+        Operation::Push((1, BigUint::from(10_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Push((1, BigUint::from(1_u8))),
+        Operation::CallDataCopy,
+    ];
+    
+    let program = Program::from(operations);
+    let output_file = NamedTempFile::new()
+        .expect("failed to generate tempfile")
+        .into_temp_path();
+
+    let context = Context::new();
+
+    let module = context
+        .compile(&program, &output_file)
+        .expect("failed to compile program");
+
+    let executor = Executor::new(&module);
+
+    let mut context = SyscallContext::default();
+
+    let mut vec: Vec<u8> = vec![];
+
+    for i in 0..10 {
+        vec.push(i as u8);
+    }
+
+    context.env.tx.calldata = vec;
+
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+
+    //Test that the memory is correctly copied
+    let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    assert_eq!(context.memory, correct_memory);
+    assert_eq!(result,1);
+}
+
+#[test]
 fn test_return_with_gas() {
     let program = vec![
         Operation::Push((1, 1_u8.into())),
