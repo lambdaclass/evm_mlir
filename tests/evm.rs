@@ -7,8 +7,8 @@ use num_bigint::BigUint;
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
     assert!(n > 0, "n must be greater than 0");
 
-    let main_loop_pc = 34;
-    let end_pc = 55;
+    let main_loop_pc = 36;
+    let end_pc = 57;
     vec![
         Operation::Push((32, (n - 1).into())),     // 0-32
         Operation::Push0,                          // fib(0)
@@ -51,11 +51,8 @@ fn get_fibonacci_program(n: u64) -> Vec<Operation> {
 #[test]
 fn fibonacci_example() {
     let operations = get_fibonacci_program(10);
-
-    let bytecode: Vec<u8> = operations.iter().flat_map(Operation::to_bytecode).collect();
-    std::fs::write("fibonacci.bytecode", bytecode).unwrap();
-
     let program = Program::from(operations);
+
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
