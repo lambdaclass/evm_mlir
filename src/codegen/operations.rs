@@ -1,12 +1,12 @@
 use melior::{
     dialect::{
-        self, arith, cf, func,
+        arith, cf,
         llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region, Value,
+        Region,
     },
 };
 
@@ -2528,7 +2528,6 @@ fn codegen_mcopy<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint256 = IntegerType::new(context, 256);
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
@@ -2623,18 +2622,17 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    ok_block
-        .append_operation(
-            ods::llvm::intr_memmove(
-                &op_ctx.mlir_context,
-                destination,
-                source,
-                size,
-                IntegerAttribute::new(IntegerType::new(context, 1).into(), 0).into(),
-                location,
-            )
-            .into(),
-        );
+    ok_block.append_operation(
+        ods::llvm::intr_memmove(
+            context,
+            destination,
+            source,
+            size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
+            location,
+        )
+        .into(),
+    );
 
     Ok((start_block, ok_block))
 }
