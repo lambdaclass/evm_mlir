@@ -53,6 +53,7 @@ pub enum ExecutionResult {
     Success {
         return_data: Vec<u8>,
         gas_remaining: u64,
+        logs: Vec<Log>,
     },
     Revert {
         return_data: Vec<u8>,
@@ -97,6 +98,14 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     env: Env,
+    #[allow(unused)]
+    logs: Vec<Log>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Log {
+    pub topics: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -120,6 +129,7 @@ impl SyscallContext {
             ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
+                logs: self.logs.to_owned(),
             },
             ExitStatusCode::Revert => ExecutionResult::Revert {
                 return_data: self.return_values().to_vec(),
@@ -164,11 +174,23 @@ impl SyscallContext {
             }
         }
     }
+
+    pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
+        let offset = offset as usize;
+        let size = size as usize;
+        let data: Vec<u8> = self.memory[offset..offset + size].into();
+        let log = Log {
+            data,
+            topics: vec![],
+        };
+        self.logs.push(log);
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const APPEND_LOG: &str = "evm_mlir__append_log";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -183,6 +205,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG,
+            SyscallContext::append_log as *const fn(*mut c_void, u32, u32) as *mut (),
         );
     };
 }
@@ -237,6 +263,14 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
     }
 
     /// Stores the return values in the syscall context
@@ -280,5 +314,23 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    /// Receives log data and appends a log to the logs vector
+    pub(crate) fn append_log_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG),
+            &[syscall_ctx, data, size],
+            &[],
+            location,
+        ));
     }
 }
