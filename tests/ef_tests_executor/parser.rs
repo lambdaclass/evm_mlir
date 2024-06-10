@@ -1,11 +1,12 @@
 use super::models::TestSuite;
-use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::{fs::File, path::Path};
 use walkdir::{DirEntry, WalkDir};
 
-const NOT_VALID_PATHS: [&str; 1] = [
-    "tests/GeneralStateTests/Cancun/stEIP4844-blobtransactions", //
+const INVALID_PATHS: [&str; 2] = [
+    "ethtests/GeneralStateTests/stTransactionTest/ValueOverflowParis.json",
+    "ethtests/GeneralStateTests/stTransactionTest/ValueOverflow.json",
 ];
 
 fn filter_json(entry: DirEntry) -> Option<DirEntry> {
@@ -18,7 +19,7 @@ fn filter_json(entry: DirEntry) -> Option<DirEntry> {
 fn filter_not_valid(entry: DirEntry) -> Option<DirEntry> {
     match entry.path().to_str() {
         Some(path) => {
-            let filtered = NOT_VALID_PATHS.iter().any(|x| path.contains(*x));
+            let filtered = INVALID_PATHS.iter().any(|x| path.contains(*x));
             if filtered {
                 None
             } else {
@@ -38,7 +39,7 @@ fn parse_test_suite(entry: DirEntry) -> (PathBuf, TestSuite) {
     (PathBuf::from(entry.path()), test)
 }
 
-pub fn parse_tests(directory_path: PathBuf) -> Vec<(PathBuf, TestSuite)> {
+pub fn parse_tests(directory_path: impl AsRef<Path>) -> impl Iterator<Item = (PathBuf, TestSuite)> {
     WalkDir::new(directory_path)
         .min_depth(1)
         .into_iter()
@@ -46,5 +47,4 @@ pub fn parse_tests(directory_path: PathBuf) -> Vec<(PathBuf, TestSuite)> {
         .filter_map(filter_not_valid)
         .filter_map(filter_json)
         .map(parse_test_suite)
-        .collect()
 }

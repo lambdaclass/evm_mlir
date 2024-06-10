@@ -1,0 +1,4 @@
+[submodule "ethtests/tests"]
+	path = ethtests/tests
+	url = https://github.com/ethereum/tests.git
+	branch = v13.3

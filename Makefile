@@ -49,3 +49,16 @@ fmt:
 
 test:
 	cargo nextest run --workspace --all-features
+
+
+###### Ethereum tests ######
+
+ETHTEST_VERSION = $(shell cat .ethtest_version)
+ETHTEST_TAR = "ethtests-${ETHTEST_VERSION}.tar.gz"
+
+${ETHTEST_TAR}: .ethtest_version
+	curl -Lo ${ETHTEST_TAR} https://github.com/ethereum/tests/archive/refs/tags/${ETHTEST_VERSION}.tar.gz
+
+ethtests: ${ETHTEST_TAR}
+	mkdir -p "$@"
+	tar -xzmf "$<" --strip-components=1 -C "$@"
