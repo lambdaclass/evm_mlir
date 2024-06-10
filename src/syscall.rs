@@ -173,7 +173,9 @@ impl SyscallContext {
         }
     }
 
-    pub extern "C" fn read_storage(&self, key: [u64; 4]) {}
+    pub extern "C" fn read_storage(&self, key: [u64; 4]) {
+        
+    }
 }
 
 pub mod symbols {
@@ -325,6 +327,7 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
+    /// Reads the storage given a key
     pub(crate) fn storage_read_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -345,6 +348,7 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
+    /// Writes the storage given a key value pair
     pub(crate) fn storage_write_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
