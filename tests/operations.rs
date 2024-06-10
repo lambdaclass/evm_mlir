@@ -2220,6 +2220,24 @@ fn mstore_mcopy_mload_with_zero_address() {
 }
 
 #[test]
+fn mcopy_offset_equals_dest_offset() {
+    let value = BigUint::from(123_u8);
+    let program = vec![
+        Operation::Push((1_u8, value)),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+
+    run_program_assert_stack_top(program, 123_u8.into());
+}
+
+#[test]
 fn mstore_mcopy_mload_with_zero_address_arbitrary_size() {
     let value = BigUint::from(1_u8) << 24;
     let value1 = BigUint::from(2_u8) << 24;
