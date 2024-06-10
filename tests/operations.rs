@@ -101,12 +101,11 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
 #[test]
 fn test_calldatasize_with_gas() {
     let program = vec![
-        Operation::Push((1,BigUint::from(1_u8))),
         Operation::CallDataSize,
     ];
-    let expected_result = 0_u8;
-    run_program_assert_stack_top(program, BigUint::from(expected_result));
+    run_program_assert_stack_top(program,BigUint::ZERO);
 }
+
 
 #[test]
 fn test_return_with_gas() {

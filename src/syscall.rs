@@ -96,7 +96,7 @@ pub struct SyscallContext {
     exit_status: Option<ExitStatusCode>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    env: Env,
+    pub env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -147,8 +147,10 @@ impl SyscallContext {
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    pub extern "C" fn get_calldata_size(&self) -> u64 {
-        self.env.tx.calldata.len() as u64
+    pub extern "C" fn get_calldata_size(&self) -> u32 {
+        let size = self.env.tx.calldata.len();
+        print!("Calldata size: {}", size as u32);
+        self.env.tx.calldata.len() as u32
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -207,6 +209,7 @@ pub(crate) mod mlir {
         },
         Context as MeliorContext,
     };
+    
 
     use crate::errors::CodegenError;
 
@@ -241,7 +244,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
             Region::new(),
             attributes,
             location,
@@ -284,13 +287,13 @@ pub(crate) mod mlir {
         block: &'c Block,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
                 &[syscall_ctx],
-                &[uint64],
+                &[uint32],
                 location,
             ))
             .result(0)?;
