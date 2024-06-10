@@ -1,6 +1,7 @@
 use melior::{
     dialect::{
-        arith, cf,
+        arith::{self, CmpiPredicate},
+        cf,
         llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
@@ -12,12 +13,12 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
         stack_pop, stack_push, swap_stack_elements,
@@ -1292,7 +1293,7 @@ fn codegen_shr<'c, 'r>(
         .result(0)?
         .into();
 
-    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+    flag = compare_values(context, &ok_block, CmpiPredicate::Ult, shift, value_255)?;
 
     let ok_ok_block = region.append_block(Block::new(&[]));
     let altv_block = region.append_block(Block::new(&[]));
@@ -1379,7 +1380,7 @@ fn codegen_shl<'c, 'r>(
         .result(0)?
         .into();
 
-    flag = check_is_greater_than(context, &ok_block, shift, value_255)?;
+    flag = compare_values(context, &ok_block, CmpiPredicate::Ult, shift, value_255)?;
 
     let ok_ok_block = region.append_block(Block::new(&[]));
     let altv_block = region.append_block(Block::new(&[]));
@@ -1470,18 +1471,12 @@ fn codegen_mload<'c, 'r>(
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
 
-    let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MLOAD)?;
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
+    let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        stack_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -1491,13 +1486,12 @@ fn codegen_mload<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
 
-    // truncate offset to 32 bits
+    // Compute required memory size
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
         .result(0)
         .unwrap()
         .into();
-
     let value_size = ok_block
         .append_operation(arith::constant(
             context,
@@ -1506,16 +1500,44 @@ fn codegen_mload<'c, 'r>(
         ))
         .result(0)?
         .into();
-
-    // required_size = offset + value_size
     let required_size = ok_block
         .append_operation(arith::addi(offset, value_size, location))
         .result(0)?
         .into();
 
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
 
-    let memory_destination = ok_block
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &memory_access_block,
+        region,
+        required_size,
+        gas_cost::MLOAD,
+    )?;
+
+    // Memory access
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -1527,7 +1549,7 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    let read_value = ok_block
+    let read_value = memory_access_block
         .append_operation(llvm::load(
             context,
             memory_destination,
@@ -1539,10 +1561,10 @@ fn codegen_mload<'c, 'r>(
         .result(0)?
         .into();
 
-    // check system endianness before storing the value
+    // check system endianness before pushing the value
     let read_value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        ok_block
+        memory_access_block
             .append_operation(llvm::intr_bswap(read_value, uint256.into(), location))
             .result(0)?
             .into()
@@ -1551,9 +1573,9 @@ fn codegen_mload<'c, 'r>(
         read_value
     };
 
-    stack_push(context, &ok_block, read_value)?;
+    stack_push(context, &memory_access_block, read_value)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_codesize<'c, 'r>(
@@ -2061,7 +2083,6 @@ fn codegen_return<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
-    // TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -2080,7 +2101,7 @@ fn codegen_return<'c>(
         location,
     ));
 
-    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Return, location)?;
+    return_result_from_stack(op_ctx, region, &ok_block, ExitStatusCode::Return, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2098,7 +2119,6 @@ fn codegen_revert<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
 ) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
-    //TODO: compute gas cost for memory expansion
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -2117,7 +2137,7 @@ fn codegen_revert<'c>(
         location,
     ));
 
-    return_result_from_stack(op_ctx, &ok_block, ExitStatusCode::Revert, location)?;
+    return_result_from_stack(op_ctx, region, &ok_block, ExitStatusCode::Revert, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
 
@@ -2333,19 +2353,12 @@ fn codegen_mstore<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2380,11 +2393,40 @@ fn codegen_mstore<'c, 'r>(
         .result(0)?
         .into();
 
-    // maybe we could check if there is already enough memory before extending it
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
+
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &memory_access_block,
+        region,
+        required_size,
+        gas_cost::MSTORE,
+    )?;
+
+    // Memory access
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     // memory_destination = memory_ptr + offset
-    let memory_destination = ok_block
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2401,7 +2443,7 @@ fn codegen_mstore<'c, 'r>(
     // check system endianness before storing the value
     let value = if cfg!(target_endian = "little") {
         // if the system is little endian, we convert the value to big endian
-        ok_block
+        memory_access_block
             .append_operation(llvm::intr_bswap(value, uint256.into(), location))
             .result(0)?
             .into()
@@ -2411,7 +2453,7 @@ fn codegen_mstore<'c, 'r>(
     };
 
     // store the value in the memory
-    ok_block.append_operation(llvm::store(
+    memory_access_block.append_operation(llvm::store(
         context,
         value,
         memory_destination,
@@ -2420,7 +2462,7 @@ fn codegen_mstore<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_mstore8<'c, 'r>(
@@ -2436,19 +2478,12 @@ fn codegen_mstore8<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MSTORE8)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2493,11 +2528,40 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    // maybe we could check if there is already enough memory before extending it
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
+
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &memory_access_block,
+        region,
+        required_size,
+        gas_cost::MSTORE8,
+    )?;
+
+    // Memory access
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     // memory_destination = memory_ptr + offset
-    let memory_destination = ok_block
+    let memory_destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2509,7 +2573,7 @@ fn codegen_mstore8<'c, 'r>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(llvm::store(
+    memory_access_block.append_operation(llvm::store(
         context,
         value,
         memory_destination,
@@ -2518,7 +2582,7 @@ fn codegen_mstore8<'c, 'r>(
             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
     ));
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_mcopy<'c, 'r>(
