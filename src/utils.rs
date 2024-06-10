@@ -1,11 +1,11 @@
 use melior::{
     dialect::{
         arith, func,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
         Block, Location, Value,
@@ -614,6 +614,58 @@ pub(crate) fn write_storage<'c>(
 ) -> Result<Value<'c, 'c>, CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), MAX_STACK_SIZE as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // get the address of the key parameter
+    let key_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    // get the address of the key parameter
+    let value_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
 
     op_ctx.storage_write_syscall(block, key, value, location)
 }
@@ -622,11 +674,44 @@ pub(crate) fn read_storage<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
     key: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
+) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1 as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    op_ctx.storage_read_syscall(block, key, location)
+    // get the address of the key parameter
+    let key_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.storage_read_syscall(block, key_ptr, location);
+
+    Ok(()) //op_ctx.storage_read_syscall(block, key_ptr, location)
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.

@@ -1549,9 +1549,9 @@ fn codegen_sload<'c, 'r>(
 
     let key = stack_pop(context, &ok_block)?;
 
-    let read_value = read_storage(op_ctx, &ok_block, key)?;
+    read_storage(op_ctx, &ok_block, key)?;
 
-    stack_push(context, &ok_block, read_value)?;
+    // stack_push(context, &ok_block, read_value)?;
 
     Ok((start_block, ok_block))
 }

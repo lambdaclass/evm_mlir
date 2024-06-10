@@ -2147,8 +2147,8 @@ fn mload_not_allocated_address() {
 #[test]
 fn sload() {
     let program = vec![
-        Operation::Push0,
-        Operation::Sload
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
     ];
     let result = BigUint::from(23_u8);
     run_program_assert_stack_top(program, result);
