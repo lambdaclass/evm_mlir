@@ -611,14 +611,23 @@ pub(crate) fn write_storage<'c>(
     block: &'c Block,
     key: Value<'c, 'c>,
     value: Value<'c, 'c>,
-    new_size: Value<'c, 'c>,
 ) -> Result<Value<'c, 'c>, CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    op_ctx.storage_write_syscall(block, key, value, location);
+    op_ctx.storage_write_syscall(block, key, value, location)
 }
 
+pub(crate) fn read_storage<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    key: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    op_ctx.storage_read_syscall(block, key, location)
+}
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
 pub(crate) fn extend_memory<'c>(

@@ -13,10 +13,7 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir, read_storage, return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -59,7 +56,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
-        Operation::Sload => todo!(),
+        Operation::Sload => codegen_sload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
@@ -1511,6 +1508,45 @@ fn codegen_mload<'c, 'r>(
         // if the system is big endian, there is no need to convert the value
         read_value
     };
+
+    stack_push(context, &ok_block, read_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_sload<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in the stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CODESIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let key = stack_pop(context, &ok_block);
+
+    let read_value = read_storage(op_ctx, block, key)?;
 
     stack_push(context, &ok_block, read_value)?;
 

@@ -372,7 +372,7 @@ pub(crate) mod mlir {
     }
 }
 
-#[test]
-fn storage_write_syscall_return_type() {
-    let return_type = ;
-}
+// #[test]
+// fn storage_write_syscall_return_type() {
+//     let return_type = ;
+// }
