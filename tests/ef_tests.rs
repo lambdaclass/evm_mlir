@@ -11,4 +11,3 @@ pub fn execute_tests(directory_path: PathBuf, verbose: bool) {
             }
         });
 }
-
