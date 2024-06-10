@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::{fs::File, path::Path};
 use walkdir::{DirEntry, WalkDir};
 
+// These fail to parse due to invalid JSON.
 const INVALID_PATHS: [&str; 2] = [
     "ethtests/GeneralStateTests/stTransactionTest/ValueOverflowParis.json",
     "ethtests/GeneralStateTests/stTransactionTest/ValueOverflow.json",
