@@ -2633,7 +2633,7 @@ fn codegen_mcopy<'c, 'r>(
 
     let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
 
-    let memory_copy_destination = ok_block
+    let source = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2645,18 +2645,6 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    // let read_value = ok_block
-    //     .append_operation(llvm::load(
-    //         context,
-    //         memory_copy_destination,
-    //         uint256.into(),
-    //         location,
-    //         LoadStoreOptions::new()
-    //             .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-    //     ))
-    //     .result(0)?
-    //     .into();
-
     // dest_required_size = dest_offset + size
     let dest_required_size = ok_block
         .append_operation(arith::addi(dest_offset, size, location))
@@ -2666,7 +2654,7 @@ fn codegen_mcopy<'c, 'r>(
     let memory_ptr = extend_memory(op_ctx, &ok_block, dest_required_size)?;
 
     // memory_destination = memory_ptr + dest_offset
-    let memory_write_destination = ok_block
+    let destination = ok_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2682,8 +2670,8 @@ fn codegen_mcopy<'c, 'r>(
         .append_operation(
             ods::llvm::intr_memcpy(
                 &op_ctx.mlir_context,
-                memory_write_destination,
-                memory_copy_destination,
+                destination,
+                source,
                 size,
                 IntegerAttribute::new(IntegerType::new(context, 1).into(), 0).into(),
                 location,
@@ -2692,15 +2680,6 @@ fn codegen_mcopy<'c, 'r>(
         )
         .result(0)?
         .into();
-
-    // ok_block.append_operation(llvm::store(
-    //     context,
-    //     read_value,
-    //     memory_write_destination,
-    //     location,
-    //     LoadStoreOptions::new()
-    //         .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-    // ));
 
     Ok((start_block, ok_block))
 }
