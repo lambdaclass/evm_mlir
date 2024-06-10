@@ -1,4 +1,5 @@
 use num_bigint::BigUint;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub enum Opcode {
@@ -158,12 +159,20 @@ pub enum Opcode {
     REVERT = 0xFD,
     // INVALID = 0xFE,
     // SELFDESTRUCT = 0xFF,
-    UNUSED,
 }
 
-impl From<u8> for Opcode {
-    fn from(opcode: u8) -> Opcode {
-        match opcode {
+#[derive(Error, Debug)]
+#[error("The opcode `{:02X}` is not valid", self.0)]
+pub struct OpcodeParseError(u8);
+
+#[derive(Error, Debug)]
+#[error("The following opcodes are not valid: `{:#?}`", self.0)]
+pub struct ParseError(Vec<OpcodeParseError>);
+
+impl TryFrom<u8> for Opcode {
+    type Error = OpcodeParseError;
+    fn try_from(opcode: u8) -> Result<Opcode, Self::Error> {
+        let op = match opcode {
             x if x == Opcode::STOP as u8 => Opcode::STOP,
             x if x == Opcode::ADD as u8 => Opcode::ADD,
             x if x == Opcode::MUL as u8 => Opcode::MUL,
@@ -266,8 +275,10 @@ impl From<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
-            _ => Opcode::UNUSED,
-        }
+            x => return Err(OpcodeParseError(x)),
+        };
+
+        Ok(op)
     }
 }
 
@@ -325,15 +336,24 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn from_bytecode(bytecode: &[u8]) -> Self {
+    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, ParseError> {
         let mut operations = vec![];
         let mut pc = 0;
+        let mut failed_opcodes = vec![];
 
         while pc < bytecode.len() {
             let Some(opcode) = bytecode.get(pc).copied() else {
                 break;
             };
-            let op = match Opcode::from(opcode) {
+
+            let opcode = Opcode::try_from(opcode);
+
+            if let Err(e) = opcode {
+                failed_opcodes.push(e);
+                continue;
+            }
+
+            let op = match opcode.unwrap() {
                 Opcode::STOP => Operation::Stop,
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
@@ -597,7 +617,6 @@ impl Program {
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
-                Opcode::UNUSED => panic!("Unknown opcode 0x{:02X}", opcode),
             };
             operations.push(op);
             pc += 1;
@@ -605,9 +624,13 @@ impl Program {
 
         let code_size = Self::get_codesize(&operations);
 
-        Program {
-            operations,
-            code_size,
+        if failed_opcodes.is_empty() {
+            Ok(Program {
+                operations,
+                code_size,
+            })
+        } else {
+            Err(ParseError(failed_opcodes))
         }
     }
 
