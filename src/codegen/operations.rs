@@ -2483,8 +2483,49 @@ fn codegen_mstore8<'c, 'r>(
 }
 
 fn codegen_log0<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    // TODO: check if the current execution context is from a STATICCALL (since Byzantium fork).
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::LOG0)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+    op_ctx.append_log_syscall(&ok_block, offset, size, location);
+
+    Ok((start_block, ok_block))
 }
