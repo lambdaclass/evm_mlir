@@ -83,6 +83,13 @@ impl ExecutionResult {
             Self::Halt => None,
         }
     }
+
+    pub fn return_logs(&self) -> Option<&Vec<Log>> {
+        match self {
+            Self::Success { logs, .. } => Some(logs),
+            _ => None,
+        }
+    }
 }
 
 /// The context passed to syscalls
