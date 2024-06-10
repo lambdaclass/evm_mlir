@@ -1786,6 +1786,30 @@ fn signextend_with_stack_underflow() {
 }
 
 #[test]
+fn jumpi_with_gas_cost() {
+    // this test is equivalent to the following program
+    // [00] PUSH1 0
+    // [02] PUSH1 1
+    // [04] PUSH1 9
+    // [06] JUMPI
+    // [07] PUSH1 10   // this should not be executed
+    // [09] JUMPDEST
+    let pc = 9;
+    let condition = BigUint::from(1_u8);
+    let expected_result: u8 = 0;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(expected_result))),
+        Operation::Push((1_u8, condition)),
+        Operation::Push((1_u8, BigUint::from(pc))),
+        Operation::Jumpi,
+        Operation::Push((1_u8, BigUint::from(10_u8))), // this should not be executed
+        Operation::Jumpdest { pc },
+    ];
+    let needed_gas = gas_cost::PUSHN * 3 + gas_cost::JUMPI + gas_cost::JUMPDEST;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
+#[test]
 fn signextend_gas_should_revert() {
     let value = BigUint::from(0x7F_u8);
     let value_bytes_size = BigUint::from(0_u8);
