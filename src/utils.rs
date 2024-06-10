@@ -760,8 +760,6 @@ pub fn integer_constant_from_u8(context: &MeliorContext, value: u8) -> IntegerAt
     IntegerAttribute::new(uint8.into(), value.into())
 }
 
-
-
 pub mod llvm_mlir {
     use melior::{
         dialect::llvm::{self, attributes::Linkage},

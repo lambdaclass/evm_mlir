@@ -1,8 +1,12 @@
 use melior::{
-    dialect::{arith, cf, llvm::{self, r#type::pointer, LoadStoreOptions}, ods},
+    dialect::{
+        arith, cf,
+        llvm::{self, r#type::pointer, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region, ValueLike,
+        Region,
     },
 };
 
@@ -100,7 +104,10 @@ fn codegen_calldatasize<'c, 'r>(
     // Get the calldata size using a syscall
     let uint256 = IntegerType::new(context, 256).into();
     let calldatasize = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
-    let extended_size = ok_block.append_operation(arith::extui(calldatasize, uint256 , location)).result(0)?.into();
+    let extended_size = ok_block
+        .append_operation(arith::extui(calldatasize, uint256, location))
+        .result(0)?
+        .into();
     stack_push(context, &ok_block, extended_size)?;
 
     Ok((start_block, ok_block))

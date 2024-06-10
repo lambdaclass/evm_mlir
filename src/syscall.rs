@@ -209,7 +209,6 @@ pub(crate) mod mlir {
         },
         Context as MeliorContext,
     };
-    
 
     use crate::errors::CodegenError;
 
