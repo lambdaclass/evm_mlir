@@ -813,8 +813,33 @@ pub(crate) fn extend_memory<'c>(
         location,
     ));
 
+    // Consume gas for memory extension case
+    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block, memory_size)?;
+    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block, required_size)?;
+
+    let dynamic_gas_value = extension_block
+        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
+        .result(0)?
+        .into();
+    let fixed_gas_value = extension_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), fixed_gas).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let total_gas = extension_block
+        .append_operation(arith::addi(dynamic_gas_value, fixed_gas_value, location))
+        .result(0)?
+        .into();
+    let extension_gas_flag = consume_gas_as_value(context, &extension_block, total_gas)?;
+
+    // Consume gas for no memory extension case
+    let no_extension_gas_flag = consume_gas(context, &no_extension_block, fixed_gas)?;
+
     // Extend memory
-    let memory_ptr = op_ctx.extend_memory_syscall(&extension_block, required_size, location)?;
+    let memory_ptr = op_ctx.extend_memory_syscall(&extension_block, required_size, location)?; // VER MULTIPLOS 32
 
     // Store new memory size and pointer
     let res = extension_block.append_operation(llvm::store(
@@ -842,31 +867,10 @@ pub(crate) fn extend_memory<'c>(
     ));
     assert!(res.verify());
 
-    // Consume gas for memory extension case
-    let memory_cost_before = compute_memory_cost(op_ctx, &extension_block, memory_size)?;
-    let memory_cost_after = compute_memory_cost(op_ctx, &extension_block, required_size)?;
-
-    let dynamic_gas_value = extension_block
-        .append_operation(arith::subi(memory_cost_after, memory_cost_before, location))
-        .result(0)?
-        .into();
-    let static_gas_value = extension_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint32.into(), fixed_gas).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let total_gas = extension_block
-        .append_operation(arith::addi(dynamic_gas_value, static_gas_value, location))
-        .result(0)?
-        .into();
-    let gas_flag = consume_gas_as_value(context, &extension_block, total_gas)?;
-
+    // Jump to finish block
     extension_block.append_operation(cf::cond_br(
         context,
-        gas_flag,
+        extension_gas_flag,
         finish_block,
         &op_ctx.revert_block,
         &[],
@@ -874,12 +878,9 @@ pub(crate) fn extend_memory<'c>(
         location,
     ));
 
-    // Consume gas for no memory extension case
-    let gas_flag = consume_gas(context, &no_extension_block, fixed_gas)?;
-
     no_extension_block.append_operation(cf::cond_br(
         context,
-        gas_flag,
+        no_extension_gas_flag,
         finish_block,
         &op_ctx.revert_block,
         &[],
