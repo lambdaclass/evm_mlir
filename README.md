@@ -40,12 +40,15 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1C) SHR
 1. (0x1D) SAR
 1. (0x35) CALLDATALOAD
+1. (0x38) CODESIZE
 1. (0x50) POP
+1. (0x51) MLOAD
 1. (0x52) MSTORE
 1. (0x53) MSTORE8
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
+1. (0x59) MSIZE
 1. (0x5A) GAS
 1. (0x5B) JUMPDEST
 1. (0x5F) PUSH0
@@ -113,6 +116,8 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x9D) SWAP14
 1. (0x9E) SWAP15
 1. (0x9F) SWAP16
+1. (0xF3) RETURN
+1. (0xFD) REVERT
 
 </details>
 
@@ -128,7 +133,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x34) CALLVALUE
 1. (0x36) CALLDATASIZE
 1. (0x37) CALLDATACOPY
-1. (0x38) CODESIZE
 1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
 1. (0x3B) EXTCODESIZE
@@ -147,10 +151,8 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
-1. (0x51) MLOAD
 1. (0x54) SLOAD
 1. (0x55) SSTORE
-1. (0x59) MSIZE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
 1. (0x5E) MCOPY
@@ -162,11 +164,9 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE
-1. (0xF3) RETURN
 1. (0xF4) DELEGATECALL
 1. (0xF5) CREATE2
 1. (0xFA) STATICCALL
-1. (0xFD) REVERT
 1. (0xFE) INVALID
 1. (0xFF) SELFDESTRUCT
 
