@@ -2537,11 +2537,12 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
-    // push and pop the calldata_size to convert it to uint256 (the syscall returns a uint32)
-    // TODO: change this, maybe there's a better way to do the conversion
-    stack_push(context, &ok_block, calldata_size)?;
-    let calldata_size = stack_pop(context, &ok_block)?;
+    let calldata_size_u32 = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    // convert calldata_size from u32 to u256
+    let calldata_size = ok_block
+        .append_operation(arith::extui(calldata_size_u32, uint256.into(), location))
+        .result(0)?
+        .into();
 
     let zero = ok_block
         .append_operation(arith::constant(
