@@ -367,6 +367,7 @@ impl Operation {
             Operation::Msize => vec![Opcode::MSIZE as u8],
             Operation::Gas => vec![Opcode::GAS as u8],
             Operation::Jumpdest { pc: _ } => vec![Opcode::JUMPDEST as u8],
+            Operation::Mcopy => vec![Opcode::MCOPY as u8]
             Operation::Push0 => vec![Opcode::PUSH0 as u8],
             Operation::Push((n, x)) => {
                 let len = 1 + *n as usize;

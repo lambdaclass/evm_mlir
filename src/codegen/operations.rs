@@ -2623,7 +2623,7 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let _: Value = ok_block
+    ok_block
         .append_operation(
             ods::llvm::intr_memmove(
                 &op_ctx.mlir_context,
@@ -2634,9 +2634,7 @@ fn codegen_mcopy<'c, 'r>(
                 location,
             )
             .into(),
-        )
-        .result(0)?
-        .into();
+        );
 
     Ok((start_block, ok_block))
 }
