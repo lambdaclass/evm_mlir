@@ -15,7 +15,7 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, integer_constant_from_u8, llvm_mlir, stack_pop, stack_push,
+        integer_constant_from_i64, integer_constant_from_u8,return_result_from_stack,return_empty_result ,llvm_mlir, stack_pop, stack_push,
         swap_stack_elements,
     },
 };
