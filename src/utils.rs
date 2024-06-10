@@ -129,7 +129,6 @@ pub fn get_stack_pointer<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
 ) -> Result<Value<'ctx, 'ctx>, CodegenError> {
-    let uint256 = IntegerType::new(context, 256);
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 

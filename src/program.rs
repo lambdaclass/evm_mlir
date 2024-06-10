@@ -382,6 +382,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+            Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
         }
     }
 }

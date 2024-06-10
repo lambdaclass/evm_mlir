@@ -348,7 +348,7 @@ pub(crate) mod mlir {
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let ptr_type = pointer(mlir_ctx, 0);
-        let uint32 = IntegerType::new(&mlir_ctx, 32).into();
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
         let value = block
             .append_operation(func::call(
                 mlir_ctx,

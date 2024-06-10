@@ -2,7 +2,6 @@ use melior::{
     dialect::{
         arith,
         cf::{self, br, cond_br},
-        func,
         llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
