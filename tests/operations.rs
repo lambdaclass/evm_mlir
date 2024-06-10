@@ -99,7 +99,7 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
 }
 
 #[test]
-fn test_calldatacopy(){
+fn test_calldatacopy() {
     let operations = vec![
         Operation::Push((1, BigUint::from(10_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
@@ -126,7 +126,7 @@ fn test_calldatacopy(){
     }
 
     context.env.tx.calldata = vec;
-   
+
     let initial_gas = 1000;
 
     let result = executor.execute(&mut context, initial_gas);
@@ -134,11 +134,11 @@ fn test_calldatacopy(){
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     assert_eq!(context.memory, correct_memory);
-    assert_eq!(result,1);
+    assert_eq!(result, 1);
 }
 
 #[test]
-fn test_calldatacopy_zeros_padding(){
+fn test_calldatacopy_zeros_padding() {
     let operations = vec![
         Operation::Push((1, BigUint::from(10_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
@@ -165,7 +165,7 @@ fn test_calldatacopy_zeros_padding(){
     }
 
     context.env.tx.calldata = vec;
-   
+
     let initial_gas = 1000;
 
     let result = executor.execute(&mut context, initial_gas);
@@ -173,19 +173,18 @@ fn test_calldatacopy_zeros_padding(){
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 0, 0, 0, 0, 0];
     assert_eq!(context.memory, correct_memory);
-    assert_eq!(result,1);
+    assert_eq!(result, 1);
 }
 
-
 #[test]
-fn test_calldatacopy_memory_offset(){
+fn test_calldatacopy_memory_offset() {
     let operations = vec![
         Operation::Push((1, BigUint::from(5_u8))),
         Operation::Push((1, BigUint::from(1_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
         Operation::CallDataCopy,
     ];
-    
+
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
@@ -216,18 +215,18 @@ fn test_calldatacopy_memory_offset(){
     //Test that the memory is correctly copied
     let correct_memory = vec![1, 2, 3, 4, 5];
     assert_eq!(context.memory, correct_memory);
-    assert_eq!(result,1);
+    assert_eq!(result, 1);
 }
 
 #[test]
-fn test_calldatacopy_calldataoffset(){
+fn test_calldatacopy_calldataoffset() {
     let operations = vec![
         Operation::Push((1, BigUint::from(10_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
         Operation::Push((1, BigUint::from(1_u8))),
         Operation::CallDataCopy,
     ];
-    
+
     let program = Program::from(operations);
     let output_file = NamedTempFile::new()
         .expect("failed to generate tempfile")
@@ -258,7 +257,7 @@ fn test_calldatacopy_calldataoffset(){
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     assert_eq!(context.memory, correct_memory);
-    assert_eq!(result,1);
+    assert_eq!(result, 1);
 }
 
 #[test]

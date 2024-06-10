@@ -15,8 +15,8 @@ use crate::{
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64,return_result_from_stack,return_empty_result ,llvm_mlir, stack_pop, stack_push,
-        swap_stack_elements,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -140,7 +140,6 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-        
     // get pointer to calldata
     let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
 
@@ -178,10 +177,10 @@ fn codegen_calldatacopy<'c, 'r>(
 
     let continue_block = region.append_block(Block::new(&[]));
     let overflow_block = region.append_block(Block::new(&[]));
-    let return_block = region.append_block(Block::new(&[]));  
+    let return_block = region.append_block(Block::new(&[]));
 
     //TODO: if calldatasize >= required: for out of bound bytes, 0s will be copied.
-    
+
     ok_block.append_operation(cf::cond_br(
         context,
         cmp,
@@ -212,7 +211,7 @@ fn codegen_calldatacopy<'c, 'r>(
             memory_dest,
             calldata_src,
             size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
             location,
         )
         .into(),
@@ -242,7 +241,7 @@ fn codegen_calldatacopy<'c, 'r>(
             memory_dest,
             calldata_src,
             remaining_calldata_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
             location,
         )
         .into(),
@@ -280,7 +279,7 @@ fn codegen_calldatacopy<'c, 'r>(
             zero_fill_dest,
             zero_value,
             zero_fill_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1).into(),
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 1),
             location,
         )
         .into(),

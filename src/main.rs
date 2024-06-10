@@ -49,7 +49,6 @@ fn main() {
 
     // let mut context = SyscallContext::default();
 
-    
     // let mut vec: Vec<u8> = vec![];
     // for i in 0..10 {
     //     vec.push(i as u8);
@@ -57,7 +56,6 @@ fn main() {
 
     // context.env.tx.calldata = vec;
 
-   
     // let initial_gas = 1000;
 
     // let result = executor.execute(&mut context, initial_gas);
