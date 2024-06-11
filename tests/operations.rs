@@ -5,7 +5,7 @@ use evm_mlir::{
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
 };
-use num_bigint::{BigInt, BigUint};
+use num_bigint::{BigInt, BigUint, Sign};
 use rstest::rstest;
 use tempfile::NamedTempFile;
 
@@ -570,10 +570,11 @@ fn sdiv_signed_division_1() {
     let mut b = BigUint::from(0_u8);
     b.set_bit(253, true);
 
+    let signed_a = BigInt::from_biguint(Sign::Minus, a.clone());
+    let signed_b = BigInt::from_biguint(Sign::Plus, b.clone());
+
     //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0] = -4
-    //If we take the lowest byte
-    //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
-    let expected_result = biguint_256_from_bigint(BigInt::from(-4_i8));
+    let expected_result = biguint_256_from_bigint(signed_a / signed_b);
 
     let program = vec![
         Operation::Push((1_u8, b)), // <No collapse>
