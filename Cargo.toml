@@ -17,6 +17,12 @@ thiserror = "1.0.57"
 
 [dev-dependencies]
 rstest = "0.21.0"
+serde = { version = "1.0.203", features = ["derive", "rc"] }
+serde_json = { version = "1.0.117" }
+walkdir = "2.5.0"
+ethereum-types = "0.14.1"
+bytes = { version = "1.6.0", features = ["serde"] }
 
 [build-dependencies]
 cc = "1.0.83"
+

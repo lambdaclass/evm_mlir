@@ -40,10 +40,23 @@ pub mod gas_cost {
     pub const MSIZE: i64 = 2;
     pub const GAS: i64 = 2;
     pub const JUMPDEST: i64 = 1;
+    pub const MCOPY: i64 = 3;
     pub const PUSH0: i64 = 2;
     pub const PUSHN: i64 = 3;
     pub const JUMP: i64 = 8;
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
     pub const BYTE: i64 = 3;
+    pub const CALLDATASIZE: i64 = 2;
+    pub const JUMPI: i64 = 10;
+
+    pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
+        let new_memory_size_word = (new_size + 31) / 32;
+        let new_memory_cost =
+            (new_memory_size_word * new_memory_size_word) / 512 + (3 * new_memory_size_word);
+        let last_memory_size_word = (last_size + 31) / 32;
+        let last_memory_cost =
+            (last_memory_size_word * last_memory_size_word) / 512 + (3 * last_memory_size_word);
+        (new_memory_cost - last_memory_cost).into()
+    }
 }
