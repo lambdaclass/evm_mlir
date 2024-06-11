@@ -110,11 +110,8 @@ pub struct SyscallContext {
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
     pub fn with_env(env: Env) -> Self {
-        let mut storage = HashMap::new();
-        storage.insert(U256 { hi: 1, lo: 0 }, U256 { hi: 0, lo: 23 });
         Self {
             env,
-            storage,
             ..Self::default()
         }
     }
@@ -181,11 +178,16 @@ impl SyscallContext {
         self.storage.insert(*stg_key, *stg_value);
     }
 
-    pub extern "C" fn read_storage(&self, stg_key: &U256) {
+    pub extern "C" fn read_storage(&mut self, stg_key: &U256) -> &U256 {
+        self.storage
+            .insert(U256 { hi: 1, lo: 0 }, U256 { hi: 0, lo: 23 });
         dbg!("read {}", stg_key);
-        if let Some(v) = dbg!(&self.storage).get(stg_key) {
-            dbg!("value: {}", *v);
-        };
+        dbg!("stg {}", &self);
+
+        match self.storage.get(stg_key) {
+            Some(v) => v,
+            None => &U256 { hi: 0, lo: 0 },
+        }
     }
 }
 
@@ -275,7 +277,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORAGE_READ),
-            r#TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type], &[ptr_type]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -343,16 +347,19 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<(), CodegenError> {
-        let value = block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
-            &[syscall_ctx, key],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+                &[syscall_ctx, key],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
 
-        Ok(())
+        Ok(value.into())
     }
 
     /// Writes the storage given a key value pair
@@ -363,17 +370,15 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-                &[syscall_ctx, key, value],
-                &[],
-                location,
-            ))
-            .result(0)?;
+    ) -> Result<(), CodegenError> {
+        let value = block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
 
-        Ok(value.into())
+        Ok(())
     }
 }
