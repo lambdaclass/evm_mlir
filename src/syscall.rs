@@ -19,7 +19,7 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::env::Env;
+use crate::{db::Db, env::Env};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -97,13 +97,15 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     pub env: Env,
+    pub db: Db,
 }
 
 /// Accessors for disponibilizing the execution results
 impl SyscallContext {
-    pub fn with_env(env: Env) -> Self {
+    pub fn with_env(env: Env, db: Db) -> Self {
         Self {
             env,
+            db,
             ..Self::default()
         }
     }
