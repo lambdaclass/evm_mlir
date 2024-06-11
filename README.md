@@ -161,15 +161,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
-<<<<<<< HEAD
-1. (0x5E) MCOPY
-=======
-1. (0xA0) LOG0
-1. (0xA1) LOG1
-1. (0xA2) LOG2
-1. (0xA3) LOG3
-1. (0xA4) LOG4
->>>>>>> main
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE
