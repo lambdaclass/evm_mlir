@@ -99,13 +99,22 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
 }
 
 #[test]
+fn test_calldatasize_with_gas() {
+    let program = vec![Operation::CallDataSize];
+    run_program_assert_stack_top(program, BigUint::ZERO);
+}
+
+#[test]
 fn test_return_with_gas() {
     let program = vec![
         Operation::Push((1, 1_u8.into())),
         Operation::Push((1, 2_u8.into())),
         Operation::Return,
     ];
-    run_program_assert_result(program, &[0]);
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
+    let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
+
+    run_program_assert_gas_exact(program, needed_gas as _);
 }
 
 #[test]
@@ -115,6 +124,13 @@ fn test_revert_with_gas() {
         Operation::Push((1, 2_u8.into())),
         Operation::Revert,
     ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
+    let needed_gas = gas_cost::PUSHN * 2 + dynamic_gas;
+
+    // When gas is not enough, exits as halt instead of revert.
+    let result = run_program_get_result_with_gas(program.clone(), (needed_gas - 1) as _);
+    assert!(result.is_halt());
+
     run_program_assert_revert(program, &[0]);
 }
 
@@ -2166,4 +2182,154 @@ fn mload_not_allocated_address() {
         Operation::Mload,
     ];
     run_program_assert_stack_top(program, 0_u8.into());
+}
+
+#[test]
+fn mstore_gas_cost_with_memory_extension() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))), // value
+        Operation::Push((1_u8, BigUint::from(64_u8))), // offset
+        Operation::Mstore,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 96);
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE + dynamic_gas;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
+#[test]
+fn mstore8_gas_cost_with_memory_extension() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))), // value
+        Operation::Push((1_u8, BigUint::from(31_u8))), // offset
+        Operation::Mstore8,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::MSTORE8 + dynamic_gas;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
+#[test]
+fn mload_gas_cost_with_memory_extension() {
+    let program = vec![
+        Operation::Push0, // offset
+        Operation::Mload,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32);
+    let needed_gas = gas_cost::PUSH0 + gas_cost::MLOAD + dynamic_gas;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
+#[test]
+fn mload_gas_cost_with_memory_extension2() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))), // offset
+        Operation::Mload,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
+    let needed_gas = gas_cost::PUSHN + gas_cost::MLOAD + dynamic_gas;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
+#[test]
+#[ignore]
+fn mload_out_of_gas() {
+    // TODO: offset gets truncated to 32 bits, so the program doesnt halt. Fix this
+    let program = vec![
+        Operation::Push((32_u8, BigUint::from_bytes_be(&[0xff; 32]))), // offset
+        Operation::Mload,
+    ];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn mstore_mcopy_mload_with_zero_address_and_gas() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
+    let gas_needed = gas_cost::PUSH0 * 2
+        + gas_cost::PUSHN * 4
+        + gas_cost::MCOPY
+        + gas_cost::MLOAD
+        + gas_cost::MSTORE
+        + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn mstore_mcopy_mload_with_zero_address() {
+    let value = BigUint::from(10_u8);
+    let value1 = BigUint::from(2_u8);
+    let program = vec![
+        Operation::Push((1_u8, value)),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, value1)),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+
+    run_program_assert_stack_top(program, 10_u8.into());
+}
+
+#[test]
+fn mcopy_offset_equals_dest_offset() {
+    let value = BigUint::from(123_u8);
+    let program = vec![
+        Operation::Push((1_u8, value)),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+
+    run_program_assert_stack_top(program, 123_u8.into());
+}
+
+#[test]
+fn mstore_mcopy_mload_with_zero_address_arbitrary_size() {
+    let value = BigUint::from(1_u8) << 24;
+    let value1 = BigUint::from(2_u8) << 24;
+    let program = vec![
+        Operation::Push((1_u8, value1)),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mstore,
+        Operation::Push((1_u8, value)),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(4_u8))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+    let result = (16777216_u32 * 2).into();
+    run_program_assert_stack_top(program, result);
+}
+
+#[test]
+fn mcopy_with_stack_underflow() {
+    let program = vec![Operation::Mcopy];
+
+    run_program_assert_halt(program);
 }
