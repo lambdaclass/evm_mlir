@@ -3,6 +3,10 @@ name = "revm_factorial"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "revm_comparison"
+path = "src/lib.rs"
+
 [dependencies]
 evm_mlir = { path = "../../" }
 hex = "0.4.3"
@@ -15,3 +19,11 @@ path="src/evm_mlir_factorial.rs"
 [[bin]]
 name="revm_factorial"
 path="src/revm_factorial.rs"
+
+[[bin]]
+name="evm_mlir_fibonacci"
+path="src/evm_mlir_fibonacci.rs"
+
+[[bin]]
+name="revm_fibonacci"
+path="src/revm_fibonacci.rs"
