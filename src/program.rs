@@ -413,6 +413,7 @@ impl Program {
 
             if let Err(e) = opcode {
                 failed_opcodes.push(e);
+                pc += 1;
                 continue;
             }
 
@@ -454,6 +455,7 @@ impl Program {
                 Opcode::MCOPY => Operation::Mcopy,
                 Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
+                    // TODO: return error if not enough bytes (same for PUSHN)
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
                     Operation::Push((1, (BigUint::from_bytes_be(x))))

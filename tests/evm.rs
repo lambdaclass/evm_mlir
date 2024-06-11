@@ -62,7 +62,7 @@ fn fibonacci_example() {
 
     assert!(&result.is_success());
     let number = BigUint::from_bytes_be(result.return_data().unwrap());
-    println!("{number}");
+    assert_eq!(number, 55_u32.into());
 }
 
 #[test]
