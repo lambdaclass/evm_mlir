@@ -1,11 +1,11 @@
 use melior::{
     dialect::{
         arith, func,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
         Block, Location, Value,
@@ -758,6 +758,50 @@ pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> Integer
 pub fn integer_constant_from_u8(context: &MeliorContext, value: u8) -> IntegerAttribute {
     let uint8 = IntegerType::new(context, 8);
     IntegerAttribute::new(uint8.into(), value.into())
+}
+/// Allocates memory for a 32-byte value, stores the value in the memory
+/// and returns a pointer to the value
+pub(crate) fn allocate_and_store_value<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    value: Value<'a, 'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32);
+    let uint256 = IntegerType::new(context, 256);
+
+    let width_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let value_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            width_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint256.into()).into()),
+        ))
+        .result(0)?
+        .into();
+
+    block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
+    Ok(value_ptr)
 }
 
 pub mod llvm_mlir {

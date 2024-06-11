@@ -18,9 +18,9 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64,
+        allocate_and_store_value, check_if_zero, check_is_greater_than, check_stack_has_at_least,
+        check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory,
+        get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
         llvm_mlir::{self, addressof},
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
@@ -2553,32 +2553,7 @@ fn codegen_log<'c, 'r>(
         }
         1 => {
             let topic1 = stack_pop(context, &ok_block)?;
-            let width_size = ok_block
-                .append_operation(arith::constant(
-                    context,
-                    IntegerAttribute::new(uint32.into(), 32).into(),
-                    location,
-                ))
-                .result(0)?
-                .into();
-            let topic1_ptr = ok_block
-                .append_operation(llvm::alloca(
-                    context,
-                    width_size,
-                    ptr_type,
-                    location,
-                    AllocaOptions::new().elem_type(TypeAttribute::new(uint256.into()).into()),
-                ))
-                .result(0)?
-                .into();
-            ok_block.append_operation(llvm::store(
-                context,
-                topic1,
-                topic1_ptr,
-                location,
-                LoadStoreOptions::default()
-                    .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-            ));
+            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
             op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1_ptr, location);
         }
         _ => println!("not implemented yet"),
