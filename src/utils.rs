@@ -847,7 +847,7 @@ pub(crate) fn write_storage<'c>(
     ));
     assert!(res.verify());
 
-    // get the address of the key parameter
+    // get the address of the value parameter
     let value_ptr = block
         .append_operation(llvm::alloca(
             context,

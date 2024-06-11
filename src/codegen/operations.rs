@@ -2,13 +2,12 @@ use melior::{
     dialect::{
         arith::{self, CmpiPredicate},
         cf,
-        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
+        llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{IntegerAttribute, TypeAttribute},
-        r#type::IntegerType,
-        Attribute, Block, BlockRef, Location, Region,
+        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        Region,
     },
 };
 
@@ -22,7 +21,7 @@ use crate::{
         check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
         integer_constant_from_i64, llvm_mlir, read_storage, return_empty_result,
-        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements, write_storage,
     },
 };
 use num_bigint::BigUint;
@@ -1627,8 +1626,6 @@ fn codegen_sstore<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     // TODO: add gas consumption
@@ -1647,58 +1644,7 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let pointer_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1 as i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // Allocate the key
-    let key_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        key,
-        key_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    // Allocate the value
-    let value_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        value,
-        value_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
+    write_storage(op_ctx, &ok_block, key, value)?;
 
     Ok((start_block, ok_block))
 }
