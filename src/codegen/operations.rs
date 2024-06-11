@@ -78,6 +78,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
+        Operation::Codecopy => codegen_codecopy(op_ctx, region),
     }
 }
 
@@ -2723,4 +2724,11 @@ fn codegen_mcopy<'c, 'r>(
     );
 
     Ok((start_block, memory_access_block))
+}
+
+fn codegen_codecopy<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }

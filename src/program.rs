@@ -42,7 +42,7 @@ pub enum Opcode {
     CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
-    // CODECOPY = 0x39,
+    CODECOPY = 0x39,
     // GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
     // EXTCODECOPY = 0x3C,
@@ -276,6 +276,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
+            x if x == Opcode::CODECOPY as u8 => Opcode::CODECOPY,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -329,6 +330,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     CallDataSize,
+    Codecopy,
 }
 
 impl Operation {
@@ -385,6 +387,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
+            Operation::Codecopy => vec![Opcode::CODECOPY as u8],
         }
     }
 }
@@ -678,6 +681,7 @@ impl Program {
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
+                Opcode::CODECOPY => Operation::Codecopy,
             };
             operations.push(op);
             pc += 1;
