@@ -2153,3 +2153,9 @@ fn sload() {
     let result = BigUint::from(23_u8);
     run_program_assert_stack_top(program, result);
 }
+
+fn sload_with_stack_underflow() {
+    let program = vec![Operation::Sload];
+
+    run_program_assert_halt(program);
+}

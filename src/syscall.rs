@@ -27,8 +27,8 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
 pub struct U256 {
-    pub hi: u128,
     pub lo: u128,
+    pub hi: u128,
 }
 
 #[derive(Debug, Clone)]
@@ -174,15 +174,12 @@ impl SyscallContext {
     }
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
-        dbg!("write");
         self.storage.insert(*stg_key, *stg_value);
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256) -> &U256 {
         self.storage
-            .insert(U256 { hi: 1, lo: 0 }, U256 { hi: 0, lo: 23 });
-        dbg!("read {}", stg_key);
-        dbg!("stg {}", &self);
+            .insert(U256 { hi: 0, lo: 1 }, U256 { hi: 0, lo: 23 });
 
         match self.storage.get(stg_key) {
             Some(v) => v,
