@@ -1,4 +1,3 @@
-
 use evm_mlir::{
     constants::gas_cost,
     context::Context,
@@ -2244,9 +2243,8 @@ fn mload_out_of_gas() {
 
 #[test]
 fn mstore_mcopy_mload_with_zero_address_and_gas() {
-    let value = BigUint::from(10_u8);
     let program = vec![
-        Operation::Push((1_u8, value)),
+        Operation::Push((1_u8, BigUint::from(10_u8))),
         Operation::Push0,
         Operation::Mstore,
         Operation::Push((1_u8, BigUint::from(32_u8))),
@@ -2256,11 +2254,13 @@ fn mstore_mcopy_mload_with_zero_address_and_gas() {
         Operation::Push((1_u8, BigUint::from(32_u8))),
         Operation::Mload,
     ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
     let gas_needed = gas_cost::PUSH0 * 2
         + gas_cost::PUSHN * 4
         + gas_cost::MCOPY
         + gas_cost::MLOAD
-        + gas_cost::MSTORE;
+        + gas_cost::MSTORE
+        + dynamic_gas;
 
     run_program_assert_gas_exact(program, gas_needed as _);
 }

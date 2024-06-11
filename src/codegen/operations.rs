@@ -2597,18 +2597,12 @@ fn codegen_mcopy<'c, 'r>(
     let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::MCOPY)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2659,9 +2653,39 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
 
-    let source = ok_block
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &memory_access_block,
+        region,
+        required_size,
+        gas_cost::MCOPY,
+    )?;
+
+    // Memory access
+    let memory_ptr_ptr = memory_access_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = memory_access_block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    let source = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2674,7 +2698,7 @@ fn codegen_mcopy<'c, 'r>(
         .into();
 
     // memory_destination = memory_ptr + dest_offset
-    let destination = ok_block
+    let destination = memory_access_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             memory_ptr,
@@ -2686,7 +2710,7 @@ fn codegen_mcopy<'c, 'r>(
         .result(0)?
         .into();
 
-    ok_block.append_operation(
+    memory_access_block.append_operation(
         ods::llvm::intr_memmove(
             context,
             destination,
@@ -2698,5 +2722,5 @@ fn codegen_mcopy<'c, 'r>(
         .into(),
     );
 
-    Ok((start_block, ok_block))
+    Ok((start_block, memory_access_block))
 }
