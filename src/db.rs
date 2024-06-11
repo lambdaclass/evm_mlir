@@ -18,5 +18,4 @@ struct AccountInfo {
 #[derive(Clone, Debug, Default)]
 pub struct Db {
     accounts: HashMap<Address, AccountInfo>,
-    bytecode: HashMap<H256, Bytecode>,
 }

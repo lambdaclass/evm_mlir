@@ -86,7 +86,7 @@ impl ExecutionResult {
 
 /// The context passed to syscalls
 #[derive(Debug, Default)]
-pub struct SyscallContext {
+pub struct SyscallContext<'c> {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
@@ -97,12 +97,12 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     pub env: Env,
-    pub db: Db,
+    pub db: &'c mut Db,
 }
 
 /// Accessors for disponibilizing the execution results
-impl SyscallContext {
-    pub fn with_env(env: Env, db: Db) -> Self {
+impl<'c> SyscallContext<'c> {
+    pub fn new(env: Env, db: &'c mut Db) -> Self {
         Self {
             env,
             db,
@@ -136,7 +136,7 @@ impl SyscallContext {
 ///
 /// Note that each function is marked as `extern "C"`, which is necessary for the
 /// function to be callable from the generated code.
-impl SyscallContext {
+impl<'c> SyscallContext<'c> {
     pub extern "C" fn write_result(
         &mut self,
         offset: u32,

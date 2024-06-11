@@ -38,7 +38,7 @@ impl Evm {
     }
 
     /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&self) -> ExecutionResult {
+    pub fn transact(&mut self) -> ExecutionResult {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
@@ -47,7 +47,7 @@ impl Evm {
             .expect("failed to compile program");
 
         let executor = Executor::new(&module);
-        let mut context = SyscallContext::with_env(self.env.clone(), self.db.clone());
+        let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
 
         executor.execute(&mut context, self.env.tx.gas_limit);
         context.get_result()
