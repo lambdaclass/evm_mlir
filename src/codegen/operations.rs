@@ -184,47 +184,29 @@ fn codegen_iszero<'c, 'r>(
     ));
 
     let value = stack_pop(context, &ok_block)?;
-    let value_is_zero = check_if_zero(context, &ok_block, &value)?;
+    let zero_constant = constant_value_from_i64(context, &ok_block, 0)?;
 
-    let val_zero_bloq = region.append_block(Block::new(&[]));
-    let val_not_zero_bloq = region.append_block(Block::new(&[]));
-    let return_block = region.append_block(Block::new(&[]));
-
-    let constant_value = val_zero_bloq
-        .append_operation(arith::constant(
+    let result = ok_block
+        .append_operation(arith::cmpi(
             context,
-            integer_constant_from_i64(context, 1i64).into(),
+            arith::CmpiPredicate::Eq,
+            value,
+            zero_constant,
             location,
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &val_zero_bloq, constant_value)?;
-    val_zero_bloq.append_operation(cf::br(&return_block, &[], location));
-
-    let result = val_not_zero_bloq
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0i64).into(),
-            location,
-        ))
+    //Extend the 1 bit result to 256 bits.
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
-    stack_push(context, &val_not_zero_bloq, result)?;
-    val_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    stack_push(context, &ok_block, result)?;
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        value_is_zero,
-        &val_zero_bloq,
-        &val_not_zero_bloq,
-        &[],
-        &[],
-        location,
-    ));
-
-    Ok((start_block, return_block))
+    Ok((start_block, ok_block))
 }
 
 fn codegen_and<'c, 'r>(
