@@ -29,7 +29,8 @@ pub fn run_with_evm_mlir(program: &str, runs: usize) {
 }
 
 pub fn run_with_revm(program: &str, runs: usize) {
-    let raw = Bytecode::new_raw(program.to_owned().into());
+    let bytes = hex::decode(program).unwrap();
+    let raw = Bytecode::new_raw(bytes.into());
     let mut evm = Evm::builder()
         .with_db(BenchmarkDB::new_bytecode(raw))
         .modify_tx_env(|tx| {
