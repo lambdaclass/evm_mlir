@@ -57,7 +57,7 @@ revm-comparison:
 		--bin revm_factorial \
 		--bin evm_mlir_fibonacci \
 		--bin revm_fibonacci
-
+	@echo
 	@printf "%s" "evm_mlir_factorial result: "
 	@target/release/evm_mlir_factorial 1
 	@printf "%s" "revm_factorial result: "
