@@ -2573,6 +2573,19 @@ fn codegen_log<'c, 'r>(
                 &ok_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, location,
             );
         }
+        4 => {
+            let topic1 = stack_pop(context, &ok_block)?;
+            let topic2 = stack_pop(context, &ok_block)?;
+            let topic3 = stack_pop(context, &ok_block)?;
+            let topic4 = stack_pop(context, &ok_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
+            let topic2_ptr = allocate_and_store_value(op_ctx, &ok_block, topic2, location)?;
+            let topic3_ptr = allocate_and_store_value(op_ctx, &ok_block, topic3, location)?;
+            let topic4_ptr = allocate_and_store_value(op_ctx, &ok_block, topic4, location)?;
+            op_ctx.append_log_with_four_topics_syscall(
+                &ok_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, topic4_ptr, location,
+            );
+        }
         _ => println!("not implemented yet"),
     }
 
