@@ -91,7 +91,7 @@ fn test_calldatacopy() {
 }
 
 #[test]
-fn test_calldatacopy_zeros_padding(){
+fn test_calldatacopy_zeros_padding() {
     let operations = vec![
         Operation::Push((1, BigUint::from(10_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
@@ -116,7 +116,7 @@ fn test_calldatacopy_zeros_padding(){
 }
 
 #[test]
-fn test_calldatacopy_memory_offset(){
+fn test_calldatacopy_memory_offset() {
     let operations = vec![
         Operation::Push((1, BigUint::from(5_u8))),
         Operation::Push((1, BigUint::from(1_u8))),
@@ -138,12 +138,10 @@ fn test_calldatacopy_memory_offset(){
     let correct_memory = vec![1, 2, 3, 4, 5];
     let return_data = result.return_data().unwrap();
     assert_eq!(return_data, correct_memory);
-
 }
 
-
 #[test]
-fn test_calldatacopy_calldataoffset(){
+fn test_calldatacopy_calldataoffset() {
     let operations = vec![
         Operation::Push((1, BigUint::from(10_u8))),
         Operation::Push((1, BigUint::from(0_u8))),
@@ -163,7 +161,7 @@ fn test_calldatacopy_calldataoffset(){
     let result = evm.transact();
 
     //Test that the memory is correctly copied
-    let correct_memory = vec![0,0, 1, 2, 3, 4, 5, 6, 7, 8];
+    let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
     let return_data = result.return_data().unwrap();
     assert_eq!(return_data, correct_memory);
 }

@@ -98,7 +98,6 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
     }
 }
 
-
 #[test]
 fn test_calldatasize_with_gas() {
     let program = vec![Operation::CallDataSize];
