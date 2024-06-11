@@ -23,9 +23,9 @@ fn main() {
     let executor = Executor::new(&module);
 
     let mut context = SyscallContext::default();
+
     let initial_gas = 1000;
 
     let result = executor.execute(&mut context, initial_gas);
-
     println!("Execution result: {result}");
 }

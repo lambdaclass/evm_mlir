@@ -176,6 +176,10 @@ impl SyscallContext {
             }
         }
     }
+
+    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
+        self.env.tx.calldata.as_ptr()
+    }
 }
 
 pub mod symbols {
@@ -194,6 +198,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::WRITE_RESULT,
             SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_PTR,
+            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_PTR,
@@ -287,6 +295,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -387,6 +404,27 @@ pub(crate) mod mlir {
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::EXTEND_MEMORY),
                 &[syscall_ctx, new_size],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    /// Returns a pointer to the calldata.
+    #[allow(unused)]
+    pub(crate) fn get_calldata_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
+                &[syscall_ctx],
                 &[ptr_type],
                 location,
             ))
