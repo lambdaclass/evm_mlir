@@ -2279,11 +2279,8 @@ fn mcopy_dynamic_gas() {
         Operation::Mload,
     ];
     let mcopy_cost = 12; // including dynamic gas
-    let gas_needed = gas_cost::PUSH0 * 2
-        + gas_cost::PUSHN * 4
-        + gas_cost::MLOAD
-        + gas_cost::MSTORE
-        + mcopy_cost;
+    let gas_needed =
+        gas_cost::PUSH0 * 2 + gas_cost::PUSHN * 4 + gas_cost::MLOAD + gas_cost::MSTORE + mcopy_cost;
 
     run_program_assert_gas_exact(program, gas_needed as _);
 }

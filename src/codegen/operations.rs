@@ -18,7 +18,10 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values, compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
+        compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
+        extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir,
+        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
