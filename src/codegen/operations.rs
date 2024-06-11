@@ -65,7 +65,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Sload => codegen_sload(op_ctx, region),
-        Operation::Sstore => codegen_store(op_ctx, region),
+        Operation::Sstore => codegen_sstore(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
@@ -1589,7 +1589,7 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let pointer_size = block
+    let pointer_size = ok_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint256.into(), 1 as i64).into(),
@@ -1599,7 +1599,7 @@ fn codegen_sstore<'c, 'r>(
         .into();
 
     // Allocate the key
-    let key_ptr = block
+    let key_ptr = ok_block
         .append_operation(llvm::alloca(
             context,
             pointer_size,
@@ -1610,7 +1610,7 @@ fn codegen_sstore<'c, 'r>(
         .result(0)?
         .into();
 
-    let res = block.append_operation(llvm::store(
+    let res = ok_block.append_operation(llvm::store(
         context,
         key,
         key_ptr,
@@ -1620,7 +1620,7 @@ fn codegen_sstore<'c, 'r>(
     assert!(res.verify());
 
     // Allocate the value
-    let value_ptr = block
+    let value_ptr = ok_block
         .append_operation(llvm::alloca(
             context,
             pointer_size,
@@ -1631,7 +1631,7 @@ fn codegen_sstore<'c, 'r>(
         .result(0)?
         .into();
 
-    let res = block.append_operation(llvm::store(
+    let res = ok_block.append_operation(llvm::store(
         context,
         value,
         value_ptr,
@@ -1640,7 +1640,7 @@ fn codegen_sstore<'c, 'r>(
     ));
     assert!(res.verify());
 
-    op_ctx.storage_write_syscall(block, key_ptr, value_ptr, location)?;
+    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
 
     Ok((start_block, ok_block))
 }

@@ -4,7 +4,6 @@ use evm_mlir::{
     executor::Executor,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
-    Env,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -2175,8 +2174,16 @@ fn sload_with_invalid_key() {
     run_program_assert_stack_top(program, result);
 }
 
+#[test]
 fn sload_with_stack_underflow() {
     let program = vec![Operation::Sload];
+
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn sstore_with_stack_underflow() {
+    let program = vec![Operation::Push0, Operation::Sstore];
 
     run_program_assert_halt(program);
 }

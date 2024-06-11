@@ -224,7 +224,7 @@ pub(crate) mod mlir {
         ir::{
             attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
             r#type::{FunctionType, IntegerType},
-            Block, Identifier, Location, Module as MeliorModule, Region, Type, Value,
+            Block, Identifier, Location, Module as MeliorModule, Region, Value,
         },
         Context as MeliorContext,
     };
@@ -365,7 +365,7 @@ pub(crate) mod mlir {
         value: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<(), CodegenError> {
-        let value = block.append_operation(func::call(
+        block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
             &[syscall_ctx, key, value],
