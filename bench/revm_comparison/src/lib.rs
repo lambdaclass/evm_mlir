@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 pub fn run_with_evm_mlir(program: &str, runs: usize) {
     let bytes = hex::decode(program).unwrap();
-    let program = Program::from_bytecode(&bytes);
+    let program = Program::from_bytecode(&bytes).unwrap();
 
     // This is for intermediate files
     let output_file = PathBuf::from("output");
