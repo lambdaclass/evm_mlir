@@ -166,17 +166,8 @@ pub enum Opcode {
 #[error("The opcode `{:02X}` is not valid", self.0)]
 pub struct OpcodeParseError(u8);
 
-#[derive(Error)]
+#[derive(Error, Debug)]
 pub struct ParseError(Vec<OpcodeParseError>);
-
-impl fmt::Debug for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let opcodes: Vec<_> = self.0.iter().map(|x| format!("{:02X}", x.0)).collect();
-        writeln!(f, "The following opcodes could not be parsed: ")?;
-        writeln!(f, "{:#?}", opcodes)?;
-        Ok(())
-    }
-}
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
