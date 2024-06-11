@@ -309,6 +309,13 @@ fn codegen_gt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -397,6 +404,13 @@ fn codegen_lt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -444,6 +458,13 @@ fn codegen_sgt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -487,6 +508,13 @@ fn codegen_eq<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
@@ -2332,6 +2360,13 @@ fn codegen_slt<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 

@@ -277,6 +277,10 @@ pub fn stack_push<'ctx>(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
+    //Check that the value to push is 256 bits wide.
+    let uint256 = IntegerType::new(context, 256);
+    debug_assert!(value.r#type().eq(&uint256.into()));
+
     // Get address of stack pointer global
     let stack_ptr_ptr = block
         .append_operation(llvm_mlir::addressof(
@@ -298,28 +302,10 @@ pub fn stack_push<'ctx>(
         ))
         .result(0)?;
 
-    let uint256 = IntegerType::new(context, 256);
-    let uint1 = IntegerType::new(context, 1);
-
-    // NOTE:
-    // Here we are extending the Value's size to a 256 bits word size.
-    // There are some operations, for instance, the comparisson ops like GT, EQ, SGT, which return
-    // a Value result of size 1 bit.
-    // We must extend those operations to 32 bytes = 256 bits padding with zeros in order to have a clean return value
-    // Otherwise, the return value may be filled with trash.
-    let extended_value: Value = if value.r#type().eq(&uint1.into()) {
-        block
-            .append_operation(arith::extui(value, uint256.into(), location))
-            .result(0)?
-            .into()
-    } else {
-        value
-    };
-
     // Store value at stack pointer
     let res = block.append_operation(llvm::store(
         context,
-        extended_value,
+        value,
         stack_ptr.into(),
         location,
         LoadStoreOptions::default(),
