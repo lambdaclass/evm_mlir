@@ -78,6 +78,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
         Operation::CallDataCopy => codegen_calldatacopy(op_ctx, region),
+        Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
     }
 }
 
@@ -294,8 +295,6 @@ fn codegen_calldatacopy<'c, 'r>(
     overflow_block.append_operation(cf::br(&return_block, &[], location));
 
     Ok((start_block, return_block))
-        Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
-    }
 }
 
 fn codegen_calldatasize<'c, 'r>(
