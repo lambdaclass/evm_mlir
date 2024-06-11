@@ -6,8 +6,9 @@ use crate::{
     syscall::ExitStatusCode,
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
-        check_stack_has_space_for, compare_values, constant_value_from_i64, consume_gas,
-        extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
+        check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
+        get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
         llvm_mlir::{self},
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
@@ -2744,18 +2745,12 @@ fn codegen_log<'c, 'r>(
     let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
     // Check there's enough gas
     // TODO: add dynamic gas computation
-    let gas_flag = consume_gas(context, &start_block, gas_cost::LOG0)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2777,57 +2772,67 @@ fn codegen_log<'c, 'r>(
 
     // add memory expansion and memory expansion cost
     // required_size = offset + value_size
-    /*let required_size = ok_block
+    let required_size = ok_block
         .append_operation(arith::addi(offset, size, location))
         .result(0)?
         .into();
-    */
-    //extend_memory(op_ctx, &ok_block, required_size)?;
 
+    let log_block = region.append_block(Block::new(&[]));
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &log_block,
+        region,
+        required_size,
+        gas_cost::LOG,
+    )?;
+    let dynamic_gas = compute_log_dynamic_gas(op_ctx, &log_block, nth, size_u256, location)?;
+    consume_gas_as_value(context, &log_block, dynamic_gas)?;
     match nth {
         0 => {
-            op_ctx.append_log_syscall(&ok_block, offset, size, location);
+            op_ctx.append_log_syscall(&log_block, offset, size, location);
         }
         1 => {
-            let topic1 = stack_pop(context, &ok_block)?;
-            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
-            op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1_ptr, location);
+            let topic1 = stack_pop(context, &log_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &log_block, topic1, location)?;
+            op_ctx
+                .append_log_with_one_topic_syscall(&log_block, offset, size, topic1_ptr, location);
         }
         2 => {
-            let topic1 = stack_pop(context, &ok_block)?;
-            let topic2 = stack_pop(context, &ok_block)?;
-            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
-            let topic2_ptr = allocate_and_store_value(op_ctx, &ok_block, topic2, location)?;
+            let topic1 = stack_pop(context, &log_block)?;
+            let topic2 = stack_pop(context, &log_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &log_block, topic1, location)?;
+            let topic2_ptr = allocate_and_store_value(op_ctx, &log_block, topic2, location)?;
             op_ctx.append_log_with_two_topics_syscall(
-                &ok_block, offset, size, topic1_ptr, topic2_ptr, location,
+                &log_block, offset, size, topic1_ptr, topic2_ptr, location,
             );
         }
         3 => {
-            let topic1 = stack_pop(context, &ok_block)?;
-            let topic2 = stack_pop(context, &ok_block)?;
-            let topic3 = stack_pop(context, &ok_block)?;
-            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
-            let topic2_ptr = allocate_and_store_value(op_ctx, &ok_block, topic2, location)?;
-            let topic3_ptr = allocate_and_store_value(op_ctx, &ok_block, topic3, location)?;
+            let topic1 = stack_pop(context, &log_block)?;
+            let topic2 = stack_pop(context, &log_block)?;
+            let topic3 = stack_pop(context, &log_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &log_block, topic1, location)?;
+            let topic2_ptr = allocate_and_store_value(op_ctx, &log_block, topic2, location)?;
+            let topic3_ptr = allocate_and_store_value(op_ctx, &log_block, topic3, location)?;
             op_ctx.append_log_with_three_topics_syscall(
-                &ok_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, location,
+                &log_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, location,
             );
         }
         4 => {
-            let topic1 = stack_pop(context, &ok_block)?;
-            let topic2 = stack_pop(context, &ok_block)?;
-            let topic3 = stack_pop(context, &ok_block)?;
-            let topic4 = stack_pop(context, &ok_block)?;
-            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
-            let topic2_ptr = allocate_and_store_value(op_ctx, &ok_block, topic2, location)?;
-            let topic3_ptr = allocate_and_store_value(op_ctx, &ok_block, topic3, location)?;
-            let topic4_ptr = allocate_and_store_value(op_ctx, &ok_block, topic4, location)?;
+            let topic1 = stack_pop(context, &log_block)?;
+            let topic2 = stack_pop(context, &log_block)?;
+            let topic3 = stack_pop(context, &log_block)?;
+            let topic4 = stack_pop(context, &log_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &log_block, topic1, location)?;
+            let topic2_ptr = allocate_and_store_value(op_ctx, &log_block, topic2, location)?;
+            let topic3_ptr = allocate_and_store_value(op_ctx, &log_block, topic3, location)?;
+            let topic4_ptr = allocate_and_store_value(op_ctx, &log_block, topic4, location)?;
             op_ctx.append_log_with_four_topics_syscall(
-                &ok_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, topic4_ptr, location,
+                &log_block, offset, size, topic1_ptr, topic2_ptr, topic3_ptr, topic4_ptr, location,
             );
         }
         _ => println!("not implemented yet"),
     }
 
-    Ok((start_block, ok_block))
+    Ok((start_block, log_block))
 }

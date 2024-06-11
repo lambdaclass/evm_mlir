@@ -187,6 +187,63 @@ pub fn consume_gas_as_value<'ctx>(
     Ok(flag.into())
 }
 
+// computes dynamic_gas = 375 * topic_count + 8 * size
+pub(crate) fn compute_log_dynamic_gas<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    nth: u8,
+    size: Value<'a, 'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint64 = IntegerType::new(context, 64);
+
+    let constant_375 = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 375).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_8 = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 8).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let topic_count = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, nth as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let topic_count_x_375 = block
+        .append_operation(arith::muli(topic_count, constant_375, location))
+        .result(0)?
+        .into();
+    let size_x_8 = block
+        .append_operation(arith::muli(size, constant_8, location))
+        .result(0)?
+        .into();
+    let dynamic_gas = block
+        .append_operation(arith::addi(topic_count_x_375, size_x_8, location))
+        .result(0)?
+        .into();
+    let dynamic_gas = block
+        .append_operation(arith::trunci(dynamic_gas, uint64.into(), location))
+        .result(0)?
+        .into();
+    Ok(dynamic_gas)
+}
+
 pub fn stack_pop<'ctx>(
     context: &'ctx MeliorContext,
     block: &'ctx Block,
