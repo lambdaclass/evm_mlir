@@ -116,7 +116,7 @@ jobs:
         run: cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
     
   ethereum-tests:
-    name: Test (Ubuntu)
+    name: Ethereum Tests (Ubuntu)
     runs-on: ubuntu-latest
     env:
       MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
@@ -148,5 +148,8 @@ jobs:
         with:
           tool: cargo-nextest
 
-      - name: Run tests
+      - name: Download test vectors
+        run: make ethtests
+
+      - name: Run ethereum tests
         run: cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
