@@ -2738,7 +2738,6 @@ fn codegen_log<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
-
     let required_elements = 2 + nth;
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
@@ -2774,7 +2773,8 @@ fn codegen_log<'c, 'r>(
         .into();
 
     let log_block = region.append_block(Block::new(&[]));
-
+    let dynamic_gas = compute_log_dynamic_gas(op_ctx, &ok_block, nth, size_u256, location)?;
+    consume_gas_as_value(context, &ok_block, dynamic_gas)?;
     extend_memory(
         op_ctx,
         &ok_block,
@@ -2783,9 +2783,6 @@ fn codegen_log<'c, 'r>(
         required_size,
         gas_cost::LOG,
     )?;
-
-    let dynamic_gas = compute_log_dynamic_gas(op_ctx, &log_block, nth, size_u256, location)?;
-    consume_gas_as_value(context, &log_block, dynamic_gas)?;
 
     let mut topic_pointers = vec![];
     for _i in 0..nth {
