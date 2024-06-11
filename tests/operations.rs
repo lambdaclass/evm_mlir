@@ -1701,7 +1701,7 @@ fn stop() {
 
 #[test]
 fn push_push_exp() {
-    let (a, b) = (BigUint::from(2_u8), 3_u32);
+    let (a, b) = (BigUint::from(3_u8), 3_u32);
     let program = vec![
         Operation::Push((1_u8, BigUint::from(b))),
         Operation::Push((1_u8, a.clone())),
@@ -1715,7 +1715,7 @@ fn push_push_exp() {
 
 #[test]
 fn exp_with_overflow_should_wrap() {
-    let a = BigUint::from(2_u8);
+    let a = BigUint::from(3_u8);
     let b = BigUint::from(300_u32);
     let modulus = BigUint::from(1_u32) << 256;
     let program = vec![
