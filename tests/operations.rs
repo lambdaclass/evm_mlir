@@ -2333,3 +2333,24 @@ fn mcopy_with_stack_underflow() {
 
     run_program_assert_halt(program);
 }
+
+#[test]
+fn log0_with_gas_cost() {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Log(0),
+    ];
+    let topic_count = 0;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * 2;
+    let dynamic_gas = gas_cost::LOG * topic_count
+        + 8 * size as i64
+        + gas_cost::memory_expansion_cost(0, 32 as u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
