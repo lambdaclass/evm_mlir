@@ -2341,13 +2341,106 @@ fn log0_with_gas_cost() {
     let size = 32_u8;
     let offset = 0_u8;
     let program = vec![
-        Operation::Push((1_u8, BigUint::from(offset))),
         Operation::Push((1_u8, BigUint::from(size))),
         Operation::Push((1_u8, BigUint::from(offset))),
         Operation::Log(0),
     ];
     let topic_count = 0;
-    let static_gas = gas_cost::LOG + gas_cost::PUSHN * 2;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
+    let dynamic_gas = gas_cost::LOG * topic_count
+        + 8 * size as i64
+        + gas_cost::memory_expansion_cost(0, 32 as u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn log1_with_gas_cost() {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let topic = BigUint::from_bytes_be(&[0xff; 32]);
+    let program = vec![
+        Operation::Push((32_u8, topic)),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Log(1),
+    ];
+    let topic_count = 1;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
+    let dynamic_gas = gas_cost::LOG * topic_count
+        + 8 * size as i64
+        + gas_cost::memory_expansion_cost(0, 32 as u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn log2_with_gas_cost() {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let topic = BigUint::from_bytes_be(&[0xff; 32]);
+    let program = vec![
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic)),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Log(2),
+    ];
+    let topic_count = 2;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
+    let dynamic_gas = gas_cost::LOG * topic_count
+        + 8 * size as i64
+        + gas_cost::memory_expansion_cost(0, 32 as u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn log3_with_gas_cost() {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let topic = BigUint::from_bytes_be(&[0xff; 32]);
+    let program = vec![
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Log(3),
+    ];
+    let topic_count = 3;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
+    let dynamic_gas = gas_cost::LOG * topic_count
+        + 8 * size as i64
+        + gas_cost::memory_expansion_cost(0, 32 as u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn log4_with_gas_cost() {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let topic = BigUint::from_bytes_be(&[0xff; 32]);
+    let program = vec![
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((32_u8, topic.clone())),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Log(4),
+    ];
+    let topic_count = 4;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
     let dynamic_gas = gas_cost::LOG * topic_count
         + 8 * size as i64
         + gas_cost::memory_expansion_cost(0, 32 as u32);
