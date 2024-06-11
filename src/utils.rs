@@ -611,7 +611,7 @@ pub(crate) fn write_storage<'c>(
     block: &'c Block,
     key: Value<'c, 'c>,
     value: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
+) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
@@ -674,7 +674,7 @@ pub(crate) fn read_storage<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
     key: Value<'c, 'c>,
-) -> Result<(), CodegenError> {
+) -> Result<Value<'c, 'c>, CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
@@ -709,9 +709,22 @@ pub(crate) fn read_storage<'c>(
     ));
     assert!(res.verify());
 
-    op_ctx.storage_read_syscall(block, key_ptr, location);
+    // storage_read_syscall returns a pointer to the value
+    let read_value_ptr = op_ctx.storage_read_syscall(block, key_ptr, location)?;
 
-    Ok(()) //op_ctx.storage_read_syscall(block, key_ptr, location)
+    // get the value from the pointer
+    let read_value = block
+        .append_operation(llvm::load(
+            context,
+            read_value_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(read_value)
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.

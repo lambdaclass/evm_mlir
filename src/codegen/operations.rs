@@ -1529,7 +1529,7 @@ fn codegen_sload<'c, 'r>(
     // Check there's enough elements in the stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::CODESIZE)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SLOAD)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -1550,9 +1550,9 @@ fn codegen_sload<'c, 'r>(
 
     let key = stack_pop(context, &ok_block)?;
 
-    read_storage(op_ctx, &ok_block, key)?;
+    let read_value = read_storage(op_ctx, &ok_block, key)?;
 
-    // stack_push(context, &ok_block, read_value)?;
+    stack_push(context, &ok_block, read_value)?;
 
     Ok((start_block, ok_block))
 }

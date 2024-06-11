@@ -4,6 +4,7 @@ use evm_mlir::{
     executor::Executor,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
+    Env,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -2145,11 +2146,37 @@ fn mload_not_allocated_address() {
 }
 
 #[test]
-fn sload() {
+fn sload_gas_consumtion() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
         Operation::Sload,
     ];
-    let result = BigUint::from(23_u8);
+    let result = gas_cost::PUSHN + gas_cost::SLOAD;
+    run_program_assert_gas_exact(program, result as _);
+}
+
+#[test]
+fn sload_with_valid_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+    let result = BigUint::from(0_u8);
     run_program_assert_stack_top(program, result);
+}
+
+#[test]
+fn sload_with_invalid_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(5_u8))),
+        Operation::Sload,
+    ];
+    let result = BigUint::from(0_u8);
+    run_program_assert_stack_top(program, result);
+}
+
+fn sload_with_stack_underflow() {
+    let program = vec![Operation::Sload];
+
+    run_program_assert_halt(program);
 }
