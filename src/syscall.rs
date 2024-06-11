@@ -27,8 +27,8 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
 pub struct U256 {
-    pub hi: u128,
     pub lo: u128,
+    pub hi: u128,
 }
 
 #[derive(Debug, Clone)]

@@ -129,7 +129,7 @@ fn log1() {
     let logs = result.return_logs().unwrap();
     let expected_logs: Vec<Log> = vec![Log {
         data: [0xff_u8; 32].into(),
-        topics: vec![U256 { lo: 0, hi: 1 }],
+        topics: vec![U256 { lo: 1, hi: 0 }],
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
@@ -168,7 +168,7 @@ fn log2() {
     let logs = result.return_logs().unwrap();
     let expected_logs: Vec<Log> = vec![Log {
         data: [0xff_u8; 32].into(),
-        topics: vec![U256 { lo: 0, hi: 1 }, U256 { lo: 0, hi: 2 }],
+        topics: vec![U256 { lo: 1, hi: 0 }, U256 { lo: 2, hi: 0 }],
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
@@ -211,9 +211,9 @@ fn log3() {
     let expected_logs: Vec<Log> = vec![Log {
         data: [0xff_u8; 32].into(),
         topics: vec![
-            U256 { lo: 0, hi: 1 },
-            U256 { lo: 0, hi: 2 },
-            U256 { lo: 0, hi: 3 },
+            U256 { lo: 1, hi: 0 },
+            U256 { lo: 2, hi: 0 },
+            U256 { lo: 3, hi: 0 },
         ],
     }];
     assert_eq!(logs.to_owned(), expected_logs);
@@ -260,10 +260,10 @@ fn log4() {
     let expected_logs: Vec<Log> = vec![Log {
         data: [0xff_u8; 32].into(),
         topics: vec![
-            U256 { lo: 0, hi: 1 },
-            U256 { lo: 0, hi: 2 },
-            U256 { lo: 0, hi: 3 },
-            U256 { lo: 0, hi: 4 },
+            U256 { lo: 1, hi: 0 },
+            U256 { lo: 2, hi: 0 },
+            U256 { lo: 3, hi: 0 },
+            U256 { lo: 4, hi: 0 },
         ],
     }];
     assert_eq!(logs.to_owned(), expected_logs);
