@@ -22,7 +22,7 @@ serde_json = { version = "1.0.117" }
 walkdir = "2.5.0"
 ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
-libtest-mimic = "0.7.3"
+datatest-stable = "0.2.9"
 
 [build-dependencies]
 cc = "1.0.83"

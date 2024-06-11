@@ -1,32 +1,9 @@
-use std::{collections::HashSet, error::Error, path::PathBuf, process::ExitCode, sync::Arc};
+use std::{collections::HashSet, path::Path};
 mod ef_tests_executor;
-use ef_tests_executor::{models::TestUnit, parser::parse_tests};
+use ef_tests_executor::models::TestSuite;
 use evm_mlir::{program::Program, Env, Evm};
-use libtest_mimic::{Arguments, Failed, Trial};
 
-fn collect_tests() -> Vec<Trial> {
-    let test_dirs = ["ethtests/GeneralStateTests/"];
-    let ignored_suites_arc = Arc::new(get_ignored_suites());
-    let ignored_tests_arc = Arc::new(get_ignored_tests());
-    test_dirs
-        .into_iter()
-        .flat_map(parse_tests)
-        .flat_map(|(path, suite)| {
-            let ignored_suites = ignored_suites_arc.clone();
-            let ignored_tests = ignored_tests_arc.clone();
-            let path_str = get_kind_from_path(path);
-            suite.0.into_iter().map(move |(name, unit)| {
-                let ignored_flag =
-                    ignored_suites.contains(&path_str) || ignored_tests.contains(&name);
-                Trial::test(name.clone(), move || run_test(name, unit))
-                    .with_kind(path_str.clone())
-                    .with_ignored_flag(ignored_flag)
-            })
-        })
-        .collect()
-}
-
-fn get_kind_from_path(path: PathBuf) -> String {
+fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
     // Example: ethtests/GeneralStateTests/stArgsZeroOneBalance/addmodNonConst.json
     // -> stArgsZeroOneBalance
@@ -41,7 +18,13 @@ fn get_kind_from_path(path: PathBuf) -> String {
         .to_string()
 }
 
-fn get_ignored_suites() -> HashSet<String> {
+fn get_suite_name_from_path(path: &Path) -> String {
+    // Example: ethtests/GeneralStateTests/stArgsZeroOneBalance/addmodNonConst.json
+    // -> addmodNonConst
+    path.file_stem().unwrap().to_str().unwrap().to_string()
+}
+
+fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
@@ -51,7 +34,7 @@ fn get_ignored_suites() -> HashSet<String> {
         "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
         "stRevertTest".into(),
-        "eip3855_push0".into(),
+        // "eip3855_push0".into(),
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stSStoreTest".into(),
@@ -127,28 +110,44 @@ fn get_ignored_suites() -> HashSet<String> {
     ])
 }
 
-fn get_ignored_tests() -> HashSet<String> {
-    HashSet::from([])
+fn get_ignored_suites() -> HashSet<String> {
+    HashSet::from([
+        "ValueOverflow".into(),      // Invalid JSON
+        "ValueOverflowParis".into(), // Invalid JSON
+    ])
 }
 
-fn run_test(name: String, unit: TestUnit) -> Result<(), Failed> {
-    println!("{name}");
-    let env = Env::default();
-    let Some(to) = unit.transaction.to else {
-        return Err(Failed::from("`to` field is None"));
-    };
-    let Some(account) = unit.pre.get(&to) else {
-        return Err(Failed::from("Callee doesn't exist"));
-    };
-    let program = Program::from_bytecode(&account.code).map_err(Failed::from)?;
-    let evm = Evm::new(env, program);
-    // TODO: check the result
-    let _result = evm.transact();
+fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
+    let group_name = get_group_name_from_path(path);
+    if get_ignored_groups().contains(&group_name) {
+        return Ok(());
+    }
+
+    let suite_name = get_suite_name_from_path(path);
+
+    if get_ignored_suites().contains(&suite_name) {
+        return Ok(());
+    }
+    let test: TestSuite = serde_json::from_reader(contents.as_bytes())
+        .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
+
+    for (name, unit) in test.0 {
+        eprintln!("Running test: {}", name);
+        let Some(to) = unit.transaction.to else {
+            return Err("`to` field is None".into());
+        };
+        let Some(account) = unit.pre.get(&to) else {
+            return Err("Callee doesn't exist".into());
+        };
+        let code_len = account.code.len();
+        eprintln!("Code len: {}", code_len);
+        let env = Env::default();
+        let program = Program::from_bytecode(&account.code)?;
+        let evm = Evm::new(env, program);
+        // // TODO: check the result
+        let _result = evm.transact();
+    }
     Ok(())
 }
 
-fn main() -> Result<ExitCode, Box<dyn Error>> {
-    let args = Arguments::from_args();
-    let tests = collect_tests();
-    Ok(libtest_mimic::run(&args, tests).exit_code())
-}
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

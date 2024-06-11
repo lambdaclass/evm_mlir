@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::models::TestSuite;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -5,7 +6,7 @@ use std::{fs::File, path::Path};
 use walkdir::{DirEntry, WalkDir};
 
 // These fail to parse due to invalid JSON.
-const INVALID_PATHS: [&str; 2] = [
+pub const INVALID_PATHS: [&str; 2] = [
     "ethtests/GeneralStateTests/stTransactionTest/ValueOverflowParis.json",
     "ethtests/GeneralStateTests/stTransactionTest/ValueOverflow.json",
 ];
@@ -31,7 +32,7 @@ fn filter_not_valid(entry: DirEntry) -> Option<DirEntry> {
     }
 }
 
-fn parse_test_suite(entry: DirEntry) -> (PathBuf, TestSuite) {
+pub fn parse_test_suite(entry: DirEntry) -> (PathBuf, TestSuite) {
     let file = File::open(entry.path())
         .unwrap_or_else(|_| panic!("Failed to open file {}", entry.path().display()));
     let reader = BufReader::new(file);
