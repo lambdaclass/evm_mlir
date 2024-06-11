@@ -39,8 +39,6 @@ pub enum Opcode {
     // CALLER = 0x33,
     // CALLVALUE = 0x34,
     CALLDATALOAD = 0x35,
-    // CALLDATASIZE = 0x36,
-    // CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,

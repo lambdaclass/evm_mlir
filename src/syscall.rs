@@ -177,10 +177,10 @@ impl SyscallContext {
 }
 
 pub mod symbols {
-    pub const WRITE_RESULT: &str = "emv_mlir__write_result";
-    pub const EXTEND_MEMORY: &str = "emv_mlir__extend_memory";
-    pub const GET_CALLDATA_PTR: &str = "emv_mlir__get_calldata_ptr";
-    pub const GET_CALLDATA_SIZE: &str = "emv_mlir__get_calldata_size";
+    pub const WRITE_RESULT: &str = "evm_mlir__write_result";
+    pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
+    pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
 }
 
 /// Registers all the syscalls as symbols in the execution engine

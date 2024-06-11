@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith,
         arith::CmpiPredicate,
-        cf::{self, br, cond_br},
+        cf,
         llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
@@ -2811,7 +2811,7 @@ fn codegen_calldataload<'c, 'r>(
 
     // if offset < calldata_size => offset_ok_block
     // else => offset_bad_block
-    ok_block.append_operation(cond_br(
+    ok_block.append_operation(cf::cond_br(
         context,
         offset_ok,
         &offset_ok_block,
@@ -2825,7 +2825,7 @@ fn codegen_calldataload<'c, 'r>(
 
     // offset >= calldata_size => push 0
     stack_push(context, &offset_bad_block, zero)?;
-    offset_bad_block.append_operation(br(&end_block, &[], location));
+    offset_bad_block.append_operation(cf::br(&end_block, &[], location));
 
     /******************** offset_bad_block *******************/
 
@@ -2898,7 +2898,7 @@ fn codegen_calldataload<'c, 'r>(
         stack_push(context, &offset_ok_block, calldata_slice)?;
     }
 
-    offset_ok_block.append_operation(br(&end_block, &[], location));
+    offset_ok_block.append_operation(cf::br(&end_block, &[], location));
 
     /******************** offset_OK_block *******************/
 
