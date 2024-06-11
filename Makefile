@@ -63,4 +63,5 @@ ${ETHTEST_TAR}: .ethtest_version
 ethtests: ${ETHTEST_TAR}
 	mkdir -p "$@"
 	tar -xzmf "$<" --strip-components=1 -C "$@"
+	@cat ${ETHTEST_SHASUM}
 	sha256sum -c ${ETHTEST_SHASUM}
