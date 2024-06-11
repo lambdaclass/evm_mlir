@@ -163,24 +163,15 @@ fn push_twice() {
 
 #[test]
 fn push_fill_stack() {
-    /*
-        NOTE: Since we want to return the execution value, we need to to fill the stack with one additional element.
-        That means we cannot use the hole 1024 word size. Our usable stack limit drops to 1023 elements.
-        If we didn't want to return the top of the stack value, then we would be able to use 1024 push instructions.
-    */
     let stack_top = BigUint::from(88_u8);
 
-    // Push 1023 times
-    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1023];
-    run_program_assert_stack_top(program, stack_top);
+    // Push 1024 times
+    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1024];
+    run_program_assert_result(program, &[]);
 }
 
 #[test]
 fn push_stack_overflow() {
-    /*
-        NOTE: Here we don't care for the execution top of the stack result, so we don't need to add those instructions.
-        That means we can use the hole 1024 words stack size. So, if we try to use 1025 words size the program will halt.
-    */
     // Push 1025 times
     let program = vec![Operation::Push((1_u8, BigUint::from(88_u8))); 1025];
     run_program_assert_halt(program);
