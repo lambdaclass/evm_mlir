@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use db::Db;
 use executor::Executor;
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
@@ -24,13 +25,16 @@ pub use env::Env;
 pub struct Evm {
     pub env: Env,
     pub program: Program,
+    pub db: Db,
 }
 
 impl Evm {
     /// Creates a new EVM instance with the given environment and program.
     // TODO: the program should be loaded from the bytecode of the configured transaction.
     pub fn new(env: Env, program: Program) -> Self {
-        Self { env, program }
+        let db = Db::default();
+
+        Self { env, program, db }
     }
 
     /// Executes [the configured transaction](Env::tx).
