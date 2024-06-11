@@ -96,7 +96,7 @@ pub struct SyscallContext {
     exit_status: Option<ExitStatusCode>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    env: Env,
+    pub env: Env,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -155,6 +155,12 @@ impl SyscallContext {
         self.env.tx.calldata.len() as u32
     }
 
+    pub extern "C" fn get_calldata_size(&self) -> u32 {
+        let size = self.env.tx.calldata.len();
+        print!("Calldata size: {}", size as u32);
+        self.env.tx.calldata.len() as u32
+    }
+
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
         if new_size <= self.memory.len() {
@@ -201,6 +207,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_SIZE,
+            SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
     };
 }
