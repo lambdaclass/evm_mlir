@@ -674,7 +674,6 @@ impl Program {
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::KECCAK256 => Operation::Keccak256,
-
             };
             operations.push(op);
             pc += 1;

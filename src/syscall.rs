@@ -25,6 +25,28 @@ use sha3::{Digest, Keccak256};
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(C, align(16))]
+pub struct U256 {
+    pub lo: u128,
+    pub hi: u128,
+}
+
+impl std::fmt::Display for U256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        // Format as a single hexadecimal string
+        write!(f, "{:032x}{:032x}", self.hi, self.lo)
+    }
+}
+
+impl U256 {
+    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+        let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+        let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
+        U256 { hi, lo }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
@@ -148,14 +170,14 @@ impl SyscallContext {
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32) -> *mut u8 {
+    pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
         let offset = offset as usize;
         let size = size as usize;
         let data = &self.memory[offset..offset + size];
         let mut hasher = Keccak256::new();
         hasher.update(data);
-        let mut result = hasher.finalize();
-        result.as_mut_ptr()
+        let result = hasher.finalize();
+        *hash_ptr = U256::from_be_bytes(result.into());
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -194,7 +216,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::KECCAK256_HASHER,
-            SyscallContext::keccak256_hasher as *const fn(*mut c_void, u32, u32) as *mut (),
+            SyscallContext::keccak256_hasher as *const fn(*mut c_void, u32, u32, *const U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -249,7 +272,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::KECCAK256_HASHER),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint32, uint32], &[ptr_type]).into(),
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
             ),
             Region::new(),
             attributes,
@@ -293,19 +316,16 @@ pub(crate) mod mlir {
         block: &'c Block,
         offset: Value<'c, 'c>,
         size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError>  {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::KECCAK256_HASHER),
-                &[syscall_ctx, offset, size],
-                &[ptr_type],
-                location,
-        ))
-        .result(0)?;
-        Ok(value.into())
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::KECCAK256_HASHER),
+            &[syscall_ctx, offset, size, hash_ptr],
+            &[],
+            location,
+        ));
     }
 
     /// Extends the memory segment of the syscall context.

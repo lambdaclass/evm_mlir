@@ -1,18 +1,23 @@
 use melior::{
-    dialect::{arith, cf, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        arith, cf, llvm,
+        llvm::r#type::pointer,
+        llvm::{AllocaOptions, LoadStoreOptions},
+        ods,
+    },
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        attribute::{IntegerAttribute, TypeAttribute},
+        r#type::IntegerType,
+        Attribute, Block, BlockRef, Location, Region,
     },
 };
-
 
 use super::context::OperationCtx;
 use crate::{
     constants::{gas_cost, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
-    syscall::ExitStatusCode,
+    syscall::{ExitStatusCode, U256},
     utils::{
         check_if_zero, check_is_greater_than, check_stack_has_at_least, check_stack_has_space_for,
         constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
@@ -105,10 +110,8 @@ fn codegen_keccak256<'c, 'r>(
     let offset = stack_pop(context, &ok_block)?;
     let size = stack_pop(context, &ok_block)?;
 
-    let uint256 = IntegerType::new(context, 256);
     let uint32 = IntegerType::new(context, 32);
-    let uint8 = IntegerType::new(context, 8);
-    let ptr_type = pointer(context, 0);
+
     //Truncate offset to 32 bits
     let offset = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
@@ -127,36 +130,60 @@ fn codegen_keccak256<'c, 'r>(
         .into();
 
     extend_memory(op_ctx, &ok_block, required_size)?;
-    
-    let hash = op_ctx.keccak256_hasher_syscall(&ok_block, offset, size, location)?;
 
-    stack_push(context, &ok_block, hash)?;
+    let hash_storage = U256 { hi: 0, lo: 0 };
+    let constant_value_str = format!("{} : i256", hash_storage);
+    let constant_value = Attribute::parse(context, &constant_value_str).unwrap();
+    let constant_value = ok_block
+        .append_operation(arith::constant(context, constant_value, location))
+        .result(0)?
+        .into();
 
-    // let memory_ptr = extend_memory(op_ctx, &ok_block, required_size)?;
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    // let memory_in_offset = ok_block
-    //     .append_operation(llvm::get_element_ptr_dynamic(
-    //         context,
-    //         memory_ptr,
-    //         &[offset],
-    //         uint8.into(),
-    //         ptr_type,
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
+    let hash_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
 
-    // //Load the value from memory size bytes
-    // let memory_value = ok_block
-    //     .append_operation(llvm::load(
-    //         context,
-    //         memory_in_offset,
-    //         uint256.into(),
-    //         location,
-    //         LoadStoreOptions::default(),
-    //     ))
-    //     .result(0)?
-    //     .into();
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        constant_value,
+        hash_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.keccak256_hasher_syscall(&ok_block, offset, size, hash_ptr, location);
+
+    let read_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            hash_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, read_value)?;
 
     Ok((start_block, ok_block))
 }

@@ -5,6 +5,7 @@ use evm_mlir::{
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
 };
+use hex_literal::hex;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
@@ -98,9 +99,27 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
     }
 }
 
+#[test]
+fn test_keccak256() {
+    let program = vec![
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
 
-
-
+#[test]
+fn test_keccak256_with_size() {
+    let program = vec![
+        Operation::Push((1, BigUint::from(0x04_u8))),
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("e8e77626586f73b955364c7b4bbf0bb7f7685ebd40e852b164633a4acbd3244c");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
 
 #[test]
 fn test_return_with_gas() {

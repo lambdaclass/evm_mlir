@@ -412,14 +412,16 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         offset: Value<'c, 'c>,
         size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
+    ) {
         syscall::mlir::keccak256_hasher_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,
             offset,
             size,
+            hash_ptr,
             location,
         )
     }
