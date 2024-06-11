@@ -1612,7 +1612,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "revm_factorial"
+name = "revm_comparison"
 version = "0.1.0"
 dependencies = [
  "evm_mlir",
