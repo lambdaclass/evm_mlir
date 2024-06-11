@@ -8,7 +8,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Value,
+        Block, Location, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -238,11 +238,27 @@ pub fn stack_push<'ctx>(
         .result(0)?;
 
     let uint256 = IntegerType::new(context, 256);
+    let uint1 = IntegerType::new(context, 1);
+
+    // NOTE:
+    // Here we are extending the Value's size to a 256 bits word size.
+    // There are some operations, for instance, the comparisson ops like GT, EQ, SGT, which return
+    // a Value result of size 1 bit.
+    // We must extend those operations to 32 bytes = 256 bits padding with zeros in order to have a clean return value
+    // Otherwise, the return value may be filled with trash.
+    let extended_value: Value = if value.r#type().eq(&uint1.into()) {
+        block
+            .append_operation(arith::extui(value, uint256.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        value
+    };
 
     // Store value at stack pointer
     let res = block.append_operation(llvm::store(
         context,
-        value,
+        extended_value,
         stack_ptr.into(),
         location,
         LoadStoreOptions::default(),

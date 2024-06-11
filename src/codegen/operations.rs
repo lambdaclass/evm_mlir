@@ -1,5 +1,9 @@
 use melior::{
-    dialect::{arith, cf, llvm, llvm::r#type::pointer, llvm::LoadStoreOptions, ods},
+    dialect::{
+        arith, cf,
+        llvm::{self, r#type::pointer, LoadStoreOptions},
+        ods,
+    },
     ir::{
         attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
         Region,
@@ -105,7 +109,7 @@ fn codegen_exp<'c, 'r>(
     let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
-        .append_operation(ods::math::ipowi(context, rhs, lhs, location).into())
+        .append_operation(ods::math::ipowi(context, lhs, rhs, location).into())
         .result(0)?
         .into();
 
@@ -254,8 +258,8 @@ fn codegen_gt<'c, 'r>(
         location,
     ));
 
-    let rhs = stack_pop(context, &ok_block)?;
     let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
         .append_operation(arith::cmpi(

@@ -146,13 +146,28 @@ fn push_twice() {
 }
 
 #[test]
-#[ignore]
 fn push_fill_stack() {
+    /*
+        NOTE: Since we want to return the execution value, we need to to fill the stack with one additional element.
+        That means we cannot use the hole 1024 word size. Our usable stack limit drops to 1023 elements.
+        If we didn't want to return the top of the stack value, then we would be able to use 1024 push instructions.
+    */
     let stack_top = BigUint::from(88_u8);
 
-    // Push 1024 times
-    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1024];
+    // Push 1023 times
+    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1023];
     run_program_assert_stack_top(program, stack_top);
+}
+
+#[test]
+fn push_stack_overflow() {
+    /*
+        NOTE: Here we don't care for the execution top of the stack result, so we don't need to add those instructions.
+        That means we can use the hole 1024 words stack size. So, if we try to use 1025 words size the program will halt.
+    */
+    // Push 1025 times
+    let program = vec![Operation::Push((1_u8, BigUint::from(88_u8))); 1025];
+    run_program_assert_halt(program);
 }
 
 #[test]
@@ -165,13 +180,6 @@ fn push_reverts_without_gas() {
         Operation::Push((1_u8, BigUint::from(stack_top))),
     ];
     run_program_assert_gas_exact(program, initial_gas);
-}
-
-#[test]
-fn push_stack_overflow() {
-    // Push 1025 times
-    let program = vec![Operation::Push((1_u8, BigUint::from(88_u8))); 1025];
-    run_program_assert_halt(program);
 }
 
 #[test]
@@ -390,19 +398,18 @@ fn push_push_sub() {
 }
 
 #[test]
-#[ignore]
 fn substraction_wraps_the_result() {
-    let (a, b) = (BigUint::from(10_u8), BigUint::from(0_u8));
+    let (a, b) = (BigUint::from(0_u8), BigUint::from(10_u8));
 
     let program = vec![
-        Operation::Push((1_u8, a.clone())),
         Operation::Push((1_u8, b.clone())),
+        Operation::Push((1_u8, a.clone())),
         Operation::Sub,
     ];
 
-    let result = 0_u8.wrapping_sub(10);
+    let result = BigInt::from(a) - BigInt::from(b);
 
-    run_program_assert_stack_top(program, result.into());
+    run_program_assert_stack_top(program, biguint_256_from_bigint(result));
 }
 
 #[test]
@@ -548,7 +555,6 @@ fn sdiv_without_remainder() {
 }
 
 #[test]
-#[ignore]
 fn sdiv_signed_division_1() {
     // a = [1, 0, 0, 0, .... , 0, 0, 0, 0] == 1 << 255
     let mut a = BigUint::from(0_u8);
@@ -557,10 +563,10 @@ fn sdiv_signed_division_1() {
     let mut b = BigUint::from(0_u8);
     b.set_bit(253, true);
 
-    //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0]
+    //r = a / b = [1, 1, 1, 1, ....., 1, 1, 0, 0] = -4
     //If we take the lowest byte
     //r = [1, 1, 1, 1, 1, 1, 0, 0] = 252 in decimal
-    let expected_result: u8 = 252_u8;
+    let expected_result = biguint_256_from_bigint(BigInt::from(-4_i8));
 
     let program = vec![
         Operation::Push((1_u8, b)), // <No collapse>
@@ -568,7 +574,7 @@ fn sdiv_signed_division_1() {
         Operation::Sdiv,            // <No collapse>
     ];
 
-    run_program_assert_stack_top(program, expected_result.into());
+    run_program_assert_stack_top(program, expected_result);
 }
 
 #[test]
@@ -858,19 +864,19 @@ fn sar_with_negative_value_preserves_sign() {
 }
 
 #[test]
-#[ignore]
 fn sar_with_positive_value_preserves_sign() {
     let mut value: [u8; 32] = [0xff; 32];
     value[0] = 0;
     let value = BigUint::from_bytes_be(&value);
+    let shift: u8 = 30;
+    let expected_result = &value >> shift;
 
-    let shift: u8 = 255;
     let program = vec![
         Operation::Push((32_u8, value.clone())),
         Operation::Push((1_u8, BigUint::from(shift))),
         Operation::Sar,
     ];
-    run_program_assert_stack_top(program, value);
+    run_program_assert_stack_top(program, expected_result);
 }
 
 #[test]
@@ -928,22 +934,32 @@ fn jumpdest_gas_should_revert() {
 
 #[test]
 fn test_eq_true() {
+    let a = BigInt::from(-3_i64);
+    let b = BigInt::from(-3_i64);
+
     let program = vec![
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push((32_u8, biguint_256_from_bigint(b.clone()))),
+        Operation::Push((32_u8, biguint_256_from_bigint(a.clone()))),
         Operation::Eq,
     ];
-    run_program_assert_stack_top(program, 1_u8.into());
+
+    let expected_result = a == b;
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
 fn test_eq_false() {
+    let a = BigUint::from(2_u64 << 45);
+    let b = BigUint::from(3_u64 << 45);
+
     let program = vec![
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Push((1_u8, BigUint::from(2_u8))),
+        Operation::Push((32_u8, b.clone())),
+        Operation::Push((32_u8, a.clone())),
         Operation::Eq,
     ];
-    run_program_assert_stack_top(program, 0_u8.into());
+
+    let expected_result = a == b;
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
@@ -1429,38 +1445,41 @@ fn addmod_reverts_when_program_runs_out_of_gas() {
 
 #[test]
 fn test_gt_less_than() {
-    let a = BigUint::from(9_u8);
-    let b = BigUint::from(8_u8);
+    let a = BigUint::from(8_u8);
+    let b = BigUint::from(9_u8);
     let program = vec![
-        Operation::Push((1_u8, a)),
-        Operation::Push((1_u8, b)),
+        Operation::Push((1_u8, b.clone())),
+        Operation::Push((1_u8, a.clone())),
         Operation::Gt,
     ];
-    run_program_assert_stack_top(program, 1_u8.into());
+    let expected_result = a > b;
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
 fn test_gt_greater_than() {
-    let a = BigUint::from(8_u8);
-    let b = BigUint::from(9_u8);
+    let a = BigUint::from(9_u64 << 20);
+    let b = BigUint::from(8_u64 << 20);
     let program = vec![
-        Operation::Push((1_u8, a)),
-        Operation::Push((1_u8, b)),
+        Operation::Push((32_u8, b.clone())),
+        Operation::Push((32_u8, a.clone())),
         Operation::Gt,
     ];
-    run_program_assert_stack_top(program, 0_u8.into());
+    let expected_result = a > b;
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
 fn test_gt_equal() {
-    let a = BigUint::from(10_u8);
-    let b = BigUint::from(10_u8);
+    let a = BigUint::from(10_u64 << 30);
+    let b = BigUint::from(10_u64 << 30);
     let program = vec![
-        Operation::Push((1_u8, a)),
-        Operation::Push((1_u8, b)),
+        Operation::Push((32_u8, b.clone())),
+        Operation::Push((32_u8, a.clone())),
         Operation::Gt,
     ];
-    run_program_assert_stack_top(program, 0_u8.into());
+    let expected_result = a > b;
+    run_program_assert_stack_top(program, expected_result.into());
 }
 
 #[test]
@@ -1565,19 +1584,18 @@ fn test_sgt_positive_less_than() {
 }
 
 #[test]
-#[ignore]
 fn test_sgt_signed_less_than() {
-    let mut a = BigUint::from(3_u8);
-    a.set_bit(255, true);
-    let b = BigUint::from(2_u8);
+    let (a, b) = (BigInt::from(-3), BigInt::from(2));
+
+    let expected_result = BigUint::from((a > b) as u8);
 
     let program = vec![
-        Operation::Push((1_u8, a.clone())),
-        Operation::Push((1_u8, b.clone())),
+        Operation::Push((1_u8, biguint_256_from_bigint(b))),
+        Operation::Push((1_u8, biguint_256_from_bigint(a))),
         Operation::Sgt,
     ];
 
-    run_program_assert_stack_top(program, 1_u8.into());
+    run_program_assert_stack_top(program, expected_result);
 }
 
 #[test]
@@ -1663,7 +1681,6 @@ fn test_gas_with_add_should_revert() {
 }
 
 #[test]
-#[ignore]
 fn stop() {
     // the operation::push operation should not be executed
     let program = vec![
@@ -1676,28 +1693,31 @@ fn stop() {
 
 #[test]
 fn push_push_exp() {
-    let (a, b) = (BigUint::from(2_u8), BigUint::from(3_u8));
+    let (a, b) = (BigUint::from(2_u8), 3_u32);
     let program = vec![
+        Operation::Push((1_u8, BigUint::from(b))),
         Operation::Push((1_u8, a.clone())),
-        Operation::Push((1_u8, b.clone())),
         Operation::Exp,
     ];
 
-    run_program_assert_stack_top(program, a.pow(b.try_into().unwrap()));
+    let expected_result = a.pow(b);
+
+    run_program_assert_stack_top(program, expected_result);
 }
 
-// TODO: fix this test
 #[test]
-#[ignore]
 fn exp_with_overflow_should_wrap() {
-    let a = 3_u8;
-    let b = 256_u32;
+    let a = BigUint::from(2_u8);
+    let b = BigUint::from(300_u32);
+    let modulus = BigUint::from(1_u32) << 256;
     let program = vec![
-        Operation::Push((1, b.into())),
-        Operation::Push((2, a.into())),
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let expected_result = BigUint::from(a).modpow(&(b.into()), &(BigUint::from(1_u8) << 256_u32));
+
+    let expected_result = a.modpow(&b, &modulus);
+
     run_program_assert_stack_top(program, expected_result);
 }
 
@@ -1732,27 +1752,18 @@ fn pop_reverts_when_program_runs_out_of_gas() {
 }
 
 #[test]
-#[ignore]
 fn signextend_one_byte_negative_value() {
-    /*
-    Since we are constrained by the output size u8, in order to check that the result
-    was correctly sign extended (completed with 1s), we have to divide by 2 so we can check
-    that the first byte is 0xFF = [1, 1, 1, 1, 1, 1, 1, 1]
-    */
     let value = BigUint::from(0xFF_u8);
     let value_bytes_size = BigUint::from(0_u8);
-    let denominator = BigUint::from(2_u8);
 
-    let expected_result = 0xFF_u8;
+    let expected_result = biguint_256_from_bigint(BigInt::from(-1_i8));
 
     let program = vec![
-        Operation::Push((1_u8, denominator)),      // <No collapse>
         Operation::Push((1_u8, value)),            // <No collapse>
         Operation::Push((1_u8, value_bytes_size)), // <No collapse>
         Operation::SignExtend,                     // <No collapse>
-        Operation::Div,
     ];
-    run_program_assert_stack_top(program, expected_result.into());
+    run_program_assert_stack_top(program, expected_result);
 }
 
 #[test]
@@ -2009,7 +2020,6 @@ fn slt_positive_greater_than() {
 }
 
 #[test]
-#[ignore]
 fn slt_negative_less_than() {
     let a = BigInt::from(-3_i8);
     let b = BigInt::from(-1_i8);
@@ -2026,7 +2036,6 @@ fn slt_negative_less_than() {
 }
 
 #[test]
-#[ignore]
 fn slt_negative_greater_than() {
     let a = BigInt::from(0_i8);
     let b = BigInt::from(-1_i8);
@@ -2043,7 +2052,6 @@ fn slt_negative_greater_than() {
 }
 
 #[test]
-#[ignore]
 fn slt_equal() {
     let a = BigInt::from(-4_i8);
     let b = BigInt::from(-4_i8);
