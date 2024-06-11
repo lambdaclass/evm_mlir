@@ -190,25 +190,11 @@ impl SyscallContext {
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
-        let offset = offset as usize;
-        let size = size as usize;
-        let data: Vec<u8> = self.memory[offset..offset + size].into();
-        let log = Log {
-            data,
-            topics: vec![],
-        };
-        self.logs.push(log);
+        self.create_log(offset, size, vec![]);
     }
     #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
-        let offset = offset as usize;
-        let size = size as usize;
-        let data: Vec<u8> = self.memory[offset..offset + size].into();
-        let log = Log {
-            data,
-            topics: vec![*topic],
-        };
-        self.logs.push(log);
+        self.create_log(offset, size, vec![*topic]);
     }
 
     #[allow(improper_ctypes)]
@@ -219,14 +205,18 @@ impl SyscallContext {
         topic1: &U256,
         topic2: &U256,
     ) {
+        self.create_log(offset, size, vec![*topic1, *topic2]);
+    }
+
+    /// Receives a memory offset and size, and a vector of topics.
+    /// Creates a Log with topics and data equal to memory[offset..offset + size]
+    /// and pushes it to the logs vector.
+    fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
         let offset = offset as usize;
         let size = size as usize;
         let data: Vec<u8> = self.memory[offset..offset + size].into();
 
-        let log = Log {
-            data,
-            topics: vec![*topic1, *topic2],
-        };
+        let log = Log { data, topics };
         self.logs.push(log);
     }
 }
