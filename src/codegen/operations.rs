@@ -5,8 +5,9 @@ use melior::{
         ods,
     },
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        attribute::{IntegerAttribute, TypeAttribute},
+        r#type::IntegerType,
+        Attribute, Block, BlockRef, Location, Region,
     },
 };
 
@@ -2498,6 +2499,7 @@ fn codegen_log<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
+    let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
     let required_elements = 2 + nth;
@@ -2554,7 +2556,7 @@ fn codegen_log<'c, 'r>(
             let width_size = ok_block
                 .append_operation(arith::constant(
                     context,
-                    integer_constant_from_i64(context, 32).into(),
+                    IntegerAttribute::new(uint32.into(), 32).into(),
                     location,
                 ))
                 .result(0)?
@@ -2565,7 +2567,7 @@ fn codegen_log<'c, 'r>(
                     width_size,
                     ptr_type,
                     location,
-                    AllocaOptions::default(),
+                    AllocaOptions::new().elem_type(TypeAttribute::new(uint256.into()).into()),
                 ))
                 .result(0)?
                 .into();
@@ -2577,7 +2579,7 @@ fn codegen_log<'c, 'r>(
                 LoadStoreOptions::default()
                     .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
             ));
-            op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1, location);
+            op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1_ptr, location);
         }
         _ => println!("not implemented yet"),
     }
