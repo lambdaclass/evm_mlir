@@ -2364,6 +2364,7 @@ fn sload_with_invalid_key() {
     run_program_assert_stack_top(program, result);
 }
 
+#[test]
 fn sload_with_stack_underflow() {
     let program = vec![Operation::Sload];
 

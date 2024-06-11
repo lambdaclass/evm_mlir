@@ -2,11 +2,11 @@ use melior::{
     dialect::{
         arith::{self, CmpiPredicate},
         cf, func,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
         Block, Location, Region, Value,
@@ -885,7 +885,7 @@ pub(crate) fn read_storage<'c>(
     let pointer_size = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 1 as i64).into(),
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
             location,
         ))
         .result(0)?

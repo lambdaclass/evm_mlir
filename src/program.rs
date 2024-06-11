@@ -363,6 +363,7 @@ impl Operation {
             Operation::Codesize => vec![Opcode::CODESIZE as u8],
             Operation::Pop => vec![Opcode::POP as u8],
             Operation::Mload => vec![Opcode::MLOAD as u8],
+            Operation::Sload => vec![Opcode::SLOAD as u8],
             Operation::Jump => vec![Opcode::JUMP as u8],
             Operation::Jumpi => vec![Opcode::JUMPI as u8],
             Operation::PC { pc: _ } => vec![Opcode::PC as u8],

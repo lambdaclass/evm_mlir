@@ -212,7 +212,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
         );
-      engine.register_symbol(
+        engine.register_symbol(
             symbols::STORAGE_READ,
             SyscallContext::read_storage as *const fn(*const c_void, *const U256) as *mut (),
         );
@@ -235,7 +235,7 @@ pub(crate) mod mlir {
         ir::{
             attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
             r#type::{FunctionType, IntegerType},
-            Block, Identifier, Location, Module as MeliorModule, Region, Type, Value,
+            Block, Identifier, Location, Module as MeliorModule, Region, Value,
         },
         Context as MeliorContext,
     };
@@ -404,7 +404,7 @@ pub(crate) mod mlir {
         value: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<(), CodegenError> {
-        let value = block.append_operation(func::call(
+        block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
             &[syscall_ctx, key, value],
