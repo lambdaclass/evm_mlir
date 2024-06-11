@@ -1,7 +1,8 @@
 use melior::{
     dialect::{
-        arith::{self,CmpiPredicate}, cf, llvm,
-        llvm::{r#type::pointer,self},
+        arith::{self, CmpiPredicate},
+        cf, llvm,
+        llvm::r#type::pointer,
         llvm::{AllocaOptions, LoadStoreOptions},
         ods,
     },
@@ -79,6 +80,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
         Operation::Keccak256 => codegen_keccak256(op_ctx, region),
+        Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
     }
 }
 
@@ -130,19 +132,28 @@ fn codegen_keccak256<'c, 'r>(
         .result(0)?
         .into();
 
-    extend_memory(op_ctx, &ok_block, required_size)?;
+    let memory_access_block = region.append_block(Block::new(&[]));
+
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &memory_access_block,
+        region,
+        required_size,
+        gas_cost::KECCAK256,
+    )?;
 
     let hash_storage = U256 { hi: 0, lo: 0 };
     let constant_value_str = format!("{} : i256", hash_storage);
     let constant_value = Attribute::parse(context, &constant_value_str).unwrap();
-    let constant_value = ok_block
+    let constant_value = memory_access_block
         .append_operation(arith::constant(context, constant_value, location))
         .result(0)?
         .into();
 
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
-    let pointer_size = ok_block
+    let pointer_size = memory_access_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint256.into(), 1_i64).into(),
@@ -151,7 +162,7 @@ fn codegen_keccak256<'c, 'r>(
         .result(0)?
         .into();
 
-    let hash_ptr = ok_block
+    let hash_ptr = memory_access_block
         .append_operation(llvm::alloca(
             context,
             pointer_size,
@@ -162,7 +173,7 @@ fn codegen_keccak256<'c, 'r>(
         .result(0)?
         .into();
 
-    let res = ok_block.append_operation(llvm::store(
+    let res = memory_access_block.append_operation(llvm::store(
         context,
         constant_value,
         hash_ptr,
@@ -171,9 +182,9 @@ fn codegen_keccak256<'c, 'r>(
     ));
     assert!(res.verify());
 
-    op_ctx.keccak256_hasher_syscall(&ok_block, offset, size, hash_ptr, location);
+    op_ctx.keccak256_hasher_syscall(&memory_access_block, offset, size, hash_ptr, location);
 
-    let read_value = ok_block
+    let read_value = memory_access_block
         .append_operation(llvm::load(
             context,
             hash_ptr,
@@ -184,11 +195,9 @@ fn codegen_keccak256<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, read_value)?;
+    stack_push(context, &memory_access_block, read_value)?;
 
-    Ok((start_block, ok_block))
-        Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
-    }
+    Ok((start_block, memory_access_block))
 }
 
 fn codegen_calldatasize<'c, 'r>(
