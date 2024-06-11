@@ -2442,3 +2442,11 @@ fn log4_with_gas_cost() {
     let gas_needed = static_gas + dynamic_gas;
     run_program_assert_gas_exact(program, gas_needed as _);
 }
+
+#[test]
+fn log_with_stack_underflow() {
+    for n in 0..5 {
+        let program = vec![Operation::Log(n)];
+        run_program_assert_halt(program);
+    }
+}
