@@ -178,9 +178,6 @@ impl SyscallContext {
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256) -> &U256 {
-        self.storage
-            .insert(U256 { hi: 0, lo: 1 }, U256 { hi: 0, lo: 23 });
-
         match self.storage.get(stg_key) {
             Some(v) => v,
             None => &U256 { hi: 0, lo: 0 },
