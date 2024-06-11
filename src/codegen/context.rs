@@ -15,11 +15,11 @@ use melior::{
 
 use crate::{
     constants::{
-        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        CODE_PTR_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
         STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
-    program::{Operation, Program},
+    program::{self, Operation, Program},
     syscall::{self, ExitStatusCode},
     utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
 };
@@ -187,6 +187,75 @@ fn generate_gas_counter_setup_code<'c>(
     assert!(res.verify());
 
     Ok(())
+}
+
+fn generate_program_code_setup_code<'c>(
+    context: &'c MeliorContext,
+    module: &'c Module,
+    block: &'c Block<'c>,
+    program: &'c Program,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256);
+    let uint8 = IntegerType::new(context, 8);
+    // Declare the stack pointer and base pointer globals
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        CODE_PTR_GLOBAL,
+        ptr_type,
+        location,
+    ));
+    assert!(res.verify());
+    let code_size = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), program.code_size as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let code_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            code_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint8.into()).into()),
+        ))
+        .result(0)?
+        .into();
+
+    // Populate the globals with the allocated stack memory
+    let codeptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CODE_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        code_ptr.into(),
+        codeptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let operations = program.operations.clone();
+
+    let mut code = vec![];
+    for operation in operations {
+        let opcode = operation.to_bytecode();
+        for byte in opcode {
+            code.push(byte);
+        }
+    }
 }
 
 fn generate_stack_setup_code<'c>(

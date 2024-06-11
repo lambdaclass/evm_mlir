@@ -2727,8 +2727,40 @@ fn codegen_mcopy<'c, 'r>(
 }
 
 fn codegen_codecopy<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // where to copy from
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
+
+    let operations = op_ctx.program.operations.clone();
+
+    // TODO: add gas consumption
+    // TODO: add memory expansion
+
+    Ok((start_block, ok_block))
 }
