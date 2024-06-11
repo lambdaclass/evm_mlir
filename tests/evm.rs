@@ -172,3 +172,49 @@ fn log2() {
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
+
+#[test]
+fn log3() {
+    let data: [u8; 32] = [0xff; 32];
+    let size = 32_u8;
+    let memory_offset = 0_u8;
+    let mut topic1: [u8; 32] = [0x00; 32];
+    topic1[31] = 1;
+    let mut topic2: [u8; 32] = [0x00; 32];
+    topic2[31] = 2;
+    let mut topic3: [u8; 32] = [0x00; 32];
+    topic3[31] = 3;
+
+    let program = Program::from(vec![
+        // store data in memory
+        Operation::Push((32_u8, BigUint::from_bytes_be(&data))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Mstore,
+        // execute log2
+        Operation::Push((32_u8, BigUint::from_bytes_be(&topic3))),
+        Operation::Push((32_u8, BigUint::from_bytes_be(&topic2))),
+        Operation::Push((32_u8, BigUint::from_bytes_be(&topic1))),
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Log(3),
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let logs = result.return_logs().unwrap();
+    let expected_logs: Vec<Log> = vec![Log {
+        data: [0xff_u8; 32].into(),
+        topics: vec![
+            U256 { lo: 0, hi: 1 },
+            U256 { lo: 0, hi: 2 },
+            U256 { lo: 0, hi: 3 },
+        ],
+    }];
+    assert_eq!(logs.to_owned(), expected_logs);
+}
