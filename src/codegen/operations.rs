@@ -1,13 +1,12 @@
 use melior::{
     dialect::{
         arith, cf,
-        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
+        llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{IntegerAttribute, TypeAttribute},
-        r#type::IntegerType,
-        Attribute, Block, BlockRef, Location, Region,
+        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
+        Region,
     },
 };
 
@@ -21,7 +20,7 @@ use crate::{
         allocate_and_store_value, check_if_zero, check_is_greater_than, check_stack_has_at_least,
         check_stack_has_space_for, constant_value_from_i64, consume_gas, extend_memory,
         get_nth_from_stack, get_remaining_gas, integer_constant_from_i64,
-        llvm_mlir::{self, addressof},
+        llvm_mlir::{self},
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
@@ -2499,8 +2498,6 @@ fn codegen_log<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
-    let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
 
     let required_elements = 2 + nth;
     // Check there's enough elements in stack
@@ -2555,6 +2552,15 @@ fn codegen_log<'c, 'r>(
             let topic1 = stack_pop(context, &ok_block)?;
             let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
             op_ctx.append_log_with_one_topic_syscall(&ok_block, offset, size, topic1_ptr, location);
+        }
+        2 => {
+            let topic1 = stack_pop(context, &ok_block)?;
+            let topic2 = stack_pop(context, &ok_block)?;
+            let topic1_ptr = allocate_and_store_value(op_ctx, &ok_block, topic1, location)?;
+            let topic2_ptr = allocate_and_store_value(op_ctx, &ok_block, topic2, location)?;
+            op_ctx.append_log_with_two_topics_syscall(
+                &ok_block, offset, size, topic1_ptr, topic2_ptr, location,
+            );
         }
         _ => println!("not implemented yet"),
     }

@@ -210,6 +210,25 @@ impl SyscallContext {
         };
         self.logs.push(log);
     }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_two_topics(
+        &mut self,
+        offset: u32,
+        size: u32,
+        topic1: &U256,
+        topic2: &U256,
+    ) {
+        let offset = offset as usize;
+        let size = size as usize;
+        let data: Vec<u8> = self.memory[offset..offset + size].into();
+
+        let log = Log {
+            data,
+            topics: vec![*topic1, *topic2],
+        };
+        self.logs.push(log);
+    }
 }
 
 pub mod symbols {
@@ -217,6 +236,7 @@ pub mod symbols {
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
     pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
+    pub const APPEND_LOG_TWO_TOPICS: &str = "evm_mlir__append_log_with_two_topics";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -241,6 +261,12 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::append_log_with_one_topic
                 as *const fn(*mut c_void, u32, u32, *const U256) as *mut (),
         );
+        engine.register_symbol(
+            symbols::APPEND_LOG_TWO_TOPICS,
+            SyscallContext::append_log_with_two_topics
+                as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
+                as *mut (),
+        );
     };
 }
 
@@ -258,7 +284,7 @@ pub(crate) mod mlir {
 
     use crate::errors::CodegenError;
 
-    use super::{symbols, U256};
+    use super::symbols;
 
     pub(crate) fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
         let location = Location::unknown(context);
@@ -308,6 +334,21 @@ pub(crate) mod mlir {
             StringAttribute::new(context, symbols::APPEND_LOG_ONE_TOPIC),
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_TWO_TOPICS),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type],
+                    &[],
+                )
+                .into(),
             ),
             Region::new(),
             attributes,
@@ -390,6 +431,27 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_ONE_TOPIC),
             &[syscall_ctx, data, size, topic],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data, two topics and appends a log to the logs vector
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_two_topics_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_TWO_TOPICS),
+            &[syscall_ctx, data, size, topic1_ptr, topic2_ptr],
             &[],
             location,
         ));
