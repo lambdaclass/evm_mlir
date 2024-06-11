@@ -18,10 +18,7 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values, compute_memory_cost, constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements
     },
 };
 use num_bigint::BigUint;
@@ -2721,6 +2718,11 @@ fn codegen_mcopy<'c, 'r>(
         )
         .into(),
     );
+
+    // consume dynamic gas
+    let dynamic_gas = compute_memory_cost(op_ctx, &memory_access_block, size)?;
+
+    consume_gas_as_value(context, &memory_access_block, dynamic_gas)?;
 
     Ok((start_block, memory_access_block))
 }

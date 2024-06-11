@@ -2254,13 +2254,36 @@ fn mstore_mcopy_mload_with_zero_address_and_gas() {
         Operation::Push((1_u8, BigUint::from(32_u8))),
         Operation::Mload,
     ];
-    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64) + gas_cost::memory_copy_cost(32);
     let gas_needed = gas_cost::PUSH0 * 2
         + gas_cost::PUSHN * 4
         + gas_cost::MCOPY
         + gas_cost::MLOAD
         + gas_cost::MSTORE
         + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn mcopy_dynamic_gas() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push0,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+    let mcopy_cost = 12; // including dynamic gas
+    let gas_needed = gas_cost::PUSH0 * 2
+        + gas_cost::PUSHN * 4
+        + gas_cost::MLOAD
+        + gas_cost::MSTORE
+        + mcopy_cost;
 
     run_program_assert_gas_exact(program, gas_needed as _);
 }
