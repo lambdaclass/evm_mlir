@@ -22,10 +22,17 @@ pub fn run_with_evm_mlir(program: &str, runs: usize) {
     let mut context = SyscallContext::default();
     let initial_gas = 999_999_999;
 
-    for _ in 0..runs {
+    for _ in 0..runs - 1 {
         let _result = executor.execute(&mut context, initial_gas);
         assert!(context.get_result().is_success());
     }
+    executor.execute(&mut context, initial_gas);
+    assert!(context.get_result().is_success());
+
+    println!(
+        "\t0x{}",
+        hex::encode(context.get_result().return_data().unwrap())
+    );
 }
 
 pub fn run_with_revm(program: &str, runs: usize) {
@@ -40,8 +47,12 @@ pub fn run_with_revm(program: &str, runs: usize) {
         })
         .build();
 
-    for _ in 0..runs {
+    for _ in 0..runs - 1 {
         let result = evm.transact().unwrap();
         assert!(result.result.is_success());
     }
+    let result = evm.transact().unwrap();
+    assert!(result.result.is_success());
+
+    println!("\t\t{}", result.result.into_output().unwrap());
 }

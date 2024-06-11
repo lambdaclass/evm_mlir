@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage
+.PHONY: check-deps deps lint fmt test usage revm-comparison
 
 #
 # Environment detection.
@@ -49,3 +49,27 @@ fmt:
 
 test:
 	cargo nextest run --workspace --all-features
+
+revm-comparison:
+	cd bench/revm_comparison && \
+		cargo build --release \
+		--bin evm_mlir_factorial \
+		--bin revm_factorial \
+		--bin evm_mlir_fibonacci \
+		--bin revm_fibonacci
+	
+	@printf "%s" "evm_mlir_factorial result: "
+	@target/release/evm_mlir_factorial 1
+	@printf "%s" "revm_factorial result: "
+	@target/release/revm_factorial 1
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
+		-n "revm_factorial" "target/release/revm_factorial 100000"
+
+	@printf "%s" "evm_mlir_fibonacci result: "
+	@target/release/evm_mlir_fibonacci 1
+	@printf "%s" "revm_fibonacci result: "
+	@target/release/revm_fibonacci 1
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
+		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
