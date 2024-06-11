@@ -15,7 +15,7 @@ fn snailtracer() {
     env.tx.from.0[0] = 16;
     env.tx.to = Address([0; 20]);
 
-    let evm = Evm::new(env, program);
+    let evm = Evm::new(env, program.expect("Error parsing opcodes"));
 
     let _ = evm.transact();
 }

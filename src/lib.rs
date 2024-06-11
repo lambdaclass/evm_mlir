@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use executor::Executor;
 use program::Program;
-use syscall::SyscallContext;
+use syscall::{ExecutionResult, SyscallContext};
 
 use crate::context::Context;
 
@@ -33,7 +33,7 @@ impl Evm {
     }
 
     /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&self) -> u8 {
+    pub fn transact(&self) -> ExecutionResult {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
@@ -44,6 +44,7 @@ impl Evm {
         let executor = Executor::new(&module);
         let mut context = SyscallContext::with_env(self.env.clone());
 
-        executor.execute(&mut context, self.env.tx.gas_limit)
+        executor.execute(&mut context, self.env.tx.gas_limit);
+        context.get_result()
     }
 }

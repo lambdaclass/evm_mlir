@@ -103,8 +103,8 @@ pub struct SyscallContext {
     exit_status: Option<ExitStatusCode>,
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
-    env: Env,
-    storage: HashMap<U256, U256>,
+    pub env: Env,
+    pub storage: HashMap<U256, U256>,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -155,6 +155,12 @@ impl SyscallContext {
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    pub extern "C" fn get_calldata_size(&self) -> u32 {
+        let size = self.env.tx.calldata.len();
+        print!("Calldata size: {}", size as u32);
+        self.env.tx.calldata.len() as u32
+    }
+
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
         if new_size <= self.memory.len() {
@@ -190,6 +196,7 @@ pub mod symbols {
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
     pub const STORAGE_WRITE: &str = "evm_mlir__write_storage";
     pub const STORAGE_READ: &str = "evm_mlir__read_storage";
+    pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -213,6 +220,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::STORAGE_WRITE,
             SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
                 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_SIZE,
+            SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
     };
 }
@@ -254,6 +265,15 @@ pub(crate) mod mlir {
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, uint64, uint8], &[]).into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
             Region::new(),
             attributes,
             location,
@@ -310,6 +330,25 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    pub(crate) fn get_calldata_size_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
+                &[syscall_ctx],
+                &[uint32],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Extends the memory segment of the syscall context.
