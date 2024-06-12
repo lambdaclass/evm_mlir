@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage revm-comparison
+.PHONY: check-deps deps lint fmt test usage revm-comparison build-revm-comparison
 
 #
 # Environment detection.
@@ -74,3 +74,11 @@ revm-comparison:
 		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
 		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
 	@echo
+
+build-revm-comparison:
+	cd bench/revm_comparison && \
+		cargo build --release \
+		--bin evm_mlir_factorial \
+		--bin revm_factorial \
+		--bin evm_mlir_fibonacci \
+		--bin revm_fibonacci

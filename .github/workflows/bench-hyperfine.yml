@@ -52,10 +52,13 @@ jobs:
           tool: hyperfine@1.16
 
       - name: Create markdown file
-        run: echo "###Benchmark Results :rocket:" > bench-comment.md
+        run: echo "### Benchmark Results :rocket:" > bench-comment.md
+
+      - name: Build binaries
+        run: 	make build-revm-comparison
 
       - name: Run benchmarks
-        run: 	make revm-comparison >> bench-comment.md
+        run: bash .github/scripts/run-benchmarks.sh
 
       - name: Find Bench Comment
         continue-on-error: true
@@ -72,5 +75,5 @@ jobs:
         with:
           comment-id: ${{ steps.fc.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
-          body-path: bench-comment.md
+          body-path: bench-hyperfine.md
           edit-mode: replace
