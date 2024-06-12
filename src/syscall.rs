@@ -177,9 +177,6 @@ impl SyscallContext {
         }
     }
 
-    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.calldata.as_ptr()
-    }
 }
 
 pub mod symbols {
@@ -299,15 +296,6 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
-        module.body().append_operation(func::func(
-            context,
-            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
-            Region::new(),
-            attributes,
-            location,
-        ));
     }
 
     /// Stores the return values in the syscall context
@@ -404,27 +392,6 @@ pub(crate) mod mlir {
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::EXTEND_MEMORY),
                 &[syscall_ctx, new_size],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
-    }
-
-    /// Returns a pointer to the calldata.
-    #[allow(unused)]
-    pub(crate) fn get_calldata_ptr_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
-                &[syscall_ctx],
                 &[ptr_type],
                 location,
             ))

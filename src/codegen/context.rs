@@ -461,17 +461,4 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    #[allow(unused)]
-    pub(crate) fn get_calldata_ptr_syscall(
-        &'c self,
-        block: &'c Block,
-        location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
-        syscall::mlir::get_calldata_ptr_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            location,
-        )
-    }
 }
