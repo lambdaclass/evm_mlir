@@ -1,10 +1,11 @@
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
+    db::Db,
+    env::Env,
     executor::Executor,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
-    env::Env, db::Db,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;

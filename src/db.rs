@@ -1,8 +1,6 @@
+#![allow(unused)]
+use ethereum_types::{Address, U256};
 use std::collections::HashMap;
-
-use ethereum_types::{H256, U256};
-
-use crate::env::Address;
 
 #[derive(Clone, Debug, Default)]
 pub struct Bytecode(Vec<u8>);

@@ -100,7 +100,7 @@ impl ExecutionResult {
 }
 
 #[derive(Debug, Default)]
-pub struct InnerContext{
+pub struct InnerContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
@@ -131,10 +131,9 @@ impl<'c> SyscallContext<'c> {
         Self {
             env,
             db,
-            inner_context: Default::default()
+            inner_context: Default::default(),
         }
     }
-
 
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
@@ -144,7 +143,11 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> ExecutionResult {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let exit_status = self.inner_context.exit_status.clone().unwrap_or(ExitStatusCode::Default);
+        let exit_status = self
+            .inner_context
+            .exit_status
+            .clone()
+            .unwrap_or(ExitStatusCode::Default);
         match exit_status {
             ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
@@ -188,7 +191,11 @@ impl<'c> SyscallContext<'c> {
         if new_size <= self.inner_context.memory.len() {
             return self.inner_context.memory.as_mut_ptr();
         }
-        match self.inner_context.memory.try_reserve(new_size - self.inner_context.memory.len()) {
+        match self
+            .inner_context
+            .memory
+            .try_reserve(new_size - self.inner_context.memory.len())
+        {
             Ok(()) => {
                 self.inner_context.memory.resize(new_size, 0);
                 self.inner_context.memory.as_mut_ptr()

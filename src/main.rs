@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use evm_mlir::{context::Context, executor::Executor, program::Program, syscall::SyscallContext,db::Db, env::Env};
+use evm_mlir::{
+    context::Context, db::Db, env::Env, executor::Executor, program::Program,
+    syscall::SyscallContext,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
