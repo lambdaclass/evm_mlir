@@ -23,8 +23,8 @@ use crate::{
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
         get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_memory_pointer,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -162,7 +162,7 @@ fn codegen_calldatacopy<'c, 'r>(
         required_memory_size,
         gas_cost::CALLDATACOPY,
     )?;
-    let memory_ptr = op_ctx.get_memory_pointer_syscall(&continue_memory_block, location)?;
+    let memory_ptr = return_memory_pointer(op_ctx, &continue_memory_block, location)?;
     let memory_dest = continue_memory_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,

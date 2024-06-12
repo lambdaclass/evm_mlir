@@ -489,19 +489,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn get_memory_pointer_syscall(
-        &'c self,
-        block: &'c Block,
-        location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
-        syscall::mlir::get_memory_pointer_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            location,
-        )
-    }
-
     pub(crate) fn extend_memory_syscall(
         &'c self,
         block: &'c Block,
@@ -620,18 +607,5 @@ impl<'c> OperationCtx<'c> {
             topic4_ptr,
             location,
         );
-    }
-    #[allow(unused)]
-    pub(crate) fn get_calldata_ptr_syscall(
-        &'c self,
-        block: &'c Block,
-        location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
-        syscall::mlir::get_calldata_ptr_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            location,
-        )
     }
 }
