@@ -118,6 +118,11 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x9D) SWAP14
 1. (0x9E) SWAP15
 1. (0x9F) SWAP16
+1. (0xA0) LOG0
+1. (0xA1) LOG1
+1. (0xA2) LOG2
+1. (0xA3) LOG3
+1. (0xA4) LOG4
 1. (0xF3) RETURN
 1. (0xFD) REVERT
 
@@ -156,11 +161,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
-1. (0xA0) LOG0
-1. (0xA1) LOG1
-1. (0xA2) LOG2
-1. (0xA3) LOG3
-1. (0xA4) LOG4
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE

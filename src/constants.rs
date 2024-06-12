@@ -4,6 +4,8 @@ pub const STACK_BASEPTR_GLOBAL: &str = "evm_mlir__stack_baseptr";
 pub const STACK_PTR_GLOBAL: &str = "evm_mlir__stack_ptr";
 pub const MEMORY_PTR_GLOBAL: &str = "evm_mlir__memory_ptr";
 pub const MEMORY_SIZE_GLOBAL: &str = "evm_mlir__memory_size";
+pub const CALLDATA_PTR_GLOBAL: &str = "evm_mlir__calldata_ptr";
+pub const CALLDATA_SIZE_GLOBAL: &str = "evm_mlir__calldata_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
 
 /// Contains the gas costs of the EVM instructions
@@ -50,6 +52,7 @@ pub mod gas_cost {
     pub const CALLDATALOAD: i64 = 3;
     pub const CALLDATASIZE: i64 = 2;
     pub const JUMPI: i64 = 10;
+    pub const LOG: i64 = 375;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
@@ -59,5 +62,9 @@ pub mod gas_cost {
         let last_memory_cost =
             (last_memory_size_word * last_memory_size_word) / 512 + (3 * last_memory_size_word);
         (new_memory_cost - last_memory_cost).into()
+    }
+
+    pub fn log_dynamic_gas_cost(size: u32, topic_count: u32) -> i64 {
+        (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
     }
 }

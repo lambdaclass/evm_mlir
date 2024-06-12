@@ -19,12 +19,15 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
-        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        allocate_and_store_value, check_if_zero, check_stack_has_at_least,
+        check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
+        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
+
 use num_bigint::BigUint;
 
 /// Generates blocks for target [`Operation`].
@@ -79,6 +82,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
         Operation::CallDataCopy => codegen_calldatacopy(op_ctx, region),
+        Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
     }
@@ -363,47 +367,29 @@ fn codegen_iszero<'c, 'r>(
     ));
 
     let value = stack_pop(context, &ok_block)?;
-    let value_is_zero = check_if_zero(context, &ok_block, &value)?;
+    let zero_constant = constant_value_from_i64(context, &ok_block, 0)?;
 
-    let val_zero_bloq = region.append_block(Block::new(&[]));
-    let val_not_zero_bloq = region.append_block(Block::new(&[]));
-    let return_block = region.append_block(Block::new(&[]));
-
-    let constant_value = val_zero_bloq
-        .append_operation(arith::constant(
+    let result = ok_block
+        .append_operation(arith::cmpi(
             context,
-            integer_constant_from_i64(context, 1i64).into(),
+            arith::CmpiPredicate::Eq,
+            value,
+            zero_constant,
             location,
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &val_zero_bloq, constant_value)?;
-    val_zero_bloq.append_operation(cf::br(&return_block, &[], location));
-
-    let result = val_not_zero_bloq
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0i64).into(),
-            location,
-        ))
+    //Extend the 1 bit result to 256 bits.
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
-    stack_push(context, &val_not_zero_bloq, result)?;
-    val_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    stack_push(context, &ok_block, result)?;
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        value_is_zero,
-        &val_zero_bloq,
-        &val_not_zero_bloq,
-        &[],
-        &[],
-        location,
-    ));
-
-    Ok((start_block, return_block))
+    Ok((start_block, ok_block))
 }
 
 fn codegen_and<'c, 'r>(
@@ -3080,4 +3066,120 @@ fn codegen_calldataload<'c, 'r>(
     /******************** offset_OK_block *******************/
 
     Ok((start_block, end_block))
+}
+
+fn codegen_log<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+    nth: u8,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    debug_assert!(nth <= 4);
+    // TODO: check if the current execution context is from a STATICCALL (since Byzantium fork).
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let required_elements = 2 + nth;
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    // required_size = offset + value_size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    let log_block = region.append_block(Block::new(&[]));
+    let dynamic_gas = compute_log_dynamic_gas(op_ctx, &ok_block, nth, size_u256, location)?;
+    consume_gas_as_value(context, &ok_block, dynamic_gas)?;
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &log_block,
+        region,
+        required_size,
+        gas_cost::LOG,
+    )?;
+
+    let mut topic_pointers = vec![];
+    for _i in 0..nth {
+        let topic = stack_pop(context, &log_block)?;
+        let topic_ptr = allocate_and_store_value(op_ctx, &log_block, topic, location)?;
+        topic_pointers.push(topic_ptr);
+    }
+
+    match nth {
+        0 => {
+            op_ctx.append_log_syscall(&log_block, offset, size, location);
+        }
+        1 => {
+            op_ctx.append_log_with_one_topic_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                location,
+            );
+        }
+        2 => {
+            op_ctx.append_log_with_two_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                location,
+            );
+        }
+        3 => {
+            op_ctx.append_log_with_three_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                topic_pointers[2],
+                location,
+            );
+        }
+        4 => {
+            op_ctx.append_log_with_four_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                topic_pointers[2],
+                topic_pointers[3],
+                location,
+            );
+        }
+        _ => unreachable!("nth should satisfy 0 <= nth <= 4"),
+    }
+
+    Ok((start_block, log_block))
 }
