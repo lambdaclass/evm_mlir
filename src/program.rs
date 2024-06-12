@@ -38,7 +38,7 @@ pub enum Opcode {
     // ORIGIN = 0x32,
     // CALLER = 0x33,
     // CALLVALUE = 0x34,
-    // CALLDATALOAD = 0x35,
+    CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
@@ -281,6 +281,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG2 as u8 => Opcode::LOG2,
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
+            x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -334,6 +335,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    CalldataLoad,
     CallDataSize,
 }
 
@@ -391,6 +393,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
         }
     }
@@ -417,6 +420,7 @@ impl Program {
 
             if let Err(e) = opcode {
                 failed_opcodes.push(e);
+                pc += 1;
                 continue;
             }
 
@@ -458,6 +462,7 @@ impl Program {
                 Opcode::MCOPY => Operation::Mcopy,
                 Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
+                    // TODO: return error if not enough bytes (same for PUSHN)
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
                     Operation::Push((1, (BigUint::from_bytes_be(x))))
@@ -689,6 +694,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::CALLDATALOAD => Operation::CalldataLoad,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
             };
             operations.push(op);

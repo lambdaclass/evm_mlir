@@ -127,6 +127,92 @@ pub fn consume_gas<'ctx>(
     Ok(flag.into())
 }
 
+pub fn get_stack_pointer<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(stack_ptr)
+}
+
+pub fn inc_stack_pointer<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    let uint256 = IntegerType::new(context, 256);
+    // Increment stack pointer
+    let new_stack_ptr = block
+        .append_operation(llvm::get_element_ptr(
+            context,
+            stack_ptr.into(),
+            DenseI32ArrayAttribute::new(context, &[1]),
+            uint256.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Store incremented stack pointer
+    let res = block.append_operation(llvm::store(
+        context,
+        new_stack_ptr.into(),
+        stack_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
 /// Returns true if there is enough Gas
 pub fn consume_gas_as_value<'ctx>(
     context: &'ctx MeliorContext,

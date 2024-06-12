@@ -250,6 +250,9 @@ impl SyscallContext {
         let log = Log { data, topics };
         self.logs.push(log);
     }
+    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
+        self.env.tx.calldata.as_ptr()
+    }
 }
 
 pub mod symbols {
@@ -260,6 +263,7 @@ pub mod symbols {
     pub const APPEND_LOG_TWO_TOPICS: &str = "evm_mlir__append_log_with_two_topics";
     pub const APPEND_LOG_THREE_TOPICS: &str = "evm_mlir__append_log_with_three_topics";
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
+    pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
 }
 
@@ -309,6 +313,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                     *const U256,
                     *const U256,
                 ) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_PTR,
+            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
@@ -438,6 +446,15 @@ pub(crate) mod mlir {
                 )
                 .into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -615,5 +632,25 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+    /// Returns a pointer to the calldata.
+    #[allow(unused)]
+    pub(crate) fn get_calldata_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 }

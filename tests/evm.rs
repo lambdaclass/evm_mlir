@@ -63,7 +63,116 @@ fn fibonacci_example() {
 
     assert!(&result.is_success());
     let number = BigUint::from_bytes_be(result.return_data().unwrap());
-    println!("{number}");
+    assert_eq!(number, 55_u32.into());
+}
+
+#[test]
+fn calldataload_with_all_bytes_before_end_of_calldata() {
+    // in this case offset + 32 < calldata_size
+    // calldata is
+    //       index =    0  1  ... 30 31 30  ... 63
+    //      calldata = [0, 0, ..., 0, 1, 0, ..., 0]
+    // the offset is 0 and given that the slice width is always 32,
+    // then the result is
+    //      calldata_slice = [0, 0, ..., 1]
+    let calldata_offset = 0_u8;
+    let memory_offset = 0_u8;
+    let size = 32_u8;
+    let program = Program::from(vec![
+        Operation::Push((1_u8, BigUint::from(calldata_offset))),
+        Operation::CalldataLoad,
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Return,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.calldata = [0x00; 64].into();
+    env.tx.calldata[31] = 1;
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let calldata_slice = result.return_data().unwrap();
+    let mut expected_result = [0_u8; 32];
+    expected_result[31] = 1;
+    assert_eq!(calldata_slice, expected_result);
+}
+
+#[test]
+fn calldataload_with_some_bytes_after_end_of_calldata() {
+    // in this case offset + 32 >= calldata_size
+    // the calldata is
+    //       index =    0  1  ... 30 31
+    //      calldata = [0, 0, ..., 0, 1]
+    // and the offset is 1, given that in the result all bytes after
+    // calldata end are set to 0, then the result is
+    //      calldata_slice = [0, ..., 0, 1, 0]
+    let calldata_offset = 1_u8;
+    let memory_offset = 0_u8;
+    let size = 32_u8;
+    let program = Program::from(vec![
+        Operation::Push((1_u8, BigUint::from(calldata_offset))),
+        Operation::CalldataLoad,
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Return,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.calldata = [0x00; 32].into();
+    env.tx.calldata[31] = 1;
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let calldata_slice = result.return_data().unwrap();
+    let mut expected_result = [0_u8; 32];
+    expected_result[30] = 1;
+    assert_eq!(calldata_slice, expected_result);
+}
+
+#[test]
+fn calldataload_with_offset_greater_than_calldata_size() {
+    // in this case offset > calldata_size
+    // the calldata is
+    //       index =    0  1  ... 30 31
+    //      calldata = [1, 1, ..., 1, 1]
+    // and the offset is 64, given that in the result all bytes after
+    // calldata end are set to 0, then the result is
+    //      calldata_slice = [0, ..., 0, 0, 0]
+    let calldata_offset = 64_u8;
+    let memory_offset = 0_u8;
+    let size = 32_u8;
+    let program = Program::from(vec![
+        Operation::Push((1_u8, BigUint::from(calldata_offset))),
+        Operation::CalldataLoad,
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(memory_offset))),
+        Operation::Return,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.calldata = [0xff; 32].into();
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let calldata_slice = result.return_data().unwrap();
+    let expected_result = [0_u8; 32];
+    assert_eq!(calldata_slice, expected_result);
 }
 
 #[test]
