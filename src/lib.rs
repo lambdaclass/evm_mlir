@@ -42,9 +42,12 @@ impl Evm {
             .expect("failed to compile program");
 
         let executor = Executor::new(&module);
-        let mut context = SyscallContext::with_env(self.env.clone());
 
+        let mut context = SyscallContext::with_env(self.env.clone());
+        // TODO: improve this once we stabilize the API a bit
+        context.program = self.program.to_bytecode();
         executor.execute(&mut context, self.env.tx.gas_limit);
+
         context.get_result()
     }
 }
