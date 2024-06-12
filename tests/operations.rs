@@ -2333,3 +2333,20 @@ fn mcopy_with_stack_underflow() {
 
     run_program_assert_halt(program);
 }
+
+#[test]
+fn codecopy() {
+    let size = 10_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Mload,
+    ];
+    let result = 0_u8.into();
+    run_program_assert_stack_top(program, result);
+}
