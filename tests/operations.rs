@@ -4,6 +4,7 @@ use evm_mlir::{
     executor::Executor,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
+    env::Env, db::Db,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -26,7 +27,9 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module);
 
-    let mut context = SyscallContext::default();
+    let env = Env::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
 
     let _result = executor.execute(&mut context, initial_gas);
 
