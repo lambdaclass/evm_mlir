@@ -51,7 +51,7 @@ test:
 	cargo nextest run --workspace --all-features
 
 revm-comparison:
-	make build-revm-comparison
+	$(MAKE) build-revm-comparison
 	@echo
 	@printf "%s" "evm_mlir_factorial result: "
 	@target/release/evm_mlir_factorial 1
