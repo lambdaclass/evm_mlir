@@ -55,7 +55,7 @@ jobs:
         run: echo "### Benchmark Results :rocket:" > bench-comment.md
 
       - name: Build binaries
-        run: 	make build-revm-comparison
+        run: make build-revm-comparison
 
       - name: Run benchmarks
         run: bash .github/scripts/run-benchmarks.sh
