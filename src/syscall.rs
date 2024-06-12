@@ -172,7 +172,6 @@ impl SyscallContext {
     }
 
     pub extern "C" fn get_calldata_size(&self) -> u32 {
-        let size = self.env.tx.calldata.len();
         self.env.tx.calldata.len() as u32
     }
 
