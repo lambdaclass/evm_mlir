@@ -1,6 +1,8 @@
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
+    db::Db,
+    env::Env,
     executor::Executor,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
@@ -26,7 +28,9 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module);
 
-    let mut context = SyscallContext::default();
+    let env = Env::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
 
     let _result = executor.execute(&mut context, initial_gas);
 

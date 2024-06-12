@@ -1,5 +1,5 @@
 use evm_mlir::{
-    context::Context, executor::Executor, program::Program, syscall::SyscallContext, Env,
+    context::Context, db::Db, executor::Executor, program::Program, syscall::SyscallContext, Env,
 };
 use revm::{
     db::BenchmarkDB,
@@ -21,11 +21,12 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
         .expect("failed to compile program");
 
     let executor = Executor::new(&module);
-    let mut env = Env::default();
+    let mut env: Env = Default::default();
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0x00; 32].into();
     env.tx.calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
-    let mut context = SyscallContext::with_env(env);
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
     let initial_gas = 999_999_999;
 
     for _ in 0..runs - 1 {
