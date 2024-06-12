@@ -1,64 +1,25 @@
-use std::path::PathBuf;
-
-use evm_mlir::{
-    context::Context,
-    executor::Executor,
-    program::{Operation, Program},
-    syscall::SyscallContext,
-};
+use evm_mlir::{program::Program, Env, Evm};
+use num_bigint::BigUint;
 
 fn main() {
-    // let args: Vec<String> = std::env::args().collect();
-    // let path = args.get(1).expect("No path provided").as_str();
-    // let bytecode = std::fs::read(path).expect("Could not read file");
-    // let program = Program::from_bytecode(&bytecode);
+    let args: Vec<String> = std::env::args().collect();
+    let path = args.get(1).expect("No path provided").as_str();
+    let bytecode = std::fs::read(path).expect("Could not read file");
+    let program = Program::from_bytecode(&bytecode);
 
-    // if let Err(err) = program {
-    //     eprintln!("{:#?}", err);
-    //     return;
-    // }
-
-    // This is for intermediate files
-    let output_file = PathBuf::from("output");
-    use num_bigint::BigUint;
-    let size = 7_u8;
-    let offset = 0_u8;
-    let dest_offset = 0_u8;
-    let program: Vec<Operation> = vec![
-        Operation::Push((1_u8, BigUint::from(size))),
-        Operation::Push((1_u8, BigUint::from(offset))),
-        Operation::Push((1_u8, BigUint::from(dest_offset))),
-        Operation::Codecopy,
-        //Operation::Push((1_u8, BigUint::from(dest_offset))),
-        //Operation::Mload,
-    ];
-    let mut bytecode = vec![];
-    for op in program.clone() {
-        let bytes = op.to_bytecode();
-        for byte in bytes {
-            bytecode.push(byte);
-        }
+    if let Err(err) = program {
+        eprintln!("{:#?}", err);
+        return;
     }
-    let program: Program = program.into();
 
-    let context = Context::new();
-    let module = context
-        .compile(&program, &output_file)
-        .expect("failed to compile program");
+    let mut env = Env::default();
+    env.tx.gas_limit = 1000;
 
-    let executor = Executor::new(&module);
+    let evm = Evm::new(env, program.unwrap());
 
-    let mut context = SyscallContext::default();
-    println!("bytecode = {:X?}", bytecode.clone());
-    context.program = bytecode;
+    let result = evm.transact();
 
-    let initial_gas = 1000;
-
-    let result = executor.execute(&mut context, initial_gas);
-
-    println!("Execution result: {result}");
-    println!("Memory: ");
-    for byte in context.memory {
-        println!("byte = {:X}", byte);
-    }
+    assert!(&result.is_success());
+    let number = BigUint::from_bytes_be(result.return_data().unwrap());
+    println!("Execution result: {number}");
 }
