@@ -8,10 +8,12 @@ UNAME := $(shell uname)
 
 usage:
 	@echo "Usage:"
-	@echo "    deps:		 Installs the necesarry dependencies."
-	@echo "    test:         Runs all tests."
+	@echo "    deps:         Installs the necessary dependencies."
+	@echo "    test:         Runs all tests except Ethereum tests."
+	@echo "    test-eth:     Runs only the Ethereum tests."
 	@echo "    fmt:          Formats all files."
 	@echo "    lint:         Checks format and runs lints."
+	@echo "    ethtests:     Downloads and sets up Ethereum tests."
 
 check-deps:
 	ifeq (, $(shell which cargo))
@@ -36,6 +38,11 @@ ifeq ($(UNAME), Darwin)
 deps: deps-macos
 endif
 
+install_nextest:
+	@if ! command -v cargo-nextest > /dev/null; then \
+		brew install cargo-nextest; \
+	fi
+
 deps-macos:
 	-brew install llvm@18 --quiet
 	@echo "You need to run source scripts/env-macos.sh to setup the environment."
@@ -47,8 +54,16 @@ lint:
 fmt:
 	cargo fmt --all
 
-test:
-	cargo nextest run --workspace --all-features
+test: install_nextest
+	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
+
+test-eth: check-ethtests
+	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+
+check-ethtests:
+	@if [ ! -d "ethtests" ]; then \
+		make ethtests; \
+	fi
 
 
 ###### Ethereum tests ######
@@ -65,3 +80,4 @@ ethtests: ${ETHTEST_TAR}
 	tar -xzmf "$<" --strip-components=1 -C "$@"
 	@cat ${ETHTEST_SHASUM}
 	sha256sum -c ${ETHTEST_SHASUM}
+
