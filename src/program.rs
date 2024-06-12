@@ -38,7 +38,7 @@ pub enum Opcode {
     // ORIGIN = 0x32,
     // CALLER = 0x33,
     // CALLVALUE = 0x34,
-    // CALLDATALOAD = 0x35,
+    CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
     CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
@@ -276,6 +276,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
+            x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -329,6 +330,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     CallDataCopy,
+    CalldataLoad,
     CallDataSize,
 }
 
@@ -386,6 +388,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
+            Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
         }
     }
@@ -412,6 +415,7 @@ impl Program {
 
             if let Err(e) = opcode {
                 failed_opcodes.push(e);
+                pc += 1;
                 continue;
             }
 
@@ -453,6 +457,7 @@ impl Program {
                 Opcode::MCOPY => Operation::Mcopy,
                 Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
+                    // TODO: return error if not enough bytes (same for PUSHN)
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
                     Operation::Push((1, (BigUint::from_bytes_be(x))))
@@ -680,6 +685,7 @@ impl Program {
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
                 Opcode::CALLDATACOPY => Operation::CallDataCopy,
+                Opcode::CALLDATALOAD => Operation::CalldataLoad,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
             };
             operations.push(op);

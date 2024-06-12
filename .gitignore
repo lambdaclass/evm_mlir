@@ -7,3 +7,6 @@
 **/*.o
 **/*.asm
 output
+
+ethtests
+*.tar.gz
