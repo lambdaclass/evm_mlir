@@ -1,3 +1,7 @@
+//! Tests for simple EVM operations
+//!
+//! These don't receive any input, and the CODE* opcodes
+//! may not work properly.
 use evm_mlir::{
     constants::gas_cost,
     context::Context,
