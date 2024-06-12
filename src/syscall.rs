@@ -89,7 +89,7 @@ impl ExecutionResult {
 pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
     gas_remaining: Option<u64>,
@@ -97,6 +97,8 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     pub env: Env,
+    // The program bytecode
+    pub program: Vec<u8>,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -170,12 +172,34 @@ impl SyscallContext {
             }
         }
     }
+
+    pub extern "C" fn copy_code_to_memory(
+        &mut self,
+        code_offset: u32,
+        size: u32,
+        dest_offset: u32,
+    ) {
+        let code_size = self.program.len() as u32;
+        if code_offset >= code_size {
+            return;
+        }
+        let size: u32 = if code_offset + size > code_size {
+            code_size - code_offset
+        } else {
+            size
+        };
+
+        for (i, j) in (code_offset..code_offset + size).enumerate() {
+            self.memory[dest_offset as usize + i] = self.program[j as usize];
+        }
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
+    pub const COPY_CODE_TO_MEMORY: &str = "evm_mlir__copy_code_to_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -194,6 +218,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::COPY_CODE_TO_MEMORY,
+            SyscallContext::copy_code_to_memory as *const fn(*mut c_void, u32, u32, u32) as *mut (),
         );
     };
 }
@@ -253,6 +281,17 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_CODE_TO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -319,5 +358,23 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    pub(crate) fn copy_code_to_memory_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_CODE_TO_MEMORY),
+            &[syscall_ctx, offset, size, dest_offset],
+            &[],
+            location,
+        ));
     }
 }

@@ -4,26 +4,24 @@ use melior::{
     dialect::{
         arith, cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
-        ods::affine::vector_load,
     },
     ir::{
-        attribute::{ArrayAttribute, Attribute, IntegerAttribute, TypeAttribute},
+        attribute::{IntegerAttribute, TypeAttribute},
         r#type::IntegerType,
         Block, BlockRef, Location, Module, Region, Value,
     },
     Context as MeliorContext,
 };
-use num_bigint::BigUint;
 
 use crate::{
     constants::{
-        CODE_PTR_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
         STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
-    program::{self, Operation, Program},
+    program::{Operation, Program},
     syscall::{self, ExitStatusCode},
-    utils::{get_remaining_gas, integer_constant_from_i64, integer_constant_from_u8, llvm_mlir},
+    utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
 };
 
 #[derive(Debug, Clone)]
@@ -64,7 +62,6 @@ impl<'c> OperationCtx<'c> {
         generate_stack_setup_code(context, module, setup_block)?;
         generate_memory_setup_code(context, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
-        generate_program_code_setup_code(context, module, setup_block, program)?;
 
         syscall::mlir::declare_syscalls(context, module);
 
@@ -188,136 +185,6 @@ fn generate_gas_counter_setup_code<'c>(
     ));
 
     assert!(res.verify());
-
-    Ok(())
-}
-
-fn generate_program_code_setup_code<'c>(
-    context: &'c MeliorContext,
-    module: &'c Module,
-    block: &'c Block<'c>,
-    program: &'c Program,
-) -> Result<(), CodegenError> {
-    let location = Location::unknown(context);
-    let ptr_type = pointer(context, 0);
-    let uint256 = IntegerType::new(context, 256);
-    let uint8 = IntegerType::new(context, 8);
-
-    let body = module.body();
-    // declare a global CODE_PTR_GLOBAL
-    let res = body.append_operation(llvm_mlir::global(
-        context,
-        CODE_PTR_GLOBAL,
-        ptr_type,
-        location,
-    ));
-    assert!(res.verify());
-
-    let code_size = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), program.code_size as i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // allocate memory for the code
-    let code_ptr = block
-        .append_operation(llvm::alloca(
-            context,
-            code_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(TypeAttribute::new(uint8.into()).into()),
-        ))
-        .result(0)?
-        .into();
-
-    let codeptr_ptr = block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            CODE_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // store the address of code_ptr (where the code is) in CODE_PTR_GLOBAL
-    let res = block.append_operation(llvm::store(
-        context,
-        code_ptr,
-        codeptr_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    // here the program is converted from a Vec<Operation> to a ArrayAttribute constant
-    let operations = program.operations.clone();
-
-    let mut byte_code = vec![];
-    for operation in operations {
-        let opcode = operation.to_bytecode();
-        for byte in opcode {
-            byte_code.push(byte);
-        }
-    }
-    let mut code_as_attribute: Vec<Attribute> = vec![];
-    for byte in byte_code {
-        let byte_attribute = IntegerAttribute::new(uint8.into(), byte as i64);
-        code_as_attribute.push(byte_attribute.into());
-    }
-
-    let mut index = 0;
-    // store the code in memory byte by byte
-    for atr in code_as_attribute {
-        let constant: Value = block
-            .append_operation(arith::constant(context, atr, location))
-            .result(0)?
-            .into();
-        let constant_index = block
-            .append_operation(arith::constant(
-                context,
-                integer_constant_from_i64(context, index as i64).into(),
-                location,
-            ))
-            .result(0)?
-            .into();
-        let ptr: Value = block
-            .append_operation(llvm::get_element_ptr_dynamic(
-                context,
-                code_ptr,
-                &[constant_index],
-                uint8.into(),
-                ptr_type,
-                location,
-            ))
-            .result(0)?
-            .into();
-        let res = block.append_operation(llvm::store(
-            context,
-            constant,
-            ptr,
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ));
-        assert!(res.verify());
-        index += 1;
-    }
-
-    // store the code in memory
-    /*let res = block.append_operation(llvm::store(
-        context,
-        code_constant,
-        code_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    */
-    //assert!(res.verify());
 
     Ok(())
 }
@@ -564,6 +431,25 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             new_size,
+            location,
+        )
+    }
+
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
             location,
         )
     }
