@@ -42,6 +42,7 @@ jobs:
           repo: deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main
           repo-name: llvm-repo
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
+
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
 
@@ -54,18 +55,7 @@ jobs:
         run: echo "###Benchmark Results :rocket:" > bench-comment.md
 
       - name: Run benchmarks
-        run: 	cd bench/revm_comparison && \
-                cargo build --release \
-                --bin evm_mlir_factorial \
-                --bin revm_factorial \
-                --bin evm_mlir_fibonacci \
-                --bin revm_fibonacci
-              	hyperfine -w 5 -r 10 -N \
-                  -n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
-                  -n "revm_factorial" "target/release/revm_factorial 100000" > bench-comment.md
-              	hyperfine -w 5 -r 10 -N \
-                  -n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
-                  -n "revm_factorial" "target/release/revm_factorial 100000" >> bench-comment.md
+        run: 	make revm-comparison >> bench-comment.md
 
       - name: Find Bench Comment
         continue-on-error: true
