@@ -19,9 +19,9 @@ use crate::{
     syscall::ExitStatusCode,
     utils::{
         check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
-        constant_value_from_i64, consume_gas, extend_memory, get_nth_from_stack, get_remaining_gas,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        compute_codecopy_gas_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
+        extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir,
+        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 use num_bigint::BigUint;
@@ -2752,18 +2752,16 @@ fn codegen_codecopy<'c, 'r>(
     // where to copy
     let dest_offset = stack_pop(context, &ok_block)?;
     // where to copy from
-    let offset = stack_pop(context, &ok_block)?;
-    let size = stack_pop(context, &ok_block)?;
-
-    // TODO: add memory expansion
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
 
     let offset = ok_block
-        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
         .result(0)?
         .into();
 
     let size = ok_block
-        .append_operation(arith::trunci(size, uint32.into(), location))
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
         .result(0)?
         .into();
 
@@ -2778,6 +2776,10 @@ fn codegen_codecopy<'c, 'r>(
         .into();
 
     let copy_block = region.append_block(Block::new(&[]));
+
+    let dynamic_gas_cost = compute_codecopy_gas_cost(op_ctx, &ok_block, size_u256)?;
+    consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+
     extend_memory(
         op_ctx,
         &ok_block,

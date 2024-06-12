@@ -1,4 +1,3 @@
-use melior::ir::operation;
 use num_bigint::BigUint;
 use thiserror::Error;
 
