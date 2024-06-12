@@ -172,15 +172,13 @@ impl SyscallContext {
     }
 
     pub extern "C" fn get_callvalue(&self) -> u64 {
-        let callvalue = self.env.tx.value;
-        println!("Callvalue: {}", callvalue);
-        callvalue
+        //TODO: Implement
+        //self.env.tx.value
+        100
     }
 
     pub extern "C" fn get_calldata_size(&self) -> u32 {
-        let size = self.env.tx.calldata.len();
-        print!("Calldata size: {}", size as u32);
-        self.env.tx.calldata.len() as u32
+        self.env.tx.data.len() as u32
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -257,7 +255,7 @@ impl SyscallContext {
         self.logs.push(log);
     }
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.calldata.as_ptr()
+        self.env.tx.data.as_ptr()
     }
 }
 

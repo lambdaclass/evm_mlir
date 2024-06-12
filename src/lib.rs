@@ -13,6 +13,7 @@ pub mod env;
 pub mod errors;
 pub mod executor;
 pub mod module;
+pub mod primitives;
 pub mod program;
 pub mod syscall;
 pub mod utils;

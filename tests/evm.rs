@@ -1,4 +1,5 @@
 use evm_mlir::{
+    primitives::Bytes,
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
@@ -90,8 +91,9 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0x00; 64].into();
-    env.tx.calldata[31] = 1;
+    let mut calldata = vec![0x00; 64];
+    calldata[31] = 1;
+    env.tx.data = Bytes::from(calldata);
     let evm = Evm::new(env, program);
 
     let result = evm.transact();
@@ -127,10 +129,10 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0x00; 32].into();
-    env.tx.calldata[31] = 1;
+    let mut calldata = vec![0x00; 32];
+    calldata[31] = 1;
+    env.tx.data = Bytes::from(calldata);
     let evm = Evm::new(env, program);
-
     let result = evm.transact();
 
     assert!(&result.is_success());
@@ -164,7 +166,7 @@ fn calldataload_with_offset_greater_than_calldata_size() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0xff; 32].into();
+    env.tx.data = Bytes::from(vec![0xff; 32]);
     let evm = Evm::new(env, program);
 
     let result = evm.transact();
