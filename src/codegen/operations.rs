@@ -143,16 +143,95 @@ fn codegen_calldatacopy<'c, 'r>(
         .unwrap()
         .into();
 
-    //required size = call_data_offset + size
-    let required_size = ok_block
+    //required size = des_offset + size
+    let required_memory_size = ok_block
         .append_operation(arith::addi(dest_offset, size, location))
         .result(0)?
         .into();
 
-    // get pointer to calldata
-    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+    let continue_memory_block = region.append_block(Block::new(&[]));
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &continue_memory_block,
+        region,
+        required_memory_size,
+        gas_cost::CALLDATACOPY,
+    )?;
+    let memory_ptr = op_ctx.get_memory_pointer_syscall(&continue_memory_block, location)?;
+    let memory_dest = continue_memory_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[dest_offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    let calldata_src: melior::ir::Value = ok_block
+    let zero_value = continue_memory_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(IntegerType::new(context, 8).into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    continue_memory_block.append_operation(
+        ods::llvm::intr_memset(
+            context,
+            memory_dest,
+            zero_value,
+            size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
+            location,
+        )
+        .into(),
+    );
+
+    let calldatasize = op_ctx.get_calldata_size_syscall(&continue_memory_block, location)?;
+    let offset_bigger_than_size_flag = continue_memory_block
+        .append_operation(arith::cmpi(
+            context,
+            CmpiPredicate::Ugt,
+            call_data_offset,
+            calldatasize,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let invalid_offset_block = region.append_block(Block::new(&[]));
+    let valid_offset_block = region.append_block(Block::new(&[]));
+    let return_block = region.append_block(Block::new(&[]));
+
+    continue_memory_block.append_operation(cf::cond_br(
+        context,
+        offset_bigger_than_size_flag,
+        &invalid_offset_block,
+        &valid_offset_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    invalid_offset_block.append_operation(cf::br(&return_block, &[], location));
+
+    let remaining_calldata_size = valid_offset_block
+        .append_operation(arith::subi(calldatasize, call_data_offset, location))
+        .result(0)?
+        .into();
+
+    let memcpy_len = valid_offset_block
+        .append_operation(arith::minui(remaining_calldata_size, size, location))
+        .result(0)?
+        .into();
+
+    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&valid_offset_block, location)?;
+    let calldata_src = valid_offset_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,
             calldata_ptr,
@@ -164,157 +243,19 @@ fn codegen_calldatacopy<'c, 'r>(
         .result(0)?
         .into();
 
-    // Check that required_calldata_size <= calldatasize
-
-    let calldata_size = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
-
-    let remaining_calldata_size = ok_block
-        .append_operation(arith::subi(calldata_size, call_data_offset, location))
-        .result(0)?
-        .into();
-
-    let cmp = ok_block
-        .append_operation(arith::cmpi(
-            context,
-            arith::CmpiPredicate::Ugt,
-            size,
-            remaining_calldata_size,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let continue_block = region.append_block(Block::new(&[]));
-    let overflow_block = region.append_block(Block::new(&[]));
-    let return_block = region.append_block(Block::new(&[]));
-
-    //TODO: if calldatasize >= required: for out of bound bytes, 0s will be copied.
-
-    ok_block.append_operation(cf::cond_br(
-        context,
-        cmp,
-        &overflow_block,
-        &continue_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    let memory_continue_block_no_overflow = region.append_block(Block::new(&[]));
-    extend_memory(
-        op_ctx,
-        &continue_block,
-        &memory_continue_block_no_overflow,
-        region,
-        required_size,
-        gas_cost::CALLDATACOPY,
-    )?;
-    let memory_ptr =
-        op_ctx.get_memory_pointer_syscall(&memory_continue_block_no_overflow, location)?;
-
-    let memory_dest: melior::ir::Value = memory_continue_block_no_overflow
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_ptr,
-            &[dest_offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    memory_continue_block_no_overflow.append_operation(
+    valid_offset_block.append_operation(
         ods::llvm::intr_memcpy(
             context,
             memory_dest,
             calldata_src,
-            size,
+            memcpy_len,
             IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
             location,
         )
         .into(),
     );
 
-    memory_continue_block_no_overflow.append_operation(cf::br(&return_block, &[], location));
-
-    //Handle overflow case
-    let memory_continue_block_overflow = region.append_block(Block::new(&[]));
-    extend_memory(
-        op_ctx,
-        &overflow_block,
-        &memory_continue_block_overflow,
-        region,
-        required_size,
-        gas_cost::CALLDATACOPY,
-    )?;
-    let memory_ptr =
-        op_ctx.get_memory_pointer_syscall(&memory_continue_block_overflow, location)?;
-
-    let memory_dest = memory_continue_block_overflow
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_ptr,
-            &[dest_offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // copy the remaining bytes from calldata
-    memory_continue_block_overflow.append_operation(
-        ods::llvm::intr_memcpy(
-            context,
-            memory_dest,
-            calldata_src,
-            remaining_calldata_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
-            location,
-        )
-        .into(),
-    );
-
-    let zero_value = memory_continue_block_overflow
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(IntegerType::new(context, 8).into(), 0).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let zero_fill_size = memory_continue_block_overflow
-        .append_operation(arith::subi(size, remaining_calldata_size, location))
-        .result(0)?
-        .into();
-
-    let zero_fill_dest = memory_continue_block_overflow
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_dest,
-            &[remaining_calldata_size],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    memory_continue_block_overflow.append_operation(
-        ods::llvm::intr_memset(
-            context,
-            zero_fill_dest,
-            zero_value,
-            zero_fill_size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
-            location,
-        )
-        .into(),
-    );
-
-    memory_continue_block_overflow.append_operation(cf::br(&return_block, &[], location));
+    valid_offset_block.append_operation(cf::br(&return_block, &[], location));
 
     Ok((start_block, return_block))
 }

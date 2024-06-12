@@ -274,3 +274,28 @@ fn test_calldatacopy_calldataoffset() {
     let return_data = result.return_data().unwrap();
     assert_eq!(return_data, correct_memory);
 }
+
+#[test]
+fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
+    let operations = vec![
+        Operation::Push((1, BigUint::from(10_u8))),
+        Operation::Push((1, BigUint::from(30_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::CallDataCopy,
+        Operation::Push((1, BigUint::from(10_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Return,
+    ];
+
+    let program = Program::from(operations);
+    let mut env = Env::default();
+    env.tx.calldata = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    env.tx.gas_limit = 1000;
+    let evm = Evm::new(env, program);
+    let result = evm.transact();
+
+    //Test that the memory is correctly copied
+    let correct_memory = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let return_data = result.return_data().unwrap();
+    assert_eq!(return_data, correct_memory);
+}

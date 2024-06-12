@@ -176,7 +176,6 @@ impl SyscallContext {
             }
         }
     }
-
 }
 
 pub mod symbols {
