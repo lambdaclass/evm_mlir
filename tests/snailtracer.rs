@@ -1,4 +1,5 @@
-use evm_mlir::{env::Address, program::Program, Env, Evm};
+use ethereum_types::Address;
+use evm_mlir::{program::Program, Env, Evm};
 
 const SNAILTRACER_BYTECODE: &[u8] = include_bytes!("../programs/snailtracer.bytecode");
 
@@ -11,11 +12,11 @@ fn snailtracer() {
     let mut env = Env::default();
     env.tx.calldata = vec![48, 98, 123, 124];
     env.tx.gas_limit = 999_999;
-    env.tx.from = Address([0; 20]);
+    env.tx.from = Address::from([0; 20]);
     env.tx.from.0[0] = 16;
-    env.tx.to = Address([0; 20]);
+    env.tx.to = Address::from([0; 20]);
 
-    let evm = Evm::new(env, program.expect("Error parsing opcodes"));
+    let mut evm = Evm::new(env, program.expect("Error parsing opcodes"));
 
     let _ = evm.transact();
 }

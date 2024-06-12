@@ -1,4 +1,6 @@
-use evm_mlir::{context::Context, executor::Executor, program::Program, syscall::SyscallContext};
+use evm_mlir::{
+    context::Context, db::Db, executor::Executor, program::Program, syscall::SyscallContext,
+};
 use revm::{
     db::BenchmarkDB,
     primitives::{address, bytes, Bytecode, TransactTo},
@@ -19,7 +21,9 @@ pub fn run_with_evm_mlir(program: &str, runs: usize) {
         .expect("failed to compile program");
 
     let executor = Executor::new(&module);
-    let mut context = SyscallContext::default();
+    let env = Default::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
     let initial_gas = 999_999_999;
 
     for _ in 0..runs - 1 {
