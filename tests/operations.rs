@@ -1,5 +1,5 @@
 use evm_mlir::{
-    constants::gas_cost,
+    constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
@@ -2355,4 +2355,39 @@ fn mcopy_with_stack_underflow() {
     let program = vec![Operation::Mcopy];
 
     run_program_assert_halt(program);
+}
+
+#[rstest]
+#[case(0)]
+#[case(1)]
+#[case(2)]
+#[case(3)]
+#[case(4)]
+fn log_with_gas_cost(#[case] n: u8) {
+    // static_gas = 375
+    // dynamic_gas = 375 * topic_count + 8 * size + memory_expansion_cost
+    let size = 32_u8;
+    let offset = 0_u8;
+    let topic = BigUint::from_bytes_be(&[0xff; 32]);
+    let mut program = vec![];
+    for _ in 0..n {
+        program.push(Operation::Push((32_u8, topic.clone())));
+    }
+    program.push(Operation::Push((1_u8, BigUint::from(size))));
+    program.push(Operation::Push((1_u8, BigUint::from(offset))));
+    program.push(Operation::Log(n));
+    let topic_count = n as i64;
+    let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
+    let dynamic_gas = log_dynamic_gas_cost(size as u32, topic_count as u32)
+        + gas_cost::memory_expansion_cost(0, 32_u32);
+    let gas_needed = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn log_with_stack_underflow() {
+    for n in 0..5 {
+        let program = vec![Operation::Log(n)];
+        run_program_assert_halt(program);
+    }
 }

@@ -15,8 +15,8 @@ use melior::{
 
 use crate::{
     constants::{
-        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
     program::{Operation, Program},
@@ -61,6 +61,7 @@ impl<'c> OperationCtx<'c> {
         // Append setup code to be run at the start
         generate_stack_setup_code(context, module, setup_block)?;
         generate_memory_setup_code(context, module, setup_block)?;
+        generate_calldata_setup_code(context, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
         syscall::mlir::declare_syscalls(context, module);
@@ -332,6 +333,61 @@ fn generate_memory_setup_code<'c>(
     Ok(())
 }
 
+fn generate_calldata_setup_code<'c>(
+    context: &'c MeliorContext,
+    module: &'c Module,
+    block: &'c Block<'c>,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        CALLDATA_PTR_GLOBAL,
+        ptr_type,
+        location,
+    ));
+    assert!(res.verify());
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        CALLDATA_SIZE_GLOBAL,
+        uint32,
+        location,
+    ));
+    assert!(res.verify());
+
+    let zero = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let calldata_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let res = block.append_operation(llvm::store(
+        context,
+        zero,
+        calldata_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
 /// Create the jumptable landing block. This is the main entrypoint
 /// for JUMP and JUMPI operations.
 fn create_jumptable_landing_block(context: &MeliorContext) -> Block {
@@ -450,6 +506,124 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             new_size,
+            location,
+        )
+    }
+
+    pub(crate) fn append_log_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            location,
+        );
+    }
+
+    pub(crate) fn append_log_with_one_topic_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_with_one_topic_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            topic,
+            location,
+        );
+    }
+
+    pub(crate) fn append_log_with_two_topics_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_with_two_topics_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            topic1_ptr,
+            topic2_ptr,
+            location,
+        );
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_three_topics_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        topic3_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_with_three_topics_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            topic1_ptr,
+            topic2_ptr,
+            topic3_ptr,
+            location,
+        );
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_four_topics_syscall(
+        &'c self,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        topic3_ptr: Value<'c, 'c>,
+        topic4_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::append_log_with_four_topics_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            data,
+            size,
+            topic1_ptr,
+            topic2_ptr,
+            topic3_ptr,
+            topic4_ptr,
+            location,
+        );
+    }
+    #[allow(unused)]
+    pub(crate) fn get_calldata_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_calldata_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
             location,
         )
     }
