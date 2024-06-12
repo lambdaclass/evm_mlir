@@ -5,7 +5,7 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ '**' ]
+    branches: [ '**' ] # TODO: check if its necessary on every PR check
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -50,5 +50,37 @@ jobs:
         with:
           tool: hyperfine@1.16
 
+      - name: Create markdown file
+        run: echo "###Benchmark Results :rocket:" > bench-comment.md
+
       - name: Run benchmarks
-        run: make revm-comparison
+        run: 	cd bench/revm_comparison && \
+                cargo build --release \
+                --bin evm_mlir_factorial \
+                --bin revm_factorial \
+                --bin evm_mlir_fibonacci \
+                --bin revm_fibonacci
+              	hyperfine -w 5 -r 10 -N \
+                  -n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
+                  -n "revm_factorial" "target/release/revm_factorial 100000" > bench-comment.md
+              	hyperfine -w 5 -r 10 -N \
+                  -n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
+                  -n "revm_factorial" "target/release/revm_factorial 100000" >> bench-comment.md
+
+      - name: Find Bench Comment
+        continue-on-error: true
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: Benchmarking
+
+      - name: Create or update bench comment
+        continue-on-error: true
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: bench-comment.md
+          edit-mode: replace
