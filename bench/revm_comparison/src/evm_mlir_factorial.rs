@@ -12,6 +12,6 @@ fn main() {
         runs.parse().unwrap(),
         number_of_iterations.parse().unwrap(),
     );
-    // NOTE: for really big numbers the result is zero due to 1
+    // NOTE: for really big numbers the result is zero due to
     // one every two iterations involving an even number.
 }
