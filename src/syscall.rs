@@ -171,10 +171,11 @@ impl SyscallContext {
         self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    pub extern "C" fn get_callvalue(&self) -> u64 {
-        //TODO: Implement
-        //self.env.tx.value
-        100
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
+        let aux = &self.env.tx.value;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
     }
 
     pub extern "C" fn get_calldata_size(&self) -> u32 {
@@ -269,7 +270,7 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
-    pub const GET_CALLVALUE: &str = "evm_mlir__get_callvalue";
+    pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -328,8 +329,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
-            symbols::GET_CALLVALUE,
-            SyscallContext::get_callvalue as *const fn(*mut c_void) as *mut (),
+            symbols::STORE_IN_CALLVALUE_PTR,
+            SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -388,7 +389,7 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_CALLVALUE),
+            StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
@@ -519,19 +520,19 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
-    pub(crate) fn get_callvalue_syscall<'c>(
+    pub(crate) fn store_in_callvalue_ptr<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         location: Location<'c>,
+        callvalue_ptr: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64).into();
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLVALUE),
-                &[syscall_ctx],
-                &[uint64],
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
+                &[syscall_ctx, callvalue_ptr],
+                &[],
                 location,
             ))
             .result(0)?;

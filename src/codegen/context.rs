@@ -476,12 +476,13 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn get_callvalue_syscall(
+    pub(crate) fn store_in_callvalue_ptr(
         &'c self,
         block: &'c Block,
         location: Location<'c>,
+        callvalue_ptr: Value<'c, 'c>,
     ) -> Result<Value, CodegenError> {
-        syscall::mlir::get_callvalue_syscall(self.mlir_context, self.syscall_ctx, block, location)
+        syscall::mlir::store_in_callvalue_ptr(self.mlir_context, self.syscall_ctx, block, location, callvalue_ptr)
     }
 
     pub(crate) fn extend_memory_syscall(

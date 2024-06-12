@@ -1,14 +1,14 @@
 use melior::{
     dialect::{
-        arith,
-        arith::CmpiPredicate,
+        arith::{self, CmpiPredicate},
         cf,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        attribute::{IntegerAttribute, TypeAttribute},
+        r#type::IntegerType,
+        Attribute, Block, BlockRef, Location, Region,
     },
 };
 
@@ -117,15 +117,49 @@ fn codegen_callvalue<'c, 'r>(
         location,
     ));
 
-    // Get the callvalue size using a syscall
-    let uint256 = IntegerType::new(context, 256).into();
-    let callvalue = op_ctx.get_callvalue_syscall(&ok_block, location)?;
-    let extended_size = ok_block
-        .append_operation(arith::extui(callvalue, uint256, location))
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    //This may be refactored to use constant_value_from_i64 util function
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, extended_size)?;
+    let callvalue_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_callvalue_ptr(&ok_block, location, callvalue_ptr)?;
+
+    // let callvalue = ok_block
+    //     .append_operation(llvm::load(
+    //         context,
+    //         callvalue_ptr,
+    //         ptr_type,
+    //         location,
+    //         LoadStoreOptions::default(),
+    //     ))
+    //     .result(0)?
+    //     .into();
+    //
+    // let extended_size = ok_block
+    //     .append_operation(arith::extui(callvalue, uint256.into(), location))
+    //     .result(0)?
+    //     .into();
+    //
+    // stack_push(context, &ok_block, extended_size)?;
 
     Ok((start_block, ok_block))
 }
