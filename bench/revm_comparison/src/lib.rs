@@ -4,7 +4,7 @@ use revm::{
     primitives::{address, bytes, Bytecode, TransactTo},
     Evm,
 };
-use std::path::PathBuf;
+use std::{hint::black_box, path::PathBuf};
 
 pub fn run_with_evm_mlir(program: &str, runs: usize) {
     let bytes = hex::decode(program).unwrap();
@@ -23,16 +23,14 @@ pub fn run_with_evm_mlir(program: &str, runs: usize) {
     let initial_gas = 999_999_999;
 
     for _ in 0..runs - 1 {
-        let _result = executor.execute(&mut context, initial_gas);
+        black_box(executor.execute(black_box(&mut context), black_box(initial_gas)));
         assert!(context.get_result().is_success());
     }
-    executor.execute(&mut context, initial_gas);
-    assert!(context.get_result().is_success());
+    black_box(executor.execute(black_box(&mut context), black_box(initial_gas)));
+    let result = context.get_result();
+    assert!(result.is_success());
 
-    println!(
-        "\t0x{}",
-        hex::encode(context.get_result().return_data().unwrap())
-    );
+    println!("\t0x{}", hex::encode(result.return_data().unwrap()));
 }
 
 pub fn run_with_revm(program: &str, runs: usize) {
@@ -48,10 +46,10 @@ pub fn run_with_revm(program: &str, runs: usize) {
         .build();
 
     for _ in 0..runs - 1 {
-        let result = evm.transact().unwrap();
+        let result = black_box(evm.transact()).unwrap();
         assert!(result.result.is_success());
     }
-    let result = evm.transact().unwrap();
+    let result = black_box(evm.transact()).unwrap();
     assert!(result.result.is_success());
 
     println!("\t\t{}", result.result.into_output().unwrap());

@@ -65,7 +65,7 @@ revm-comparison:
 	@target/release/evm_mlir_fibonacci 1
 	@printf "%s" "revm_fibonacci result: "
 	@target/release/revm_fibonacci 1
-	hyperfine -w 5 -r 10 -N
+	hyperfine -w 5 -r 10 -N \
 		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
 		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
 	@echo
