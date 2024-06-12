@@ -8,7 +8,7 @@ use revm::{
 };
 use std::{hint::black_box, path::PathBuf};
 
-pub fn run_with_evm_mlir(program: &str, runs: usize, parameter: u32) {
+pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
     let program = Program::from_bytecode(&bytes).unwrap();
 
@@ -24,7 +24,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, parameter: u32) {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0x00; 32].into();
-    env.tx.calldata[28..32].copy_from_slice(&parameter.to_be_bytes());
+    env.tx.calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
     let mut context = SyscallContext::with_env(env);
     let initial_gas = 999_999_999;
 
@@ -39,11 +39,11 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, parameter: u32) {
     println!("\t0x{}", hex::encode(result.return_data().unwrap()));
 }
 
-pub fn run_with_revm(program: &str, runs: usize, parameter: u32) {
+pub fn run_with_revm(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
     let raw = Bytecode::new_raw(bytes.into());
     let mut calldata = [0; 32];
-    calldata[28..32].copy_from_slice(&parameter.to_be_bytes());
+    calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
     let mut evm = Evm::builder()
         .with_db(BenchmarkDB::new_bytecode(raw))
         .modify_tx_env(|tx| {
