@@ -66,4 +66,15 @@ pub mod gas_cost {
     pub fn log_dynamic_gas_cost(size: u32, topic_count: u32) -> i64 {
         (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
     }
+
+    pub fn exp_dynamic_cost(exponent: u32) -> i64 {
+        50 * exponent.leading_zeros() as i64
+    }
 }
+
+#[cfg(test)]
+mod tests {
+
+    
+}
+

@@ -131,16 +131,11 @@ fn codegen_exp<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::EXP)?;
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -148,13 +143,47 @@ fn codegen_exp<'c, 'r>(
         location,
     ));
 
-    let lhs = stack_pop(context, &ok_block)?;
-    let rhs = stack_pop(context, &ok_block)?;
+    let base = stack_pop(context, &ok_block)?;
+    let exponent = stack_pop(context, &ok_block)?;
+
+    //consume_gas_as_value(context, block, total_gas_cost)?;
 
     let result = ok_block
-        .append_operation(ods::math::ipowi(context, lhs, rhs, location).into())
+        .append_operation(ods::math::ipowi(context, base, exponent, location).into())
         .result(0)?
         .into();
+
+    //TODO: compute dynamic gas cost depending of the size in bytes of the exponent
+    //dynamic_gas = 50 * exponent_byte_size
+    let result_type = IntegerType::new(context, 256);
+    let leading_zeros = ok_block.
+        append_operation(llvm::intr_ctlz(
+            context, 
+            exponent, 
+            false, 
+            result_type.into(), 
+            location).into()).result(0)?.into();
+
+    let number_of_bits = ok_block.append_operation(
+        arith::subi(
+            constant_value_from_i64(context, &ok_block, 256)?,
+            leading_zeros,
+            location,
+        ),
+    ).result(0)?.into();
+
+    let number_of_bytes = ok_block.append_operation(
+        arith::divui(
+            number_of_bits,
+            constant_value_from_i64(context, &ok_block, 8)?,
+            location,
+        ),
+    ).result(0)?.into();
+
+    //if the number of bytes is within 0 to (2**8 - 1), then the byte size is 1
+    //if the number of bytes is within 2**8 to (2**16 - 1), then the byte size is 2
+
+    
 
     stack_push(context, &ok_block, result)?;
 
