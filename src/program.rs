@@ -710,9 +710,9 @@ impl Program {
             .sum()
     }
 
-    pub fn to_bytecode(self) -> Vec<u8> {
+    pub fn to_bytecode(&self) -> Vec<u8> {
         let mut bytecode = vec![];
-        for operation in self.operations {
+        for operation in self.operations.clone() {
             let bytes = operation.to_bytecode();
             for byte in bytes {
                 bytecode.push(byte);

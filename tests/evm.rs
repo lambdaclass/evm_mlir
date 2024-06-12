@@ -1,5 +1,5 @@
 use evm_mlir::{
-    program::{Operation, Program},
+    program::{Opcode, Operation, Program},
     Env, Evm,
 };
 use num_bigint::BigUint;
@@ -63,4 +63,47 @@ fn fibonacci_example() {
     assert!(&result.is_success());
     let number = BigUint::from_bytes_be(result.return_data().unwrap());
     println!("{number}");
+}
+
+#[test]
+fn codecopy() {
+    let size = 12_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+
+    let result_data = result.return_data().unwrap();
+    let expected_result = vec![
+        Opcode::PUSH1 as u8,
+        size,
+        Opcode::PUSH1 as u8,
+        offset,
+        Opcode::PUSH1 as u8,
+        dest_offset,
+        Opcode::CODECOPY as u8,
+        Opcode::PUSH1 as u8,
+        size,
+        Opcode::PUSH1 as u8,
+        dest_offset,
+        Opcode::RETURN as u8,
+    ];
+    assert_eq!(result_data, &expected_result);
 }
