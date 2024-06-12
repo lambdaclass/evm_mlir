@@ -51,12 +51,7 @@ test:
 	cargo nextest run --workspace --all-features
 
 revm-comparison:
-	cd bench/revm_comparison && \
-		cargo build --release \
-		--bin evm_mlir_factorial \
-		--bin revm_factorial \
-		--bin evm_mlir_fibonacci \
-		--bin revm_fibonacci
+	make build-revm-comparison
 	@echo
 	@printf "%s" "evm_mlir_factorial result: "
 	@target/release/evm_mlir_factorial 1
@@ -70,7 +65,7 @@ revm-comparison:
 	@target/release/evm_mlir_fibonacci 1
 	@printf "%s" "revm_fibonacci result: "
 	@target/release/revm_fibonacci 1
-	hyperfine -w 5 -r 10 -N \
+	hyperfine -w 5 -r 10 -N
 		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
 		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
 	@echo
@@ -82,3 +77,18 @@ build-revm-comparison:
 		--bin revm_factorial \
 		--bin evm_mlir_fibonacci \
 		--bin revm_fibonacci
+
+###### Ethereum tests ######
+
+ETHTEST_SHASUM := ".ethtest_shasum"
+ETHTEST_VERSION := $(shell cat .ethtest_version)
+ETHTEST_TAR := "ethtests-${ETHTEST_VERSION}.tar.gz"
+
+${ETHTEST_TAR}: .ethtest_version
+	curl -Lo ${ETHTEST_TAR} https://github.com/ethereum/tests/archive/refs/tags/${ETHTEST_VERSION}.tar.gz
+
+ethtests: ${ETHTEST_TAR}
+	mkdir -p "$@"
+	tar -xzmf "$<" --strip-components=1 -C "$@"
+	@cat ${ETHTEST_SHASUM}
+	sha256sum -c ${ETHTEST_SHASUM}
