@@ -38,7 +38,7 @@ pub enum Opcode {
     // ORIGIN = 0x32,
     // CALLER = 0x33,
     CALLVALUE = 0x34,
-    // CALLDATALOAD = 0x35,
+    CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
@@ -141,11 +141,11 @@ pub enum Opcode {
     SWAP14 = 0x9D,
     SWAP15 = 0x9E,
     SWAP16 = 0x9F,
-    // LOG0 = 0xA0,
-    // LOG1 = 0xA1,
-    // LOG2 = 0xA2,
-    // LOG3 = 0xA3,
-    // LOG4 = 0xA4,
+    LOG0 = 0xA0,
+    LOG1 = 0xA1,
+    LOG2 = 0xA2,
+    LOG3 = 0xA3,
+    LOG4 = 0xA4,
     // unused 0xA5-0xEF
     // CREATE = 0xF0,
     // CALL = 0xF1,
@@ -198,6 +198,8 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::SHL as u8 => Opcode::SHL,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
             x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
+            x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
+            x if x == Opcode::CALLDATASIZE as u8 => Opcode::CALLDATASIZE,
             x if x == Opcode::CODESIZE as u8 => Opcode::CODESIZE,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::MLOAD as u8 => Opcode::MLOAD,
@@ -277,6 +279,11 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
+            x if x == Opcode::LOG0 as u8 => Opcode::LOG0,
+            x if x == Opcode::LOG1 as u8 => Opcode::LOG1,
+            x if x == Opcode::LOG2 as u8 => Opcode::LOG2,
+            x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
+            x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -312,6 +319,8 @@ pub enum Operation {
     Shl,
     Sar,
     Callvalue,
+    CalldataLoad,
+    CallDataSize,
     Codesize,
     Pop,
     Mload,
@@ -330,7 +339,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
-    CallDataSize,
+    Log(u8),
 }
 
 impl Operation {
@@ -361,6 +370,8 @@ impl Operation {
             Operation::Shl => vec![Opcode::SHL as u8],
             Operation::Sar => vec![Opcode::SAR as u8],
             Operation::Callvalue => vec![Opcode::CALLVALUE as u8],
+            Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
+            Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
             Operation::Codesize => vec![Opcode::CODESIZE as u8],
             Operation::Pop => vec![Opcode::POP as u8],
             Operation::Mload => vec![Opcode::MLOAD as u8],
@@ -387,7 +398,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
         }
     }
 }
@@ -444,6 +455,8 @@ impl Program {
                 Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
                 Opcode::CALLVALUE => Operation::Callvalue,
+                Opcode::CALLDATALOAD => Operation::CalldataLoad,
+                Opcode::CALLDATASIZE => Operation::CallDataSize,
                 Opcode::CODESIZE => Operation::Codesize,
                 Opcode::POP => Operation::Pop,
                 Opcode::MLOAD => Operation::Mload,
@@ -683,7 +696,11 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::CALLDATASIZE => Operation::CallDataSize,
+                Opcode::LOG0 => Operation::Log(0),
+                Opcode::LOG1 => Operation::Log(1),
+                Opcode::LOG2 => Operation::Log(2),
+                Opcode::LOG3 => Operation::Log(3),
+                Opcode::LOG4 => Operation::Log(4),
             };
             operations.push(op);
             pc += 1;

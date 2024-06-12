@@ -24,6 +24,13 @@ use crate::env::Env;
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(C, align(16))]
+pub struct U256 {
+    pub lo: u128,
+    pub hi: u128,
+}
+
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
@@ -53,6 +60,7 @@ pub enum ExecutionResult {
     Success {
         return_data: Vec<u8>,
         gas_remaining: u64,
+        logs: Vec<Log>,
     },
     Revert {
         return_data: Vec<u8>,
@@ -82,6 +90,13 @@ impl ExecutionResult {
             Self::Halt => None,
         }
     }
+
+    pub fn return_logs(&self) -> Option<&Vec<Log>> {
+        match self {
+            Self::Success { logs, .. } => Some(logs),
+            _ => None,
+        }
+    }
 }
 
 /// The context passed to syscalls
@@ -97,6 +112,14 @@ pub struct SyscallContext {
     /// The execution environment. It contains chain, block, and tx data.
     #[allow(unused)]
     pub env: Env,
+    #[allow(unused)]
+    logs: Vec<Log>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Log {
+    pub topics: Vec<U256>,
+    pub data: Vec<u8>,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -120,6 +143,7 @@ impl SyscallContext {
             ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
+                logs: self.logs.to_owned(),
             },
             ExitStatusCode::Revert => ExecutionResult::Revert {
                 return_data: self.return_values().to_vec(),
@@ -176,11 +200,76 @@ impl SyscallContext {
             }
         }
     }
+
+    pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
+        self.create_log(offset, size, vec![]);
+    }
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
+        self.create_log(offset, size, vec![*topic]);
+    }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_two_topics(
+        &mut self,
+        offset: u32,
+        size: u32,
+        topic1: &U256,
+        topic2: &U256,
+    ) {
+        self.create_log(offset, size, vec![*topic1, *topic2]);
+    }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_three_topics(
+        &mut self,
+        offset: u32,
+        size: u32,
+        topic1: &U256,
+        topic2: &U256,
+        topic3: &U256,
+    ) {
+        self.create_log(offset, size, vec![*topic1, *topic2, *topic3]);
+    }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn append_log_with_four_topics(
+        &mut self,
+        offset: u32,
+        size: u32,
+        topic1: &U256,
+        topic2: &U256,
+        topic3: &U256,
+        topic4: &U256,
+    ) {
+        self.create_log(offset, size, vec![*topic1, *topic2, *topic3, *topic4]);
+    }
+
+    /// Receives a memory offset and size, and a vector of topics.
+    /// Creates a Log with topics and data equal to memory[offset..offset + size]
+    /// and pushes it to the logs vector.
+    fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
+        let offset = offset as usize;
+        let size = size as usize;
+        let data: Vec<u8> = self.memory[offset..offset + size].into();
+
+        let log = Log { data, topics };
+        self.logs.push(log);
+    }
+    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
+        self.env.tx.calldata.as_ptr()
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const APPEND_LOG: &str = "evm_mlir__append_log";
+    pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
+    pub const APPEND_LOG_TWO_TOPICS: &str = "evm_mlir__append_log_with_two_topics";
+    pub const APPEND_LOG_THREE_TOPICS: &str = "evm_mlir__append_log_with_three_topics";
+    pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
+    pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const GET_CALLVALUE: &str = "evm_mlir__get_callvalue";
 }
@@ -197,6 +286,44 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG,
+            SyscallContext::append_log as *const fn(*mut c_void, u32, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG_ONE_TOPIC,
+            SyscallContext::append_log_with_one_topic
+                as *const fn(*mut c_void, u32, u32, *const U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG_TWO_TOPICS,
+            SyscallContext::append_log_with_two_topics
+                as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
+                as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG_THREE_TOPICS,
+            SyscallContext::append_log_with_three_topics
+                as *const fn(*mut c_void, u32, u32, *const U256, *const U256, *const U256)
+                as *mut (),
+        );
+        engine.register_symbol(
+            symbols::APPEND_LOG_FOUR_TOPICS,
+            SyscallContext::append_log_with_four_topics
+                as *const fn(
+                    *mut c_void,
+                    u32,
+                    u32,
+                    *const U256,
+                    *const U256,
+                    *const U256,
+                    *const U256,
+                ) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CALLDATA_PTR,
+            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
@@ -231,6 +358,7 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
+        //let uint256 = IntegerType::new(context, 256).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
@@ -273,6 +401,80 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32, uint32], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_ONE_TOPIC),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_TWO_TOPICS),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type],
+                    &[],
+                )
+                .into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_THREE_TOPICS),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type, ptr_type],
+                    &[],
+                )
+                .into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::APPEND_LOG_FOUR_TOPICS),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[
+                        ptr_type, uint32, uint32, ptr_type, ptr_type, ptr_type, ptr_type,
+                    ],
+                    &[],
+                )
+                .into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -353,6 +555,137 @@ pub(crate) mod mlir {
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::EXTEND_MEMORY),
                 &[syscall_ctx, new_size],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    /// Receives log data and appends a log to the logs vector
+    pub(crate) fn append_log_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG),
+            &[syscall_ctx, data, size],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data and a topic and appends a log to the logs vector
+    pub(crate) fn append_log_with_one_topic_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_ONE_TOPIC),
+            &[syscall_ctx, data, size, topic],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data, two topics and appends a log to the logs vector
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_two_topics_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_TWO_TOPICS),
+            &[syscall_ctx, data, size, topic1_ptr, topic2_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data, three topics and appends a log to the logs vector
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_three_topics_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        topic3_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_THREE_TOPICS),
+            &[syscall_ctx, data, size, topic1_ptr, topic2_ptr, topic3_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives log data, three topics and appends a log to the logs vector
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_four_topics_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        data: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        topic1_ptr: Value<'c, 'c>,
+        topic2_ptr: Value<'c, 'c>,
+        topic3_ptr: Value<'c, 'c>,
+        topic4_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::APPEND_LOG_FOUR_TOPICS),
+            &[
+                syscall_ctx,
+                data,
+                size,
+                topic1_ptr,
+                topic2_ptr,
+                topic3_ptr,
+                topic4_ptr,
+            ],
+            &[],
+            location,
+        ));
+    }
+    /// Returns a pointer to the calldata.
+    #[allow(unused)]
+    pub(crate) fn get_calldata_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
+                &[syscall_ctx],
                 &[ptr_type],
                 location,
             ))
