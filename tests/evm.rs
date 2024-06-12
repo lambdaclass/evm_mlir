@@ -107,3 +107,48 @@ fn codecopy() {
     ];
     assert_eq!(result_data, &expected_result);
 }
+
+#[test]
+fn codecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 6th byte (offset = 6)
+    // so the result must be [RETURN, 0, ..., 0]
+    let size = 12_u8;
+    let offset = 6_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return, // 11th byte
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let evm = Evm::new(env, program);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+
+    let result_data = result.return_data().unwrap();
+    let expected_result = vec![
+        Opcode::CODECOPY as u8,
+        Opcode::PUSH1 as u8,
+        size,
+        Opcode::PUSH1 as u8,
+        dest_offset,
+        Opcode::RETURN as u8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    ];
+    assert_eq!(result_data, &expected_result);
+}
