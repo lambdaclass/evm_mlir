@@ -1,3 +1,4 @@
+use melior::ir::operation;
 use num_bigint::BigUint;
 use thiserror::Error;
 
@@ -708,6 +709,17 @@ impl Program {
                 _ => 1,
             })
             .sum()
+    }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        let mut bytecode = vec![];
+        for operation in self.operations {
+            let bytes = operation.to_bytecode();
+            for byte in bytes {
+                bytecode.push(byte);
+            }
+        }
+        bytecode
     }
 }
 
