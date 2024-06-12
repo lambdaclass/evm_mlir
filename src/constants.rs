@@ -59,4 +59,8 @@ pub mod gas_cost {
             (last_memory_size_word * last_memory_size_word) / 512 + (3 * last_memory_size_word);
         (new_memory_cost - last_memory_cost).into()
     }
+
+    pub fn log_dynamic_gas_cost(size: u32, topic_count: u32) -> i64 {
+        (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
+    }
 }

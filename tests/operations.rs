@@ -1,5 +1,5 @@
 use evm_mlir::{
-    constants::gas_cost,
+    constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
     executor::Executor,
     program::{Operation, Program},
@@ -2355,8 +2355,8 @@ fn log_with_gas_cost(#[case] n: u8) {
     program.push(Operation::Log(n));
     let topic_count = n as i64;
     let static_gas = gas_cost::LOG + gas_cost::PUSHN * (2 + topic_count);
-    let dynamic_gas =
-        gas_cost::LOG * topic_count + 8 * size as i64 + gas_cost::memory_expansion_cost(0, 32_u32);
+    let dynamic_gas = log_dynamic_gas_cost(size as u32, topic_count as u32)
+        + gas_cost::memory_expansion_cost(0, 32_u32);
     let gas_needed = static_gas + dynamic_gas;
     run_program_assert_gas_exact(program, gas_needed as _);
 }

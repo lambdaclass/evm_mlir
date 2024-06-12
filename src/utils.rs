@@ -1119,10 +1119,10 @@ pub(crate) fn allocate_and_store_value<'a>(
     let uint32 = IntegerType::new(context, 32);
     let uint256 = IntegerType::new(context, 256);
 
-    let width_size = block
+    let number_of_elements = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint32.into(), 32).into(),
+            IntegerAttribute::new(uint32.into(), 1).into(),
             location,
         ))
         .result(0)?
@@ -1131,7 +1131,7 @@ pub(crate) fn allocate_and_store_value<'a>(
     let value_ptr = block
         .append_operation(llvm::alloca(
             context,
-            width_size,
+            number_of_elements,
             ptr_type,
             location,
             AllocaOptions::new().elem_type(TypeAttribute::new(uint256.into()).into()),

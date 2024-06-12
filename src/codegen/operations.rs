@@ -1,7 +1,7 @@
 use super::context::OperationCtx;
 use crate::{
     constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
-    errors::{self, CodegenError},
+    errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
@@ -2837,11 +2837,7 @@ fn codegen_log<'c, 'r>(
                 location,
             );
         }
-        _ => {
-            return Err(errors::CodegenError::NotImplemented(
-                format!("bad argument {nth}").to_string(),
-            ))
-        }
+        _ => unreachable!("nth should satisfy 0 <= nth <= 4"),
     }
 
     Ok((start_block, log_block))
