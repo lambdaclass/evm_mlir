@@ -2,7 +2,7 @@ use melior::{
     dialect::{
         arith::{self, CmpiPredicate},
         cf,
-        llvm::{self, get_element_ptr_dynamic, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, LoadStoreOptions},
         ods,
     },
     ir::{
@@ -13,7 +13,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, CODE_PTR_GLOBAL, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -2734,9 +2734,6 @@ fn codegen_codecopy<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
-    let uint8 = IntegerType::new(context, 8);
-    let uint1 = IntegerType::new(context, 1);
-    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
 
@@ -2758,9 +2755,6 @@ fn codegen_codecopy<'c, 'r>(
     let offset = stack_pop(context, &ok_block)?;
     let size = stack_pop(context, &ok_block)?;
 
-    let operations = op_ctx.program.operations.clone();
-
-    // TODO: add gas consumption
     // TODO: add memory expansion
 
     let offset = ok_block
@@ -2770,6 +2764,11 @@ fn codegen_codecopy<'c, 'r>(
 
     let size = ok_block
         .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
         .result(0)?
         .into();
 
@@ -2788,83 +2787,7 @@ fn codegen_codecopy<'c, 'r>(
         gas_cost::CODECOPY,
     )?;
 
-    // get memory_ptr
-    let memory_ptr_ptr = copy_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            MEMORY_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-
-    let memory_ptr = copy_block
-        .append_operation(llvm::load(
-            context,
-            memory_ptr_ptr.into(),
-            ptr_type,
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    // get code_ptr
-    let code_ptr_ptr = copy_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            CODE_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-
-    let code_ptr = copy_block
-        .append_operation(llvm::load(
-            context,
-            code_ptr_ptr.into(),
-            ptr_type,
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    let code_ptr_at_offset = copy_block
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            code_ptr,
-            &[offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let memory_ptr_at_dest_offset = copy_block
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_ptr,
-            &[dest_offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    copy_block.append_operation(
-        ods::llvm::intr_memcpy(
-            context,
-            memory_ptr_at_dest_offset,
-            code_ptr_at_offset,
-            size,
-            IntegerAttribute::new(uint1.into(), 0),
-            location,
-        )
-        .into(),
-    );
+    op_ctx.copy_code_to_memory_syscall(&copy_block, offset, size, dest_offset, location);
 
     Ok((start_block, copy_block))
 }
