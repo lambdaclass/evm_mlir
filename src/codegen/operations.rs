@@ -121,15 +121,7 @@ fn codegen_callvalue<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
-    //This may be refactored to use constant_value_from_i64 util function
-    let pointer_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
 
     let callvalue_ptr = ok_block
         .append_operation(llvm::alloca(
@@ -3147,15 +3139,7 @@ fn codegen_gasprice<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
-    //This may be refactored to use constant_value_from_i64 util function
-    let pointer_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
 
     let gasprice_ptr = ok_block
         .append_operation(llvm::alloca(
