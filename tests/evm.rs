@@ -7,11 +7,7 @@ use evm_mlir::{
 };
 use num_bigint::BigUint;
 
-fn run_program_assert_result(
-    mut operations: Vec<Operation>,
-    mut env: Env,
-    expected_result: BigUint,
-) {
+fn run_program_assert_result(mut operations: Vec<Operation>, env: Env, expected_result: BigUint) {
     operations.extend([
         Operation::Push0,
         Operation::Mstore,
@@ -20,7 +16,6 @@ fn run_program_assert_result(
         Operation::Return,
     ]);
     let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
     let mut evm = Evm::new(env, program);
     let result = evm.transact();
     assert!(&result.is_success());
@@ -28,9 +23,8 @@ fn run_program_assert_result(
     assert_eq!(result_data, expected_result);
 }
 
-fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
+fn run_program_assert_halt(operations: Vec<Operation>, env: Env) {
     let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
     let mut evm = Evm::new(env, program);
     let result = evm.transact();
     assert!(result.is_halt());
@@ -433,9 +427,8 @@ fn callvalue_happy_path() {
     let operations = vec![Operation::Callvalue];
     let mut env = Env::default();
     env.tx.value = EU256::from(callvalue);
-
+    env.tx.gas_limit = 999_999;
     let expected_result = BigUint::from(callvalue);
-
     run_program_assert_result(operations, env, expected_result);
 }
 
@@ -451,6 +444,34 @@ fn callvalue_gas_check() {
 fn callvalue_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Callvalue);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn gaslimit_happy_path() {
+    let gaslimit: u64 = 300;
+    let operations = vec![Operation::Gaslimit];
+    let mut env = Env::default();
+    env.tx.gas_limit = gaslimit;
+    let expected_result = BigUint::from(gaslimit);
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn gaslimit_gas_check() {
+    let operations = vec![Operation::Gaslimit];
+    let needed_gas = gas_cost::GASLIMIT;
     let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn gaslimit_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Gaslimit);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
     run_program_assert_halt(program, env);
 }
