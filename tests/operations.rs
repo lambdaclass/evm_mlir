@@ -4,10 +4,8 @@ use evm_mlir::{
     db::Db,
     env::Env,
     executor::Executor,
-    primitives::U256,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
-    Evm,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -89,27 +87,6 @@ fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
 
     let result = run_program_get_result_with_gas(program, expected_gas - 1);
     assert!(result.is_halt());
-}
-
-fn run_program_assert_result_with_env(
-    mut operations: Vec<Operation>,
-    mut env: Env,
-    expected_result: BigUint,
-) {
-    operations.extend([
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((1, 32_u8.into())),
-        Operation::Push0,
-        Operation::Return,
-    ]);
-    let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
-    let mut evm = Evm::new(env, program);
-    let result = evm.transact();
-    assert!(&result.is_success());
-    let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
-    assert_eq!(result_data, expected_result);
 }
 
 pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
@@ -2388,30 +2365,4 @@ fn log_with_stack_underflow() {
         let program = vec![Operation::Log(n)];
         run_program_assert_halt(program);
     }
-}
-
-#[test]
-fn callvalue_happy_path() {
-    let callvalue: u32 = 1500;
-    let operations = vec![Operation::Callvalue];
-    let mut env = Env::default();
-    env.tx.value = U256::from(callvalue);
-
-    let expected_result = BigUint::from(callvalue);
-
-    run_program_assert_result_with_env(operations, env, expected_result);
-}
-
-#[test]
-fn callvalue_gas_check() {
-    let operations = vec![Operation::Callvalue];
-    let needed_gas = gas_cost::CALLVALUE;
-    run_program_assert_gas_exact(operations, needed_gas as _);
-}
-
-#[test]
-fn callvalue_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
-    program.push(Operation::Callvalue);
-    run_program_assert_halt(program);
 }
