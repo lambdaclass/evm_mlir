@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 
-use db::Db;
+use builder::EvmBuilder;
+use db::{Database, Db, EmptyDb};
 use executor::Executor;
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
 
 use crate::context::Context;
 
+pub mod builder;
 pub mod codegen;
 pub mod constants;
 pub mod context;
@@ -18,14 +20,22 @@ pub mod module;
 pub mod program;
 pub mod syscall;
 pub mod utils;
-
 pub use env::Env;
 
 #[derive(Debug)]
-pub struct Evm {
+pub struct Evm<DB: Database> {
     pub env: Env,
     pub program: Program,
-    pub db: Db,
+    pub db: DB,
+}
+// mantener el mismo new de antes, copiar el builder y todo lo que haga falta (que sea publico de ahi). Los generics no hace falta.s
+// implementar una emptyDb
+
+impl<'a> Evm<EmptyDB> {
+    /// Returns evm builder with empty database and empty external context.
+    pub fn builder() -> EvmBuilder<EmptyDB> {
+        EvmBuilder::default()
+    }
 }
 
 impl Evm {
