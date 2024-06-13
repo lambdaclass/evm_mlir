@@ -146,8 +146,6 @@ fn codegen_exp<'c, 'r>(
     let base = stack_pop(context, &ok_block)?;
     let exponent = stack_pop(context, &ok_block)?;
 
-    //consume_gas_as_value(context, block, total_gas_cost)?;
-
     let result = ok_block
         .append_operation(ods::math::ipowi(context, base, exponent, location).into())
         .result(0)?
@@ -188,7 +186,7 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
-    let gas_value = ok_block.append_operation(
+    let dynamic_gas_cost = ok_block.append_operation(
         arith::muli(
             number_of_bytes_plus_one,
             constant_value_from_i64(context, &ok_block, 50)?,
@@ -196,7 +194,25 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
-    consume_gas_as_value(context, &ok_block, gas_value)?;
+    let total_gas_cost = ok_block.append_operation(
+        arith::addi(
+            constant_value_from_i64(context, &ok_block, 10)?,
+            dynamic_gas_cost,
+            location,
+        ),
+    ).result(0)?.into();
+
+    let uint64 = IntegerType::new(context, 64);
+    //truncate it to 64 bits
+    let total_gas_cost = ok_block.append_operation(
+        arith::trunci(
+            total_gas_cost,
+            uint64.into(),
+            location,
+        ),
+    ).result(0)?.into();
+
+    consume_gas_as_value(context, &ok_block, total_gas_cost)?;
 
     stack_push(context, &ok_block, result)?;
 
