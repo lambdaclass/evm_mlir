@@ -608,4 +608,13 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+
+    #[allow(unused)]
+    pub(crate) fn get_address_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_address_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
 }
