@@ -3125,7 +3125,7 @@ fn codegen_gaslimit<'c, 'r>(
 
     // Check there's enough elements in stack
     let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::CALLVALUE)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GASLIMIT)?;
 
     let ok_flag = start_block
         .append_operation(arith::andi(stack_size_flag, gas_flag, location))
