@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage check-ethtests
+.PHONY: check-deps deps lint fmt test usage check-ethtests revm-comparison build-revm-comparison
 
 #
 # Environment detection.
@@ -54,16 +54,35 @@ fmt:
 	cargo fmt --all
 
 test:
-	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
+	cargo nextest run --workspace --all-features
 
-test-eth: check-ethtests
-	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+revm-comparison:
+	$(MAKE) build-revm-comparison
+	@echo
+	@printf "%s" "evm_mlir_factorial result: "
+	@target/release/evm_mlir_factorial 1
+	@printf "%s" "revm_factorial result: "
+	@target/release/revm_factorial 1
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
+		-n "revm_factorial" "target/release/revm_factorial 100000"
+	@echo
+	@printf "%s" "evm_mlir_fibonacci result: "
+	@target/release/evm_mlir_fibonacci 1
+	@printf "%s" "revm_fibonacci result: "
+	@target/release/revm_fibonacci 1
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
+		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
+	@echo
 
-check-ethtests:
-	@if [ ! -d "ethtests" ]; then \
-		$(MAKE) ethtests; \
-	fi
-
+build-revm-comparison:
+	cd bench/revm_comparison && \
+		cargo build --release \
+		--bin evm_mlir_factorial \
+		--bin revm_factorial \
+		--bin evm_mlir_fibonacci \
+		--bin revm_fibonacci
 
 ###### Ethereum tests ######
 

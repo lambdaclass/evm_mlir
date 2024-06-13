@@ -1,5 +1,4 @@
-#[derive(Clone, Debug, Default)]
-pub struct Address(pub [u8; 20]);
+use ethereum_types::Address;
 
 #[derive(Clone, Debug, Default)]
 pub struct Env {
