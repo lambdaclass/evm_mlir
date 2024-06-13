@@ -8,11 +8,12 @@ UNAME := $(shell uname)
 
 usage:
 	@echo "Usage:"
-	@echo "    deps:         Installs the necessary dependencies."
-	@echo "    test:         Runs all tests except Ethereum tests."
+	@echo "    deps:         	Installs the necessary dependencies."
+	@echo "    test:         	Runs all tests except Ethereum tests."
 	@echo "    test-eth:     Runs only the Ethereum tests."
-	@echo "    fmt:          Formats all files."
-	@echo "    lint:         Checks format and runs lints."
+	@echo "    fmt:          	Formats all files."
+	@echo "    lint:         	Checks format and runs lints."
+	@echo "    revm-comparison:	Runs benchmarks."
 
 check-deps:
 	ifeq (, $(shell which cargo))
@@ -63,20 +64,20 @@ revm-comparison:
 	$(MAKE) build-revm-comparison
 	@echo
 	@printf "%s" "evm_mlir_factorial result: "
-	@target/release/evm_mlir_factorial 1
+	@target/release/evm_mlir_factorial 1 1000
 	@printf "%s" "revm_factorial result: "
-	@target/release/revm_factorial 1
+	@target/release/revm_factorial 1 1000
 	hyperfine -w 5 -r 10 -N \
-		-n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000" \
-		-n "revm_factorial" "target/release/revm_factorial 100000"
+		-n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000 1000" \
+		-n "revm_factorial" "target/release/revm_factorial 100000 1000"
 	@echo
 	@printf "%s" "evm_mlir_fibonacci result: "
-	@target/release/evm_mlir_fibonacci 1
+	@target/release/evm_mlir_fibonacci 1 1000
 	@printf "%s" "revm_fibonacci result: "
-	@target/release/revm_fibonacci 1
+	@target/release/revm_fibonacci 1 1000
 	hyperfine -w 5 -r 10 -N \
-		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000" \
-		-n "revm_fibonacci" "target/release/revm_fibonacci 100000"
+		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000 1000" \
+		-n "revm_fibonacci" "target/release/revm_fibonacci 100000 1000"
 	@echo
 
 build-revm-comparison:
