@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage revm-comparison build-revm-comparison
+.PHONY: check-deps deps lint fmt test usage check-ethtests revm-comparison build-revm-comparison
 
 #
 # Environment detection.
@@ -8,8 +8,9 @@ UNAME := $(shell uname)
 
 usage:
 	@echo "Usage:"
-	@echo "    deps:		 	Installs the necesarry dependencies."
-	@echo "    test:         	Runs all tests."
+	@echo "    deps:         	Installs the necessary dependencies."
+	@echo "    test:         	Runs all tests except Ethereum tests."
+	@echo "    test-eth:        Runs only the Ethereum tests."
 	@echo "    fmt:          	Formats all files."
 	@echo "    lint:         	Checks format and runs lints."
 	@echo "    revm-comparison:	Runs benchmarks."
@@ -29,13 +30,18 @@ check-deps:
 	endif
 		@echo "[make] LLVM is correctly set at $(MLIR_SYS_180_PREFIX)."
 
-deps:
+deps: install-nextest
 ifeq ($(UNAME), Linux)
 deps:
 endif
 ifeq ($(UNAME), Darwin)
 deps: deps-macos
 endif
+
+install-nextest:
+	@if ! command -v cargo-nextest > /dev/null; then \
+		cargo install cargo-nextest; \
+	fi
 
 deps-macos:
 	-brew install llvm@18 --quiet
@@ -49,7 +55,10 @@ fmt:
 	cargo fmt --all
 
 test:
-	cargo nextest run --workspace --all-features
+	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
+
+test-eth: check-ethtests
+	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
 
 revm-comparison:
 	$(MAKE) build-revm-comparison
