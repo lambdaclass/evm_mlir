@@ -111,7 +111,7 @@ fn codecopy() {
 #[test]
 fn codecopy_with_offset_out_of_bounds() {
     // copies to memory the bytecode from the 6th byte (offset = 6)
-    // so the result must be [RETURN, 0, ..., 0]
+    // so the result must be [CODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0, ..., 0]
     let size = 12_u8;
     let offset = 6_u8;
     let dest_offset = 0_u8;
@@ -119,10 +119,10 @@ fn codecopy_with_offset_out_of_bounds() {
         Operation::Push((1_u8, BigUint::from(size))),
         Operation::Push((1_u8, BigUint::from(offset))),
         Operation::Push((1_u8, BigUint::from(dest_offset))),
-        Operation::Codecopy,
+        Operation::Codecopy, // 6th byte
         Operation::Push((1_u8, BigUint::from(size))),
         Operation::Push((1_u8, BigUint::from(dest_offset))),
-        Operation::Return, // 11th byte
+        Operation::Return,
     ]
     .into();
 

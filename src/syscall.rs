@@ -89,7 +89,7 @@ impl ExecutionResult {
 pub struct SyscallContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    pub memory: Vec<u8>,
+    memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
     gas_remaining: Option<u64>,
@@ -180,15 +180,17 @@ impl SyscallContext {
         dest_offset: u32,
     ) {
         let code_size = self.program.len() as u32;
+        // if the offset is out of bounds then nothing is copied
         if code_offset >= code_size {
             return;
         }
+        // adjust the size so it does not go out of bounds
         let size: u32 = if code_offset + size > code_size {
             code_size - code_offset
         } else {
             size
         };
-
+        // copy the program into memory
         for (i, j) in (code_offset..code_offset + size).enumerate() {
             self.memory[dest_offset as usize + i] = self.program[j as usize];
         }
