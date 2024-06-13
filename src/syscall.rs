@@ -264,9 +264,9 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.calldata.as_ptr()
     }
-    
-    pub extern "C" fn get_address(&self) -> U256 {
-        self.env.tx.get_address()
+
+    pub extern "C" fn get_address(&mut self) -> *const u8 {
+        self.env.tx.get_address().as_ptr()
     }
 }
 
@@ -367,7 +367,7 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
-        let uint256 = IntegerType::new(context, 256).into();
+        //let uint256 = IntegerType::new(context, 256).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
@@ -483,7 +483,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint256]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -692,12 +692,13 @@ pub(crate) mod mlir {
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint256 = IntegerType::new(mlir_ctx, 256);
+        let ptr_type = pointer(mlir_ctx, 0);
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ADDRESS),
                 &[syscall_ctx],
-                &[uint256.into()],
+                &[ptr_type],
                 location,
             ))
             .result(0)?;

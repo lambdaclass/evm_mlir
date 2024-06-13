@@ -3050,9 +3050,9 @@ fn codegen_address<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-
     let flag = check_stack_has_space_for(context, &start_block, 1)?;
-
+    let uint160 = IntegerType::new(context, 160);
+    let uint256 = IntegerType::new(context, 256);
     let gas_flag = consume_gas(context, &start_block, gas_cost::ADDRESS)?;
 
     let condition = start_block
@@ -3072,10 +3072,25 @@ fn codegen_address<'c, 'r>(
         location,
     ));
 
-    let address = op_ctx.get_address_syscall(&ok_block, location)?;
+    let address_ptr = op_ctx.get_address_syscall(&ok_block, location)?;
+
+    let address = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint160.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    let address = ok_block
+        .append_operation(arith::extui(address, uint256.into(), location))
+        .result(0)?
+        .into();
 
     stack_push(context, &ok_block, address)?;
-    //let zero_constant = constant_value_from_i64(context, &ok_block, 32)?;
-    //stack_push(context, &ok_block, zero_constant)?;
     Ok((start_block, ok_block))
 }
