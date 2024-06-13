@@ -20,7 +20,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
     let mut env: Env = Default::default();
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0x00; 32].into();
