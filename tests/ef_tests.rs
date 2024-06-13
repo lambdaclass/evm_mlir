@@ -140,7 +140,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
         let env = Env::default();
         let program = Program::from_bytecode(&account.code)?;
-        let evm = Evm::new(env, program);
+        let mut evm = Evm::new(env, program);
         // // TODO: check the result
         let _result = evm.transact();
     }

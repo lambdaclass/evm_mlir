@@ -10,7 +10,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Region, Value,
+        Block, Location, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -421,6 +421,10 @@ pub fn stack_push<'ctx>(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
+    //Check that the value to push is 256 bits wide.
+    let uint256 = IntegerType::new(context, 256);
+    debug_assert!(value.r#type().eq(&uint256.into()));
+
     // Get address of stack pointer global
     let stack_ptr_ptr = block
         .append_operation(llvm_mlir::addressof(
@@ -441,8 +445,6 @@ pub fn stack_push<'ctx>(
             LoadStoreOptions::default(),
         ))
         .result(0)?;
-
-    let uint256 = IntegerType::new(context, 256);
 
     // Store value at stack pointer
     let res = block.append_operation(llvm::store(

@@ -19,7 +19,7 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::env::Env;
+use crate::{db::Db, env::Env};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -99,9 +99,8 @@ impl ExecutionResult {
     }
 }
 
-/// The context passed to syscalls
 #[derive(Debug, Default)]
-pub struct SyscallContext {
+pub struct InnerContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
     memory: Vec<u8>,
@@ -109,11 +108,15 @@ pub struct SyscallContext {
     return_data: Option<(usize, usize)>,
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
-    /// The execution environment. It contains chain, block, and tx data.
-    #[allow(unused)]
-    pub env: Env,
-    #[allow(unused)]
     logs: Vec<Log>,
+}
+
+/// The context passed to syscalls
+#[derive(Debug)]
+pub struct SyscallContext<'c> {
+    pub env: Env,
+    pub db: &'c mut Db,
+    pub inner_context: InnerContext,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -123,27 +126,33 @@ pub struct Log {
 }
 
 /// Accessors for disponibilizing the execution results
-impl SyscallContext {
-    pub fn with_env(env: Env) -> Self {
+impl<'c> SyscallContext<'c> {
+    pub fn new(env: Env, db: &'c mut Db) -> Self {
         Self {
             env,
-            ..Self::default()
+            db,
+            inner_context: Default::default(),
         }
     }
+
     pub fn return_values(&self) -> &[u8] {
         // TODO: maybe initialize as (0, 0) instead of None
-        let (offset, size) = self.return_data.unwrap_or((0, 0));
-        &self.memory[offset..offset + size]
+        let (offset, size) = self.inner_context.return_data.unwrap_or((0, 0));
+        &self.inner_context.memory[offset..offset + size]
     }
 
     pub fn get_result(&self) -> ExecutionResult {
-        let gas_remaining = self.gas_remaining.unwrap_or(0);
-        let exit_status = self.exit_status.clone().unwrap_or(ExitStatusCode::Default);
+        let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
+        let exit_status = self
+            .inner_context
+            .exit_status
+            .clone()
+            .unwrap_or(ExitStatusCode::Default);
         match exit_status {
             ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
                 return_data: self.return_values().to_vec(),
                 gas_remaining,
-                logs: self.logs.to_owned(),
+                logs: self.inner_context.logs.to_owned(),
             },
             ExitStatusCode::Revert => ExecutionResult::Revert {
                 return_data: self.return_values().to_vec(),
@@ -158,7 +167,7 @@ impl SyscallContext {
 ///
 /// Note that each function is marked as `extern "C"`, which is necessary for the
 /// function to be callable from the generated code.
-impl SyscallContext {
+impl<'c> SyscallContext<'c> {
     pub extern "C" fn write_result(
         &mut self,
         offset: u32,
@@ -166,9 +175,9 @@ impl SyscallContext {
         remaining_gas: u64,
         execution_result: u8,
     ) {
-        self.return_data = Some((offset as usize, bytes_len as usize));
-        self.gas_remaining = Some(remaining_gas);
-        self.exit_status = Some(ExitStatusCode::from_u8(execution_result));
+        self.inner_context.return_data = Some((offset as usize, bytes_len as usize));
+        self.inner_context.gas_remaining = Some(remaining_gas);
+        self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
@@ -181,13 +190,17 @@ impl SyscallContext {
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
-        if new_size <= self.memory.len() {
-            return self.memory.as_mut_ptr();
+        if new_size <= self.inner_context.memory.len() {
+            return self.inner_context.memory.as_mut_ptr();
         }
-        match self.memory.try_reserve(new_size - self.memory.len()) {
+        match self
+            .inner_context
+            .memory
+            .try_reserve(new_size - self.inner_context.memory.len())
+        {
             Ok(()) => {
-                self.memory.resize(new_size, 0);
-                self.memory.as_mut_ptr()
+                self.inner_context.memory.resize(new_size, 0);
+                self.inner_context.memory.as_mut_ptr()
             }
             // TODO: use tracing here
             Err(err) => {
@@ -247,10 +260,10 @@ impl SyscallContext {
     fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
         let offset = offset as usize;
         let size = size as usize;
-        let data: Vec<u8> = self.memory[offset..offset + size].into();
+        let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
 
         let log = Log { data, topics };
-        self.logs.push(log);
+        self.inner_context.logs.push(log);
     }
 }
 

@@ -329,7 +329,7 @@ fn codegen_exp<'c, 'r>(
     let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
-        .append_operation(ods::math::ipowi(context, rhs, lhs, location).into())
+        .append_operation(ods::math::ipowi(context, lhs, rhs, location).into())
         .result(0)?
         .into();
 
@@ -460,8 +460,8 @@ fn codegen_gt<'c, 'r>(
         location,
     ));
 
-    let rhs = stack_pop(context, &ok_block)?;
     let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
         .append_operation(arith::cmpi(
@@ -471,6 +471,13 @@ fn codegen_gt<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
@@ -562,6 +569,13 @@ fn codegen_lt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -609,6 +623,13 @@ fn codegen_sgt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -652,6 +673,13 @@ fn codegen_eq<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
@@ -2497,6 +2525,13 @@ fn codegen_slt<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
