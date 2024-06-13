@@ -36,7 +36,7 @@ pub enum Opcode {
     // unused 0x21-0x2F
     // ADDRESS = 0x30,
     // BALANCE = 0x31,
-    // ORIGIN = 0x32,
+    ORIGIN = 0x32,
     // CALLER = 0x33,
     CALLVALUE = 0x34,
     CALLDATALOAD = 0x35,
@@ -350,6 +350,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    Origin,
 }
 
 impl Operation {
@@ -409,6 +410,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::Origin => vec![Opcode::ORIGIN as u8],
         }
     }
 }
@@ -711,6 +713,8 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::ORIGIN => Operation::Origin,
+
             };
             operations.push(op);
             pc += 1;
