@@ -1,3 +1,6 @@
+[workspace]
+members = ["bench/revm_comparison"]
+
 [package]
 name = "evm_mlir"
 version = "0.1.0"

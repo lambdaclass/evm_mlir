@@ -1,11 +1,13 @@
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
+    db::Db,
+    env::Env,
     executor::Executor,
     primitives::U256,
     program::{Operation, Program},
     syscall::{ExecutionResult, SyscallContext},
-    Env, Evm,
+    Evm,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -28,7 +30,9 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module);
 
-    let mut context = SyscallContext::default();
+    let env = Env::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
 
     let _result = executor.execute(&mut context, initial_gas);
 
@@ -101,7 +105,7 @@ fn run_program_assert_result_with_env(
     ]);
     let program = Program::from(operations);
     env.tx.gas_limit = 999_999;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
     let result = evm.transact();
     assert!(&result.is_success());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());

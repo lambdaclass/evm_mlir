@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use evm_mlir::{context::Context, executor::Executor, program::Program, syscall::SyscallContext};
+use evm_mlir::{
+    context::Context, db::Db, env::Env, executor::Executor, program::Program,
+    syscall::SyscallContext,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -23,7 +26,9 @@ fn main() {
 
     let executor = Executor::new(&module);
 
-    let mut context = SyscallContext::default();
+    let env = Env::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
 
     let initial_gas = 1000;
 

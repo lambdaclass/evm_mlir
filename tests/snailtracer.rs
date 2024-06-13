@@ -21,7 +21,7 @@ fn snailtracer() {
     env.tx.caller = Address::from_slice(&caller_address);
     env.tx.transact_to = TransactTo::Call(Address::zero());
 
-    let evm = Evm::new(env, program.expect("Error parsing opcodes"));
+    let mut evm = Evm::new(env, program.expect("Error parsing opcodes"));
 
     let _ = evm.transact();
 }
