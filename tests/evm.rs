@@ -457,7 +457,7 @@ fn callvalue_stack_overflow() {
 
 #[test]
 fn caller_happy_path() {
-    let caller = &[0x30; 160];
+    let caller = &[0x30; 20];
     let operations = vec![Operation::Caller];
     let mut env = Env::default();
     env.tx.caller = Address::from_slice(caller);
