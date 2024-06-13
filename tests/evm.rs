@@ -57,7 +57,7 @@ fn fibonacci_example() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -92,7 +92,7 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0x00; 64].into();
     env.tx.calldata[31] = 1;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -129,7 +129,7 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0x00; 32].into();
     env.tx.calldata[31] = 1;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -165,7 +165,7 @@ fn calldataload_with_offset_greater_than_calldata_size() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.calldata = [0xff; 32].into();
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -194,7 +194,7 @@ fn log0() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -230,7 +230,7 @@ fn log1() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -269,7 +269,7 @@ fn log2() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -311,7 +311,7 @@ fn log3() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -360,7 +360,7 @@ fn log4() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
