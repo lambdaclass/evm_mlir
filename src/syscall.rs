@@ -187,6 +187,23 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_caller_ptr(&self, value: &mut U256) {
+        let bytes = &self.env.tx.caller.to_fixed_bytes();
+        let low: [u8; 16] = bytes[0..16].try_into().unwrap();
+        let high: [u8; 16] = [&bytes[16..20], &[0u8; 12]].concat().try_into().unwrap();
+
+        // We have to check the system endianess in order to correctly construct a u128 from bytes
+        // We don't want the bytes order to be modified
+        if cfg!(target_endian = "little") {
+            value.lo = u128::from_le_bytes(low);
+            value.hi = u128::from_le_bytes(high);
+        } else {
+            value.lo = u128::from_be_bytes(low);
+            value.hi = u128::from_be_bytes(high);
+        };
+    }
+
     pub extern "C" fn get_calldata_size(&self) -> u32 {
         self.env.tx.data.len() as u32
     }
@@ -284,6 +301,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const STORE_IN_CALLER_PTR: &str = "evm_mlir__store_in_caller_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -345,6 +363,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
+        engine.register_symbol(
+            symbols::STORE_IN_CALLER_PTR,
+            SyscallContext::store_in_caller_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
     };
 }
 
@@ -403,6 +425,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_CALLER_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -544,6 +575,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
             &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn store_in_caller_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        caller_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLER_PTR),
+            &[syscall_ctx, caller_ptr],
             &[],
             location,
         ));
