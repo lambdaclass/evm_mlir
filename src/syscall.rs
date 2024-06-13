@@ -264,7 +264,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.calldata.as_ptr()
     }
-
+    
     pub extern "C" fn get_address(&self) -> U256 {
         self.env.tx.get_address()
     }
@@ -483,7 +483,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[], &[uint256]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint256]).into()),
             Region::new(),
             attributes,
             location,
