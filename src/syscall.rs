@@ -268,6 +268,23 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_address(&mut self) -> *const u8 {
         self.env.tx.get_address().as_ptr()
     }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_address_ptr(&self, value: &mut U256) {
+        let bytes = &self.env.tx.to.to_fixed_bytes();
+        let low: [u8; 16] = bytes[0..16].try_into().unwrap();
+        let high: [u8; 16] = [&bytes[16..20], &[0u8; 12]].concat().try_into().unwrap();
+
+        // We have to check the system endianess in order to correctly construct a u128 from bytes
+        // We don't want the bytes order to be modified
+        if cfg!(target_endian = "little") {
+            value.lo = u128::from_le_bytes(low);
+            value.hi = u128::from_le_bytes(high);
+        } else {
+            value.lo = u128::from_be_bytes(low);
+            value.hi = u128::from_be_bytes(high);
+        };
+    }
 }
 
 pub mod symbols {
@@ -281,6 +298,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const GET_ADDRESS: &str = "evm_mlir__get_address";
+    pub const STORE_IN_ADDRESS_PTR: &str = "evm_mlir__store_in_address_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -341,6 +359,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_ADDRESS,
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_ADDRESS_PTR,
+            SyscallContext::get_calldata_size as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -484,6 +506,14 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_ADDRESS_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -703,5 +733,21 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    pub(crate) fn store_in_address_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        address_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_ADDRESS_PTR),
+            &[syscall_ctx, address_ptr],
+            &[],
+            location,
+        ));
     }
 }

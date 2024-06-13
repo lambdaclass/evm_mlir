@@ -617,4 +617,19 @@ impl<'c> OperationCtx<'c> {
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_address_syscall(self.mlir_context, self.syscall_ctx, block, location)
     }
+
+    pub(crate) fn store_in_address_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        address_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_address_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            address_ptr,
+        )
+    }
 }

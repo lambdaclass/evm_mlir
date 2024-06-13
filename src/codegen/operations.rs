@@ -3,12 +3,13 @@ use melior::{
         arith,
         arith::CmpiPredicate,
         cf,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        attribute::{IntegerAttribute, TypeAttribute},
+        r#type::IntegerType,
+        Attribute, Block, BlockRef, Location, Region,
     },
 };
 
@@ -3071,7 +3072,7 @@ fn codegen_address<'c, 'r>(
         &[],
         location,
     ));
-
+    /*
     let address_ptr = op_ctx.get_address_syscall(&ok_block, location)?;
 
     let address = ok_block
@@ -3088,6 +3089,47 @@ fn codegen_address<'c, 'r>(
 
     let address = ok_block
         .append_operation(arith::extui(address, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, address)?;
+
+        */
+    //
+
+    let ptr_type = pointer(context, 0);
+
+    //This may be refactored to use constant_value_from_i64 util function
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let address_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_address_ptr(&ok_block, location, address_ptr);
+
+    let address = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
         .result(0)?
         .into();
 

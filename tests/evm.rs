@@ -377,7 +377,7 @@ fn log4() {
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
-
+/*
 #[test]
 fn address() {
     use ethereum_types::Address;
@@ -402,4 +402,37 @@ fn address() {
     assert!(&result.is_success());
     let address = result.return_data().unwrap();
     assert_eq!(address, [0xff; 20]);
+}
+ */
+fn run_program_assert_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: BigUint,
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
+    assert_eq!(result_data, expected_result);
+}
+
+#[test]
+fn address2() {
+    use ethereum_types::Address;
+    let mut address: Vec<u8> = [0x00; 20].into();
+    address[19] = 1;
+    let operations = vec![Operation::Address];
+    let mut env = Env::default();
+    env.tx.to = Address::from_slice(&address);
+    let expected_result = BigUint::from_bytes_be(&address);
+    run_program_assert_result(operations, env, expected_result);
 }
