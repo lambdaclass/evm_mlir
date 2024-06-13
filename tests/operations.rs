@@ -26,7 +26,7 @@ fn run_program_get_result_with_gas(
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
 
     let env = Env::default();
     let mut db = Db::default();
