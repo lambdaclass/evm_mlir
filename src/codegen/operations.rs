@@ -151,16 +151,19 @@ fn codegen_exp<'c, 'r>(
         .result(0)?
         .into();
 
-    //TODO: compute dynamic gas cost depending of the size in bytes of the exponent
-    //dynamic_gas = 50 * exponent_byte_size
+    // TODO: compute dynamic gas cost depending on the size in bytes of the exponent
+    // dynamic_gas = 50 * exponent_byte_size
     let result_type = IntegerType::new(context, 256);
-    let leading_zeros = ok_block.
-        append_operation(llvm::intr_ctlz(
+    let leading_zeros = ok_block
+        .append_operation(llvm::intr_ctlz(
             context, 
             exponent, 
             false, 
             result_type.into(), 
-            location).into()).result(0)?.into();
+            location
+        ).into())
+        .result(0)?
+        .into();
 
     let number_of_bits = ok_block.append_operation(
         arith::subi(
@@ -170,25 +173,26 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
-    let number_of_bytes = ok_block.append_operation(
-        arith::divui(
+    // Correct calculation of number of bytes required to represent the exponent
+    let bits_with_offset = ok_block.append_operation(
+        arith::addi(
             number_of_bits,
-            constant_value_from_i64(context, &ok_block, 8)?,
+            constant_value_from_i64(context, &ok_block, 7)?,
             location,
         ),
     ).result(0)?.into();
 
-    let number_of_bytes_plus_one = ok_block.append_operation(
-        arith::addi(
-            number_of_bytes,
-            constant_value_from_i64(context, &ok_block, 1)?,
+    let number_of_bytes = ok_block.append_operation(
+        arith::divui(
+            bits_with_offset,
+            constant_value_from_i64(context, &ok_block, 8)?,
             location,
         ),
     ).result(0)?.into();
 
     let dynamic_gas_cost = ok_block.append_operation(
         arith::muli(
-            number_of_bytes_plus_one,
+            number_of_bytes,
             constant_value_from_i64(context, &ok_block, 50)?,
             location,
         ),
@@ -203,7 +207,7 @@ fn codegen_exp<'c, 'r>(
     ).result(0)?.into();
 
     let uint64 = IntegerType::new(context, 64);
-    //truncate it to 64 bits
+    // truncate it to 64 bits
     let total_gas_cost = ok_block.append_operation(
         arith::trunci(
             total_gas_cost,
@@ -212,8 +216,8 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
-    consume_gas_as_value(context, &ok_block, total_gas_cost)?;
 
+    consume_gas_as_value(context, &ok_block, total_gas_cost)?;
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
