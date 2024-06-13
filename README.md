@@ -39,6 +39,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
+1. (0x30) ADDRESS
 1. (0x35) CALLDATALOAD
 1. (0x36) CALLDATASIZE
 1. (0x38) CODESIZE
@@ -133,7 +134,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
 1. (0x19) NOT
 1. (0x20) KECCAK256
-1. (0x30) ADDRESS
 1. (0x31) BALANCE
 1. (0x32) ORIGIN
 1. (0x33) CALLER

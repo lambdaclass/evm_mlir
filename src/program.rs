@@ -34,7 +34,7 @@ pub enum Opcode {
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
     // unused 0x21-0x2F
-    // ADDRESS = 0x30,
+    ADDRESS = 0x30,
     // BALANCE = 0x31,
     // ORIGIN = 0x32,
     // CALLER = 0x33,
@@ -293,6 +293,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -348,6 +349,7 @@ pub enum Operation {
     Log(u8),
     CalldataLoad,
     CallDataSize,
+    Address,
 }
 
 impl Operation {
@@ -406,6 +408,7 @@ impl Operation {
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
             Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
+            Operation::Address => vec![Opcode::ADDRESS as u8],
         }
     }
 }
@@ -707,6 +710,7 @@ impl Program {
                 Opcode::LOG4 => Operation::Log(4),
                 Opcode::CALLDATALOAD => Operation::CalldataLoad,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
+                Opcode::ADDRESS => Operation::Address,
             };
             operations.push(op);
             pc += 1;
