@@ -60,4 +60,9 @@ pub mod gas_cost {
             (last_memory_size_word * last_memory_size_word) / 512 + (3 * last_memory_size_word);
         (new_memory_cost - last_memory_cost).into()
     }
+
+    pub fn codecopy_dynamic_gas_cost(size: u32) -> i64 {
+        let minimum_word_size = (size + 31) / 32;
+        (minimum_word_size * 3) as i64
+    }
 }
