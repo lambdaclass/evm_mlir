@@ -377,3 +377,29 @@ fn log4() {
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
+
+#[test]
+fn address() {
+    use ethereum_types::Address;
+    let offset = 0_u8;
+    let size = 32_u8;
+    let program = vec![
+        Operation::Address,
+        Operation::Push((1_u8, offset.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, offset.into())),
+        Operation::Push((1_u8, size.into())),
+        Operation::Return,
+    ];
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.to = Address::from_slice(&[0xff; 20]);
+    let mut evm = Evm::new(env, program.into());
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let address = result.return_data().unwrap();
+    assert_eq!(address, [0xff; 20]);
+}
