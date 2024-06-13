@@ -13,9 +13,10 @@ fn main() {
     }
 
     let mut env = Env::default();
-    env.tx.gas_limit = 1000;
+    let initial_gas = 1000;
+    env.tx.gas_limit = initial_gas;
 
-    let evm = Evm::new(env, program.unwrap());
+    let mut evm = Evm::new(env, program.unwrap());
 
     let result = evm.transact();
 

@@ -1,15 +1,16 @@
 use melior::{
     dialect::{
-        arith::{self, CmpiPredicate},
+        arith,
+        arith::CmpiPredicate,
         cf, func,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::{DenseI32ArrayAttribute, IntegerAttribute},
+        attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Region, Value,
+        Block, Location, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -126,6 +127,92 @@ pub fn consume_gas<'ctx>(
     Ok(flag.into())
 }
 
+pub fn get_stack_pointer<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<Value<'ctx, 'ctx>, CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(stack_ptr)
+}
+
+pub fn inc_stack_pointer<'ctx>(
+    context: &'ctx MeliorContext,
+    block: &'ctx Block,
+) -> Result<(), CodegenError> {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+
+    // Get address of stack pointer global
+    let stack_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            STACK_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Load stack pointer
+    let stack_ptr = block
+        .append_operation(llvm::load(
+            context,
+            stack_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    let uint256 = IntegerType::new(context, 256);
+    // Increment stack pointer
+    let new_stack_ptr = block
+        .append_operation(llvm::get_element_ptr(
+            context,
+            stack_ptr.into(),
+            DenseI32ArrayAttribute::new(context, &[1]),
+            uint256.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // Store incremented stack pointer
+    let res = block.append_operation(llvm::store(
+        context,
+        new_stack_ptr.into(),
+        stack_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    Ok(())
+}
+
 /// Returns true if there is enough Gas
 pub fn consume_gas_as_value<'ctx>(
     context: &'ctx MeliorContext,
@@ -184,6 +271,63 @@ pub fn consume_gas_as_value<'ctx>(
     ));
 
     Ok(flag.into())
+}
+
+// computes dynamic_gas = 375 * topic_count + 8 * size
+pub(crate) fn compute_log_dynamic_gas<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    nth: u8,
+    size: Value<'a, 'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint64 = IntegerType::new(context, 64);
+
+    let constant_375 = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 375).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_8 = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 8).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let topic_count = block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, nth as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let topic_count_x_375 = block
+        .append_operation(arith::muli(topic_count, constant_375, location))
+        .result(0)?
+        .into();
+    let size_x_8 = block
+        .append_operation(arith::muli(size, constant_8, location))
+        .result(0)?
+        .into();
+    let dynamic_gas = block
+        .append_operation(arith::addi(topic_count_x_375, size_x_8, location))
+        .result(0)?
+        .into();
+    let dynamic_gas = block
+        .append_operation(arith::trunci(dynamic_gas, uint64.into(), location))
+        .result(0)?
+        .into();
+    Ok(dynamic_gas)
 }
 
 pub fn stack_pop<'ctx>(
@@ -277,6 +421,10 @@ pub fn stack_push<'ctx>(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
 
+    //Check that the value to push is 256 bits wide.
+    let uint256 = IntegerType::new(context, 256);
+    debug_assert!(value.r#type().eq(&uint256.into()));
+
     // Get address of stack pointer global
     let stack_ptr_ptr = block
         .append_operation(llvm_mlir::addressof(
@@ -297,8 +445,6 @@ pub fn stack_push<'ctx>(
             LoadStoreOptions::default(),
         ))
         .result(0)?;
-
-    let uint256 = IntegerType::new(context, 256);
 
     // Store value at stack pointer
     let res = block.append_operation(llvm::store(
@@ -1110,6 +1256,50 @@ pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> Integer
 pub fn integer_constant_from_u8(context: &MeliorContext, value: u8) -> IntegerAttribute {
     let uint8 = IntegerType::new(context, 8);
     IntegerAttribute::new(uint8.into(), value.into())
+}
+/// Allocates memory for a 32-byte value, stores the value in the memory
+/// and returns a pointer to the value
+pub(crate) fn allocate_and_store_value<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    value: Value<'a, 'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32);
+    let uint256 = IntegerType::new(context, 256);
+
+    let number_of_elements = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let value_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint256.into()).into()),
+        ))
+        .result(0)?
+        .into();
+
+    block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default()
+            .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+    ));
+
+    Ok(value_ptr)
 }
 
 pub mod llvm_mlir {

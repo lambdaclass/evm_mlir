@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage
+.PHONY: check-deps deps lint fmt test usage revm-comparison build-revm-comparison
 
 #
 # Environment detection.
@@ -8,10 +8,11 @@ UNAME := $(shell uname)
 
 usage:
 	@echo "Usage:"
-	@echo "    deps:		 Installs the necesarry dependencies."
-	@echo "    test:         Runs all tests."
-	@echo "    fmt:          Formats all files."
-	@echo "    lint:         Checks format and runs lints."
+	@echo "    deps:		 	Installs the necesarry dependencies."
+	@echo "    test:         	Runs all tests."
+	@echo "    fmt:          	Formats all files."
+	@echo "    lint:         	Checks format and runs lints."
+	@echo "    revm-comparison:	Runs benchmarks."
 
 check-deps:
 	ifeq (, $(shell which cargo))
@@ -49,3 +50,46 @@ fmt:
 
 test:
 	cargo nextest run --workspace --all-features
+
+revm-comparison:
+	$(MAKE) build-revm-comparison
+	@echo
+	@printf "%s" "evm_mlir_factorial result: "
+	@target/release/evm_mlir_factorial 1 1000
+	@printf "%s" "revm_factorial result: "
+	@target/release/revm_factorial 1 1000
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_factorial" "target/release/evm_mlir_factorial 100000 1000" \
+		-n "revm_factorial" "target/release/revm_factorial 100000 1000"
+	@echo
+	@printf "%s" "evm_mlir_fibonacci result: "
+	@target/release/evm_mlir_fibonacci 1 1000
+	@printf "%s" "revm_fibonacci result: "
+	@target/release/revm_fibonacci 1 1000
+	hyperfine -w 5 -r 10 -N \
+		-n "evm_mlir_fibonacci" "target/release/evm_mlir_fibonacci 100000 1000" \
+		-n "revm_fibonacci" "target/release/revm_fibonacci 100000 1000"
+	@echo
+
+build-revm-comparison:
+	cd bench/revm_comparison && \
+		cargo build --release \
+		--bin evm_mlir_factorial \
+		--bin revm_factorial \
+		--bin evm_mlir_fibonacci \
+		--bin revm_fibonacci
+
+###### Ethereum tests ######
+
+ETHTEST_SHASUM := ".ethtest_shasum"
+ETHTEST_VERSION := $(shell cat .ethtest_version)
+ETHTEST_TAR := "ethtests-${ETHTEST_VERSION}.tar.gz"
+
+${ETHTEST_TAR}: .ethtest_version
+	curl -Lo ${ETHTEST_TAR} https://github.com/ethereum/tests/archive/refs/tags/${ETHTEST_VERSION}.tar.gz
+
+ethtests: ${ETHTEST_TAR}
+	mkdir -p "$@"
+	tar -xzmf "$<" --strip-components=1 -C "$@"
+	@cat ${ETHTEST_SHASUM}
+	sha256sum -c ${ETHTEST_SHASUM}
