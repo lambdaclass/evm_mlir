@@ -2771,18 +2771,30 @@ fn codegen_codecopy<'c, 'r>(
         .into();
 
     let required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
+        .append_operation(arith::addi(dest_offset, size, location))
         .result(0)?
         .into();
 
+    // consume 3 * (size + 31) / 32 gas
+    let dynamic_gas_cost = compute_codecopy_gas_cost(op_ctx, &ok_block, size_u256)?;
+    let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+
+    let memory_extension_block = region.append_block(Block::new(&[]));
     let copy_block = region.append_block(Block::new(&[]));
 
-    let dynamic_gas_cost = compute_codecopy_gas_cost(op_ctx, &ok_block, size_u256)?;
-    consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_extension_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     extend_memory(
         op_ctx,
-        &ok_block,
+        &memory_extension_block,
         &copy_block,
         region,
         required_size,
