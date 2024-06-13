@@ -2387,14 +2387,13 @@ fn log_with_stack_underflow() {
 }
 
 #[test]
-#[ignore]
 fn callvalue_happy_path() {
-    let calldata_value: u32 = 101;
+    let callvalue: u32 = 1500;
     let operations = vec![Operation::Callvalue];
     let mut env = Env::default();
-    env.tx.value = U256::from(calldata_value);
+    env.tx.value = U256::from(callvalue);
 
-    let expected_result = BigUint::from(calldata_value);
+    let expected_result = BigUint::from(callvalue);
 
     run_program_assert_result_with_env(operations, env, expected_result);
 }

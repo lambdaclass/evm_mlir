@@ -141,25 +141,20 @@ fn codegen_callvalue<'c, 'r>(
         .result(0)?
         .into();
 
-    op_ctx.store_in_callvalue_ptr(&ok_block, location, callvalue_ptr)?;
+    op_ctx.store_in_callvalue_ptr(&ok_block, location, callvalue_ptr);
 
-    // let callvalue = ok_block
-    //     .append_operation(llvm::load(
-    //         context,
-    //         callvalue_ptr,
-    //         ptr_type,
-    //         location,
-    //         LoadStoreOptions::default(),
-    //     ))
-    //     .result(0)?
-    //     .into();
-    //
-    // let extended_size = ok_block
-    //     .append_operation(arith::extui(callvalue, uint256.into(), location))
-    //     .result(0)?
-    //     .into();
-    //
-    // stack_push(context, &ok_block, extended_size)?;
+    let callvalue = ok_block
+        .append_operation(llvm::load(
+            context,
+            callvalue_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, callvalue)?;
 
     Ok((start_block, ok_block))
 }

@@ -390,7 +390,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -526,17 +526,14 @@ pub(crate) mod mlir {
         block: &'c Block,
         location: Location<'c>,
         callvalue_ptr: Value<'c, 'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
-                &[syscall_ctx, callvalue_ptr],
-                &[],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
+            &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
     }
 
     /// Extends the memory segment of the syscall context.
