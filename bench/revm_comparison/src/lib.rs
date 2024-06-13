@@ -8,6 +8,10 @@ use revm::{
 };
 use std::{hint::black_box, path::PathBuf};
 
+pub const FIBONACCI_BYTECODE: &str = "7f00000000000000000000000000000000000000000000000000000000000003e75f60015b82156039578181019150909160019003916024565b9150505f5260205ff3";
+pub const FACTORIAL_BYTECODE: &str =
+    "5f35600260025b8215601c57906001018091029160019003916006565b9150505f5260205ff3";
+
 pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
     let program = Program::from_bytecode(&bytes).unwrap();
