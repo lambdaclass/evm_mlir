@@ -24,7 +24,7 @@ fn main() {
         .compile(&program.unwrap(), &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
 
     let env = Env::default();
     let mut db = Db::default();
