@@ -24,11 +24,41 @@ use crate::{db::Db, env::Env};
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
+
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
 pub struct U256 {
     pub lo: u128,
     pub hi: u128,
+}
+
+impl std::fmt::Display for U256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        // Format as a single hexadecimal string
+        write!(f, "{:032x}{:032x}", self.hi, self.lo)
+    }
+}
+
+impl U256 {
+    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+        let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+        let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
+        U256 { hi, lo }
+    }
+
+    pub fn store_h160_in_u256(&mut self, value: &ethereum_types::H160) {
+        // Crear un buffer temporal de 32 bytes (256 bits) e inicializarlo con ceros
+        let mut buffer = [0u8; 32];
+
+        // Copiar los últimos 20 bytes del H160 en los últimos 20 bytes del buffer
+        buffer[12..32].copy_from_slice(&value.0);
+
+        // Interpretar los primeros 16 bytes como u128 para lo
+        self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
+
+        // Interpretar los siguientes 16 bytes como u128 para hi
+        self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -191,6 +221,12 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.len() as u32
     }
 
+
+    pub extern "C" fn get_origin(&self,address: &mut U256) { 
+        let aux: &ethereum_types::H160 = &self.env.tx.caller;
+        address.store_h160_in_u256(aux);   
+    }
+
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
         if new_size <= self.inner_context.memory.len() {
@@ -273,6 +309,7 @@ impl<'c> SyscallContext<'c> {
     }
 }
 
+
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
@@ -284,6 +321,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -342,6 +380,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
+            symbols::GET_ORIGIN,
+            SyscallContext::get_origin as *const fn(*mut c_void,*mut U256) as *mut (),
+        );
+        engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
@@ -370,7 +412,6 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
-        //let uint256 = IntegerType::new(context, 256).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
@@ -408,7 +449,6 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
@@ -478,6 +518,15 @@ pub(crate) mod mlir {
                 )
                 .into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_ORIGIN),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type,ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -681,6 +730,28 @@ pub(crate) mod mlir {
             location,
         ));
     }
+
+
+    pub(crate) fn get_origin_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address_pointer: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint256 = IntegerType::new(mlir_ctx, 256).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ORIGIN),
+                &[syscall_ctx,address_pointer],
+                &[uint256],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
     /// Returns a pointer to the calldata.
     #[allow(unused)]
     pub(crate) fn get_calldata_ptr_syscall<'c>(
@@ -701,4 +772,6 @@ pub(crate) mod mlir {
             .result(0)?;
         Ok(value.into())
     }
+
+
 }
