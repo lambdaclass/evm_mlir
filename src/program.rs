@@ -210,7 +210,6 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
             x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
             x if x == Opcode::CALLDATASIZE as u8 => Opcode::CALLDATASIZE,
-            x if x == Opcode::CALLDATASIZE as u8 => Opcode::CODESIZE,
             x if x == Opcode::CODESIZE as u8 => Opcode::CODESIZE,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::MLOAD as u8 => Opcode::MLOAD,
