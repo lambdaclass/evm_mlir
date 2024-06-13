@@ -156,69 +156,71 @@ fn codegen_exp<'c, 'r>(
     let result_type = IntegerType::new(context, 256);
     let leading_zeros = ok_block
         .append_operation(llvm::intr_ctlz(
-            context, 
-            exponent, 
-            false, 
-            result_type.into(), 
-            location
-        ).into())
+            context,
+            exponent,
+            false,
+            result_type.into(),
+            location,
+        ))
         .result(0)?
         .into();
 
-    let number_of_bits = ok_block.append_operation(
-        arith::subi(
+    let number_of_bits = ok_block
+        .append_operation(arith::subi(
             constant_value_from_i64(context, &ok_block, 256)?,
             leading_zeros,
             location,
-        ),
-    ).result(0)?.into();
+        ))
+        .result(0)?
+        .into();
 
     // Correct calculation of number of bytes required to represent the exponent
-    let bits_with_offset = ok_block.append_operation(
-        arith::addi(
+    let bits_with_offset = ok_block
+        .append_operation(arith::addi(
             number_of_bits,
             constant_value_from_i64(context, &ok_block, 7)?,
             location,
-        ),
-    ).result(0)?.into();
+        ))
+        .result(0)?
+        .into();
 
-    let number_of_bytes = ok_block.append_operation(
-        arith::divui(
+    let number_of_bytes = ok_block
+        .append_operation(arith::divui(
             bits_with_offset,
             constant_value_from_i64(context, &ok_block, 8)?,
             location,
-        ),
-    ).result(0)?.into();
+        ))
+        .result(0)?
+        .into();
 
-    let dynamic_gas_cost = ok_block.append_operation(
-        arith::muli(
+    let dynamic_gas_cost = ok_block
+        .append_operation(arith::muli(
             number_of_bytes,
             constant_value_from_i64(context, &ok_block, 50)?,
             location,
-        ),
-    ).result(0)?.into();
+        ))
+        .result(0)?
+        .into();
 
-    let total_gas_cost = ok_block.append_operation(
-        arith::addi(
+    let total_gas_cost = ok_block
+        .append_operation(arith::addi(
             constant_value_from_i64(context, &ok_block, 10)?,
             dynamic_gas_cost,
             location,
-        ),
-    ).result(0)?.into();
+        ))
+        .result(0)?
+        .into();
 
     let uint64 = IntegerType::new(context, 64);
     // truncate it to 64 bits
-    let total_gas_cost = ok_block.append_operation(
-        arith::trunci(
-            total_gas_cost,
-            uint64.into(),
-            location,
-        ),
-    ).result(0)?.into();
+    let total_gas_cost = ok_block
+        .append_operation(arith::trunci(total_gas_cost, uint64.into(), location))
+        .result(0)?
+        .into();
 
     let gas_flag = consume_gas_as_value(context, &ok_block, total_gas_cost)?;
     let enough_gas_block = region.append_block(Block::new(&[]));
-    
+
     ok_block.append_operation(cf::cond_br(
         context,
         gas_flag,

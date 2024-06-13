@@ -82,13 +82,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_exp_dynamic_gas_cost(){
+    fn test_exp_dynamic_gas_cost() {
         assert_eq!(gas_cost::exp_dynamic_cost(255), 60);
         assert_eq!(gas_cost::exp_dynamic_cost(256), 110);
         assert_eq!(gas_cost::exp_dynamic_cost(65536), 160);
         assert_eq!(gas_cost::exp_dynamic_cost(16777216), 210);
         assert_eq!(gas_cost::exp_dynamic_cost(4294967296), 260);
     }
-    
 }
-
