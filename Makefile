@@ -29,7 +29,7 @@ check-deps:
 	endif
 		@echo "[make] LLVM is correctly set at $(MLIR_SYS_180_PREFIX)."
 
-deps: check-deps install-nextest
+deps: install-nextest
 ifeq ($(UNAME), Linux)
 deps:
 endif
