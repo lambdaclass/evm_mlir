@@ -191,7 +191,7 @@ fn test_calldatacopy() {
     let mut env = Env::default();
     env.tx.calldata = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     env.tx.gas_limit = 1000;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -216,7 +216,7 @@ fn test_calldatacopy_zeros_padding() {
     let mut env = Env::default();
     env.tx.calldata = vec![0, 1, 2, 3, 4];
     env.tx.gas_limit = 1000;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -241,7 +241,7 @@ fn test_calldatacopy_memory_offset() {
     let mut env = Env::default();
     env.tx.calldata = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     env.tx.gas_limit = 1000;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -266,7 +266,7 @@ fn test_calldatacopy_calldataoffset() {
     let mut env = Env::default();
     env.tx.calldata = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     env.tx.gas_limit = 1000;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
 
@@ -292,7 +292,7 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     let mut env = Env::default();
     env.tx.calldata = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     env.tx.gas_limit = 1000;
-    let evm = Evm::new(env, program);
+    let mut evm = Evm::new(env, program);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
