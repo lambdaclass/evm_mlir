@@ -68,7 +68,7 @@ pub mod gas_cost {
     }
 
     pub fn exponent_byte_size(exponent: u64) -> u32 {
-        ((64 - (exponent.leading_zeros())) / 8) + 1
+        ((64 - exponent.leading_zeros()) + 7) / 8
     }
 
     pub fn exp_dynamic_cost(exponent: u64) -> u32 {
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_exp_dynamic_gas_cost(){
-        assert_eq!(gas_cost::exp_dynamic_cost(5), 60);
+        assert_eq!(gas_cost::exp_dynamic_cost(255), 60);
         assert_eq!(gas_cost::exp_dynamic_cost(256), 110);
         assert_eq!(gas_cost::exp_dynamic_cost(65536), 160);
         assert_eq!(gas_cost::exp_dynamic_cost(16777216), 210);

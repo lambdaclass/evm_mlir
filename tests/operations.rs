@@ -1731,9 +1731,9 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_256() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let expected_gas = gas_cost::PUSHN * 2 + (gas_cost::EXP + 50 * 1);
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(255) as i64;
     let result = run_program_get_result_with_gas(program, 1000);
-    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - expected_gas) as u64, logs: vec![] });
+    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - dynamic_gas_cost) as u64, logs: vec![] });
 }
 
 #[test]
@@ -1745,9 +1745,9 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_256() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let expected_gas = gas_cost::PUSHN * 2 + (gas_cost::EXP + 50 * 2);
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256) as i64;
     let result = run_program_get_result_with_gas(program, 1000);
-    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - expected_gas) as u64, logs: vec![] });
+    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - dynamic_gas_cost) as u64, logs: vec![] });
 }
 
 #[test]
@@ -1759,9 +1759,9 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_65536(){
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let expected_gas = gas_cost::PUSHN * 2 + (gas_cost::EXP + 50 * 2);
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65535) as i64;
     let result = run_program_get_result_with_gas(program, 1000);
-    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - expected_gas) as u64, logs: vec![] });
+    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - dynamic_gas_cost) as u64, logs: vec![] });
 }
 
 #[test]
@@ -1773,9 +1773,9 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_65536(){
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let expected_gas = gas_cost::PUSHN * 2 + (gas_cost::EXP + 50 * 3);
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65536) as i64;
     let result = run_program_get_result_with_gas(program, 1000);
-    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - expected_gas) as u64, logs: vec![] });
+    assert_eq!(result, ExecutionResult::Success{ return_data: vec![], gas_remaining: (1000 - dynamic_gas_cost) as u64, logs: vec![] });
 }
 
 #[test]
