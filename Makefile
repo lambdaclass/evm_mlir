@@ -1,4 +1,4 @@
-.PHONY: check-deps deps lint fmt test usage
+.PHONY: check-deps deps lint fmt test usage check-ethtests
 
 #
 # Environment detection.
@@ -13,7 +13,6 @@ usage:
 	@echo "    test-eth:     Runs only the Ethereum tests."
 	@echo "    fmt:          Formats all files."
 	@echo "    lint:         Checks format and runs lints."
-	@echo "    ethtests:     Downloads and sets up Ethereum tests."
 
 check-deps:
 	ifeq (, $(shell which cargo))
@@ -30,7 +29,7 @@ check-deps:
 	endif
 		@echo "[make] LLVM is correctly set at $(MLIR_SYS_180_PREFIX)."
 
-deps:
+deps: check-deps install-nextest
 ifeq ($(UNAME), Linux)
 deps:
 endif
@@ -38,9 +37,9 @@ ifeq ($(UNAME), Darwin)
 deps: deps-macos
 endif
 
-install_nextest:
+install-nextest:
 	@if ! command -v cargo-nextest > /dev/null; then \
-		brew install cargo-nextest; \
+		cargo install cargo-nextest; \
 	fi
 
 deps-macos:
@@ -54,7 +53,7 @@ lint:
 fmt:
 	cargo fmt --all
 
-test: install_nextest
+test:
 	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
 
 test-eth: check-ethtests
@@ -62,7 +61,7 @@ test-eth: check-ethtests
 
 check-ethtests:
 	@if [ ! -d "ethtests" ]; then \
-		make ethtests; \
+		$(MAKE) ethtests; \
 	fi
 
 
@@ -80,4 +79,3 @@ ethtests: ${ETHTEST_TAR}
 	tar -xzmf "$<" --strip-components=1 -C "$@"
 	@cat ${ETHTEST_SHASUM}
 	sha256sum -c ${ETHTEST_SHASUM}
-
