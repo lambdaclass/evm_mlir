@@ -1,6 +1,6 @@
 use evm_mlir::{
     constants::gas_cost,
-    primitives::{Bytes, U256 as EU256},
+    primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
@@ -451,6 +451,32 @@ fn callvalue_gas_check() {
 fn callvalue_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Callvalue);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn caller_happy_path() {
+    let caller = &[0x30; 160];
+    let operations = vec![Operation::Caller];
+    let mut env = Env::default();
+    env.tx.caller = Address::from_slice(caller);
+    let expected_result = BigUint::from_bytes_be(caller);
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn caller_gas_check() {
+    let operations = vec![Operation::Caller];
+    let needed_gas = gas_cost::CALLER;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn caller_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Caller);
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
