@@ -67,14 +67,28 @@ pub mod gas_cost {
         (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
     }
 
-    pub fn exp_dynamic_cost(exponent: u32) -> i64 {
-        50 * exponent.leading_zeros() as i64
+    pub fn exponent_byte_size(exponent: u64) -> u32 {
+        ((64 - (exponent.leading_zeros())) / 8) + 1
+    }
+
+    pub fn exp_dynamic_cost(exponent: u64) -> u32 {
+        10 + 50 * exponent_byte_size(exponent)
     }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use super::*;
+
+    #[test]
+    fn test_exp_dynamic_gas_cost(){
+        assert_eq!(gas_cost::exp_dynamic_cost(5), 60);
+        assert_eq!(gas_cost::exp_dynamic_cost(256), 110);
+        assert_eq!(gas_cost::exp_dynamic_cost(65536), 160);
+        assert_eq!(gas_cost::exp_dynamic_cost(16777216), 210);
+        assert_eq!(gas_cost::exp_dynamic_cost(4294967296), 260);
+    }
     
 }
 

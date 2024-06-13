@@ -180,10 +180,23 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
-    //if the number of bytes is within 0 to (2**8 - 1), then the byte size is 1
-    //if the number of bytes is within 2**8 to (2**16 - 1), then the byte size is 2
+    let number_of_bytes_plus_one = ok_block.append_operation(
+        arith::addi(
+            number_of_bytes,
+            constant_value_from_i64(context, &ok_block, 1)?,
+            location,
+        ),
+    ).result(0)?.into();
 
-    
+    let gas_value = ok_block.append_operation(
+        arith::muli(
+            number_of_bytes_plus_one,
+            constant_value_from_i64(context, &ok_block, 50)?,
+            location,
+        ),
+    ).result(0)?.into();
+
+    consume_gas_as_value(context, &ok_block, gas_value)?;
 
     stack_push(context, &ok_block, result)?;
 

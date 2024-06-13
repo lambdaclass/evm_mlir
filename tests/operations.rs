@@ -2363,12 +2363,3 @@ fn log_with_stack_underflow() {
     }
 }
 
-
-
-#[test]
-fn log_with_stack_underflow() {
-    for n in 0..5 {
-        let program = vec![Operation::Log(n)];
-        run_program_assert_halt(program);
-    }
-}
