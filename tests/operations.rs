@@ -86,6 +86,7 @@ fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
     assert!(result.is_success());
 
     let result = run_program_get_result_with_gas(program, expected_gas - 1);
+    println!("{:?}", result);
     assert!(result.is_halt());
 }
 

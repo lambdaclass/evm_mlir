@@ -216,11 +216,22 @@ fn codegen_exp<'c, 'r>(
         ),
     ).result(0)?.into();
 
+    let gas_flag = consume_gas_as_value(context, &ok_block, total_gas_cost)?;
+    let enough_gas_block = region.append_block(Block::new(&[]));
+    
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &enough_gas_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
-    consume_gas_as_value(context, &ok_block, total_gas_cost)?;
-    stack_push(context, &ok_block, result)?;
+    stack_push(context, &enough_gas_block, result)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, enough_gas_block))
 }
 
 fn codegen_iszero<'c, 'r>(
