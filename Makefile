@@ -10,7 +10,7 @@ usage:
 	@echo "Usage:"
 	@echo "    deps:         	Installs the necessary dependencies."
 	@echo "    test:         	Runs all tests except Ethereum tests."
-	@echo "    test-eth:     Runs only the Ethereum tests."
+	@echo "    test-eth:        Runs only the Ethereum tests."
 	@echo "    fmt:          	Formats all files."
 	@echo "    lint:         	Checks format and runs lints."
 	@echo "    revm-comparison:	Runs benchmarks."
