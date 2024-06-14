@@ -56,10 +56,8 @@ impl Evm<Db> {
         };
         let bytecode = self
             .db
-            .basic(code_address)
-            .unwrap()
-            .expect("failed to load bytecode")
-            .bytecode; // TODO: refactor into getter method?
+            .code_by_address(code_address)
+            .expect("failed to load bytecode");
         let program = Program::from_bytecode(bytecode.as_slice()).unwrap();
 
         let module = context
