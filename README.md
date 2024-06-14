@@ -39,6 +39,8 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
+1. (0x34) CALLVALUE
+1. (0x35) CALLDATALOAD
 1. (0x36) CALLDATASIZE
 1. (0x38) CODESIZE
 1. (0x50) POP
@@ -117,6 +119,11 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x9D) SWAP14
 1. (0x9E) SWAP15
 1. (0x9F) SWAP16
+1. (0xA0) LOG0
+1. (0xA1) LOG1
+1. (0xA2) LOG2
+1. (0xA3) LOG3
+1. (0xA4) LOG4
 1. (0xF3) RETURN
 1. (0xFD) REVERT
 
@@ -131,8 +138,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x31) BALANCE
 1. (0x32) ORIGIN
 1. (0x33) CALLER
-1. (0x34) CALLVALUE
-1. (0x35) CALLDATALOAD
 1. (0x37) CALLDATACOPY
 1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
@@ -156,11 +161,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
-1. (0xA0) LOG0
-1. (0xA1) LOG1
-1. (0xA2) LOG2
-1. (0xA3) LOG3
-1. (0xA4) LOG4
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE
@@ -267,6 +267,17 @@ There are some example files under `programs/`, for example:
 ```bash
 cargo run programs/push32.bytecode
 ```
+
+You can also specify the optimization level:
+
+```bash
+cargo run programs/push32.bytecode 3  # ranges from 0 to 3
+```
+
+### Testing
+
+To only run the ethereum foundation tests, run the command `make test-eth`. if you want to run the rest of the tests (those that are not the ethereum foundation tests) just run 
+`make test`
 
 ## Debugging the compiler
 

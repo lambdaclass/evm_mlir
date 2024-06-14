@@ -2,12 +2,13 @@ use melior::{
     dialect::{
         arith::{self, CmpiPredicate},
         cf,
-        llvm::{self, r#type::pointer, LoadStoreOptions},
+        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
     },
     ir::{
-        attribute::IntegerAttribute, r#type::IntegerType, Attribute, Block, BlockRef, Location,
-        Region,
+        attribute::{IntegerAttribute, TypeAttribute},
+        r#type::IntegerType,
+        Attribute, Block, BlockRef, Location, Region,
     },
 };
 
@@ -18,12 +19,22 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
+<<<<<<< dynamic-gas-mcopy
         check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
         compute_copy_cost, constant_value_from_i64, consume_gas, consume_gas_as_value,
         extend_memory, get_nth_from_stack, get_remaining_gas, integer_constant_from_i64, llvm_mlir,
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+=======
+        allocate_and_store_value, check_if_zero, check_stack_has_at_least,
+        check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
+        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
+>>>>>>> main
     },
 };
+
 use num_bigint::BigUint;
 
 /// Generates blocks for target [`Operation`].
@@ -77,8 +88,82 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
         Operation::Mstore8 => codegen_mstore8(op_ctx, region),
+        Operation::Log(x) => codegen_log(op_ctx, region, x),
+        Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
+        Operation::Callvalue => codegen_callvalue(op_ctx, region),
     }
+}
+
+fn codegen_callvalue<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CALLVALUE)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    //This may be refactored to use constant_value_from_i64 util function
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let callvalue_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_callvalue_ptr(&ok_block, location, callvalue_ptr);
+
+    let callvalue = ok_block
+        .append_operation(llvm::load(
+            context,
+            callvalue_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, callvalue)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_calldatasize<'c, 'r>(
@@ -146,7 +231,7 @@ fn codegen_exp<'c, 'r>(
     let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
-        .append_operation(ods::math::ipowi(context, rhs, lhs, location).into())
+        .append_operation(ods::math::ipowi(context, lhs, rhs, location).into())
         .result(0)?
         .into();
 
@@ -184,47 +269,29 @@ fn codegen_iszero<'c, 'r>(
     ));
 
     let value = stack_pop(context, &ok_block)?;
-    let value_is_zero = check_if_zero(context, &ok_block, &value)?;
+    let zero_constant = constant_value_from_i64(context, &ok_block, 0)?;
 
-    let val_zero_bloq = region.append_block(Block::new(&[]));
-    let val_not_zero_bloq = region.append_block(Block::new(&[]));
-    let return_block = region.append_block(Block::new(&[]));
-
-    let constant_value = val_zero_bloq
-        .append_operation(arith::constant(
+    let result = ok_block
+        .append_operation(arith::cmpi(
             context,
-            integer_constant_from_i64(context, 1i64).into(),
+            arith::CmpiPredicate::Eq,
+            value,
+            zero_constant,
             location,
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &val_zero_bloq, constant_value)?;
-    val_zero_bloq.append_operation(cf::br(&return_block, &[], location));
-
-    let result = val_not_zero_bloq
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 0i64).into(),
-            location,
-        ))
+    //Extend the 1 bit result to 256 bits.
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
-    stack_push(context, &val_not_zero_bloq, result)?;
-    val_not_zero_bloq.append_operation(cf::br(&return_block, &[], location));
+    stack_push(context, &ok_block, result)?;
 
-    ok_block.append_operation(cf::cond_br(
-        context,
-        value_is_zero,
-        &val_zero_bloq,
-        &val_not_zero_bloq,
-        &[],
-        &[],
-        location,
-    ));
-
-    Ok((start_block, return_block))
+    Ok((start_block, ok_block))
 }
 
 fn codegen_and<'c, 'r>(
@@ -295,8 +362,8 @@ fn codegen_gt<'c, 'r>(
         location,
     ));
 
-    let rhs = stack_pop(context, &ok_block)?;
     let lhs = stack_pop(context, &ok_block)?;
+    let rhs = stack_pop(context, &ok_block)?;
 
     let result = ok_block
         .append_operation(arith::cmpi(
@@ -306,6 +373,13 @@ fn codegen_gt<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
@@ -397,6 +471,13 @@ fn codegen_lt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -444,6 +525,13 @@ fn codegen_sgt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -487,6 +575,13 @@ fn codegen_eq<'c, 'r>(
             rhs,
             location,
         ))
+        .result(0)?
+        .into();
+
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
         .result(0)?
         .into();
 
@@ -2335,6 +2430,13 @@ fn codegen_slt<'c, 'r>(
         .result(0)?
         .into();
 
+    //Extend 1 bit result to 256 bit
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(result, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
@@ -2727,4 +2829,298 @@ fn codegen_mcopy<'c, 'r>(
     consume_gas_as_value(context, &memory_access_block, dynamic_gas)?;
 
     Ok((start_block, memory_access_block))
+}
+
+fn codegen_calldataload<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let uint8 = IntegerType::new(context, 8);
+    let uint1 = IntegerType::new(context, 1);
+    let ptr_type = pointer(context, 0);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CALLDATALOAD)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset = stack_pop(context, &ok_block)?;
+
+    // TODO: add a calldata_ptr and size setup
+
+    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+
+    // max_slice_width = 32
+    let max_slice_width = ok_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let calldata_size_u32 = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    // convert calldata_size from u32 to u256
+    let calldata_size = ok_block
+        .append_operation(arith::extui(calldata_size_u32, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    let zero = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let offset_ok_block = region.append_block(Block::new(&[]));
+    let offset_bad_block = region.append_block(Block::new(&[]));
+    let end_block = region.append_block(Block::new(&[]));
+
+    // offset < calldata_size =>  offset_ok
+    let offset_ok = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ult,
+            offset,
+            calldata_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // if offset < calldata_size => offset_ok_block
+    // else => offset_bad_block
+    ok_block.append_operation(cf::cond_br(
+        context,
+        offset_ok,
+        &offset_ok_block,
+        &offset_bad_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    /******************** offset_bad_block *******************/
+
+    // offset >= calldata_size => push 0
+    stack_push(context, &offset_bad_block, zero)?;
+    offset_bad_block.append_operation(cf::br(&end_block, &[], location));
+
+    /******************** offset_bad_block *******************/
+
+    /******************** offset_OK_block *******************/
+
+    let stack_ptr = get_stack_pointer(context, &offset_ok_block)?;
+
+    // fill the top of the stack with 0s to remove any garbage bytes it could have
+    offset_ok_block.append_operation(llvm::store(
+        context,
+        zero,
+        stack_ptr,
+        location,
+        LoadStoreOptions::new(),
+    ));
+
+    // calldata_ptr_at_offset = calldata_ptr + new_offset
+    let calldata_ptr_at_offset = offset_ok_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            calldata_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // len is the length of the slice (len is maximum 32 bytes)
+    let len = offset_ok_block
+        .append_operation(arith::subi(calldata_size, offset, location))
+        .result(0)?
+        .into();
+
+    // len = min(calldata_size - offset, 32 bytes)
+    // this is done to fix the len so that  offset + len <= calldata_size
+    let len = offset_ok_block
+        .append_operation(arith::minui(len, max_slice_width, location))
+        .result(0)?
+        .into();
+
+    // copy calldata[offset..offset + len] to the top of the stack
+    offset_ok_block.append_operation(
+        ods::llvm::intr_memcpy(
+            context,
+            stack_ptr,
+            calldata_ptr_at_offset,
+            len,
+            IntegerAttribute::new(uint1.into(), 0),
+            location,
+        )
+        .into(),
+    );
+
+    // increment the stack pointer so calldata[offset..len] is placed at the top of the stack
+    inc_stack_pointer(context, &offset_ok_block)?;
+
+    // if the system is little endian, we have to convert the result to big endian
+    // pop calldata_slice, change to big endian and push it again
+    if cfg!(target_endian = "little") {
+        // pop the slice
+        let calldata_slice = stack_pop(context, &offset_ok_block)?;
+        // convert it to big endian
+        let calldata_slice = offset_ok_block
+            .append_operation(llvm::intr_bswap(calldata_slice, uint256.into(), location))
+            .result(0)?
+            .into();
+        // push it back on the stack
+        stack_push(context, &offset_ok_block, calldata_slice)?;
+    }
+
+    offset_ok_block.append_operation(cf::br(&end_block, &[], location));
+
+    /******************** offset_OK_block *******************/
+
+    Ok((start_block, end_block))
+}
+
+fn codegen_log<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+    nth: u8,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    debug_assert!(nth <= 4);
+    // TODO: check if the current execution context is from a STATICCALL (since Byzantium fork).
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let required_elements = 2 + nth;
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    // required_size = offset + value_size
+    let required_size = ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    let log_block = region.append_block(Block::new(&[]));
+    let dynamic_gas = compute_log_dynamic_gas(op_ctx, &ok_block, nth, size_u256, location)?;
+    consume_gas_as_value(context, &ok_block, dynamic_gas)?;
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &log_block,
+        region,
+        required_size,
+        gas_cost::LOG,
+    )?;
+
+    let mut topic_pointers = vec![];
+    for _i in 0..nth {
+        let topic = stack_pop(context, &log_block)?;
+        let topic_ptr = allocate_and_store_value(op_ctx, &log_block, topic, location)?;
+        topic_pointers.push(topic_ptr);
+    }
+
+    match nth {
+        0 => {
+            op_ctx.append_log_syscall(&log_block, offset, size, location);
+        }
+        1 => {
+            op_ctx.append_log_with_one_topic_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                location,
+            );
+        }
+        2 => {
+            op_ctx.append_log_with_two_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                location,
+            );
+        }
+        3 => {
+            op_ctx.append_log_with_three_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                topic_pointers[2],
+                location,
+            );
+        }
+        4 => {
+            op_ctx.append_log_with_four_topics_syscall(
+                &log_block,
+                offset,
+                size,
+                topic_pointers[0],
+                topic_pointers[1],
+                topic_pointers[2],
+                topic_pointers[3],
+                location,
+            );
+        }
+        _ => unreachable!("nth should satisfy 0 <= nth <= 4"),
+    }
+
+    Ok((start_block, log_block))
 }
