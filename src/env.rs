@@ -18,7 +18,7 @@ pub struct Env {
 pub struct CfgEnv {
     // Chain ID of the EVM, it will be compared to the transaction's Chain ID.
     // Chain ID is introduced EIP-155
-    //pub chain_id: u64,
+    pub chain_id: u64,
     // Bytecode that is created with CREATE/CREATE2 is by default analysed and jumptable is created.
     // This is very beneficial for testing and speeds up execution of that bytecode if called multiple times.
     //
