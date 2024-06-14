@@ -192,17 +192,10 @@ impl<'c> SyscallContext<'c> {
         let bytes = &self.env.tx.caller.to_fixed_bytes();
         let high: [u8; 16] = [&[0u8; 12], &bytes[..4]].concat().try_into().unwrap();
         let low: [u8; 16] = bytes[4..20].try_into().unwrap();
-
-        if cfg!(target_endian = "little") {
-            //Now, we have to swap endianess, since data will be interpreted as it comes from
-            //little endiann, aligned to 16 bytes
-            value.lo = u128::from_be_bytes(low);
-            value.hi = u128::from_be_bytes(high);
-        } else {
-            //We load data straight away
-            value.lo = u128::from_be_bytes(low);
-            value.hi = u128::from_be_bytes(high);
-        };
+        //Now, we have to swap endianess, since data will be interpreted as it comes from
+        //little endiann, aligned to 16 bytes
+        value.lo = u128::from_be_bytes(low);
+        value.hi = u128::from_be_bytes(high);
     }
 
     pub extern "C" fn get_calldata_size(&self) -> u32 {
