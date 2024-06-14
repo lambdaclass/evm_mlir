@@ -10,7 +10,7 @@ pub struct AccountInfo {
     nonce: u64,
     balance: U256,
     storage: HashMap<U256, U256>,
-    bytecode: Bytecode,
+    bytecode: B256,
 }
 
 type B256 = U256;
