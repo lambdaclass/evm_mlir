@@ -58,15 +58,18 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
+#[derive(Debug, Clone)]
+pub struct DatabaseError;
+
 impl Database for Db {
-    type Error = Error; // TODO: implement error
+    type Error = DatabaseError;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         Ok(self.accounts.get(&address).cloned())
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        self.contracts.get(&code_hash).cloned().ok_or(Error)
+        self.contracts.get(&code_hash).cloned().ok_or(DatabaseError)
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
