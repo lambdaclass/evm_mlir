@@ -24,7 +24,7 @@ use crate::{
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
         get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
         integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        stack_pop, stack_push, swap_stack_elements, return_calldata_ptr, return_calldata_size,
     },
 };
 
@@ -183,7 +183,7 @@ fn codegen_calldatasize<'c, 'r>(
 
     // Get the calldata size using a syscall
     let uint256 = IntegerType::new(context, 256).into();
-    let calldatasize = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    let calldatasize = return_calldata_size(op_ctx, &ok_block, location)?;
     let extended_size = ok_block
         .append_operation(arith::extui(calldatasize, uint256, location))
         .result(0)?
@@ -2858,7 +2858,7 @@ fn codegen_calldataload<'c, 'r>(
 
     // TODO: add a calldata_ptr and size setup
 
-    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+    let calldata_ptr = return_calldata_ptr(op_ctx, &ok_block, location)?;
 
     // max_slice_width = 32
     let max_slice_width = ok_block
@@ -2870,7 +2870,7 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    let calldata_size_u32 = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    let calldata_size_u32 = return_calldata_size(op_ctx, &ok_block, location)?;
     // convert calldata_size from u32 to u256
     let calldata_size = ok_block
         .append_operation(arith::extui(calldata_size_u32, uint256.into(), location))

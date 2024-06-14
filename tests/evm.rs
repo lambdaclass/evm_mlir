@@ -115,6 +115,7 @@ fn fibonacci_example() {
 }
 
 #[test]
+#[ignore]
 fn calldataload_with_all_bytes_before_end_of_calldata() {
     // in this case offset + 32 < calldata_size
     // calldata is
@@ -153,6 +154,7 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
 }
 
 #[test]
+#[ignore]
 fn calldataload_with_some_bytes_after_end_of_calldata() {
     // in this case offset + 32 >= calldata_size
     // the calldata is

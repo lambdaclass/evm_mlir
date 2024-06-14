@@ -19,7 +19,7 @@ use crate::{
     codegen::context::OperationCtx,
     constants::{
         GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL,
     },
     errors::CodegenError,
     syscall::ExitStatusCode,
@@ -952,6 +952,8 @@ pub(crate) fn compute_memory_cost<'c>(
     Ok(memory_cost)
 }
 
+
+
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
 /// Extends memory only if the current memory size is less than the required size, consuming the corresponding gas.
 pub(crate) fn extend_memory<'c>(
@@ -1088,6 +1090,68 @@ pub(crate) fn extend_memory<'c>(
     ));
 
     Ok(())
+}
+
+pub(crate) fn return_calldata_ptr<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_PTR_GLOBAL,
+            pointer(context, 0),
+            location,
+        ))
+        .result(0)?
+        .into();
+    
+    let calldata_ptr = block
+        .append_operation(llvm::load(
+            context,
+            calldata_ptr_ptr,
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldata_ptr)
+}
+
+pub(crate) fn return_calldata_size<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let uint32 = IntegerType::new(context, 32);
+    let calldatasize_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_SIZE_GLOBAL,
+            pointer(context, 0),
+            location,
+        ))
+        .result(0)?
+        .into();
+    
+    let calldatasize = block
+        .append_operation(llvm::load(
+            context,
+            calldatasize_ptr,
+            uint32.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldatasize)
 }
 
 pub(crate) fn return_empty_result(
