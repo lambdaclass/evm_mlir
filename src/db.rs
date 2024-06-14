@@ -99,11 +99,7 @@ impl Database for Db {
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
         // Returns Error if no block with that number
-        Ok(self
-            .block_hashes
-            .get(&number)
-            .cloned()
-            .ok_or(DatabaseError)?)
+        self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }
 
