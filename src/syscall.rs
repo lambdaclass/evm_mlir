@@ -32,13 +32,6 @@ pub struct U256 {
     pub hi: u128,
 }
 
-impl std::fmt::Display for U256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        // Format as a single hexadecimal string
-        write!(f, "{:032x}{:032x}", self.hi, self.lo)
-    }
-}
-
 impl U256 {
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());

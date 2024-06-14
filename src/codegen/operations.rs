@@ -18,7 +18,7 @@ use crate::{
     constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
-    syscall::{ExitStatusCode, U256},
+    syscall::ExitStatusCode,
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
@@ -220,14 +220,6 @@ fn codegen_keccak256<'c, 'r>(
         gas_cost::KECCAK256,
     )?;
 
-    let hash_storage = U256 { hi: 0, lo: 0 };
-    let constant_value_str = format!("{} : i256", hash_storage);
-    let constant_value = Attribute::parse(context, &constant_value_str).unwrap();
-    let constant_value = memory_access_block
-        .append_operation(arith::constant(context, constant_value, location))
-        .result(0)?
-        .into();
-
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
     let pointer_size = memory_access_block
@@ -249,15 +241,6 @@ fn codegen_keccak256<'c, 'r>(
         ))
         .result(0)?
         .into();
-
-    let res = memory_access_block.append_operation(llvm::store(
-        context,
-        constant_value,
-        hash_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
 
     op_ctx.keccak256_hasher_syscall(&memory_access_block, offset, size, hash_ptr, location);
 
