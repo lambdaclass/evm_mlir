@@ -18,8 +18,8 @@ use melior::{
 use crate::{
     codegen::context::OperationCtx,
     constants::{
-        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
     syscall::ExitStatusCode,
@@ -950,6 +950,146 @@ pub(crate) fn compute_memory_cost<'c>(
         .into();
 
     Ok(memory_cost)
+}
+
+pub(crate) fn setup_calldata_ptr<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let calldata_ptr_syscall = op_ctx.get_calldata_ptr_syscall(block, location)?;
+
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    block.append_operation(llvm::store(
+        context,
+        calldata_ptr_syscall,
+        calldata_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    Ok(())
+}
+
+pub(crate) fn return_calldata_ptr<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let calldata_ptr = block
+        .append_operation(llvm::load(
+            context,
+            calldata_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldata_ptr)
+}
+
+pub(crate) fn return_calldata_size<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let calldata_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let calldata_size = block
+        .append_operation(llvm::load(
+            context,
+            calldata_size_ptr.into(),
+            IntegerType::new(context, 32).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldata_size)
+}
+
+pub(crate) fn setup_calldata_size<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<(), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let calldata_size_syscall = op_ctx.get_calldata_size_syscall(block, location)?;
+    //let uint32 = IntegerType::new(context, 32).into();
+    let ptr_type = pointer(context, 0);
+
+    let calldata_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    // let zero = block
+    //     .append_operation(arith::constant(
+    //         context,
+    //         IntegerAttribute::new(uint32, 0).into(),
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    // block.append_operation(llvm::store(
+    //     context,
+    //     zero,
+    //     calldata_size_ptr.into(),
+    //     location,
+    //     LoadStoreOptions::default(),
+    // ));
+
+    block.append_operation(llvm::store(
+        context,
+        calldata_size_syscall,
+        calldata_size_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    //Ok(calldata_size_syscall)
+    Ok(())
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
