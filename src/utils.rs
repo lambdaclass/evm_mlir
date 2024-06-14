@@ -706,6 +706,74 @@ pub(crate) fn round_up_32<'c>(
     Ok(memory_size_bytes)
 }
 
+pub(crate) fn compute_copy_cost<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    memory_byte_size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    // this function computes memory copying cost (excluding expansion), which is given by the following equations
+    // memory_size_word = (memory_byte_size + 31) / 32
+    // memory_cost = 3 * memory_size_word
+    //
+    //
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64).into();
+
+    let memory_size_extended = block
+        .append_operation(arith::extui(memory_byte_size, uint64, location))
+        .result(0)?
+        .into();
+
+    let constant_3 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 3).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_31 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 31).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_32 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_byte_size_plus_31 = block
+        .append_operation(arith::addi(memory_size_extended, constant_31, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word = block
+        .append_operation(arith::divui(
+            memory_byte_size_plus_31,
+            constant_32,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_cost = block
+        .append_operation(arith::muli(memory_size_word, constant_3, location))
+        .result(0)?
+        .into();
+
+    Ok(memory_cost)
+}
+
 pub(crate) fn compute_memory_cost<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
