@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use builder::EvmBuilder;
-use db::{Database, Db, EmptyDb};
+use db::{Database, Db};
 use executor::Executor;
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
@@ -28,25 +28,23 @@ pub struct Evm<DB: Database> {
     pub program: Program,
     pub db: DB,
 }
-// mantener el mismo new de antes, copiar el builder y todo lo que haga falta (que sea publico de ahi). Los generics no hace falta.s
-// implementar una emptyDb
 
-impl<'a> Evm<EmptyDB> {
-    /// Returns evm builder with empty database and empty external context.
-    pub fn builder() -> EvmBuilder<EmptyDB> {
+impl<DB: Database + Default> Evm<DB> {
+    /// Returns evm builder with empty database.
+    pub fn builder() -> EvmBuilder<DB> {
         EvmBuilder::default()
     }
-}
 
-impl Evm {
     /// Creates a new EVM instance with the given environment and program.
     // TODO: the program should be loaded from the bytecode of the configured transaction.
     pub fn new(env: Env, program: Program) -> Self {
-        let db = Db::default();
+        let db = DB::default();
 
         Self { env, program, db }
     }
+}
 
+impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> ExecutionResult {
         let output_file = PathBuf::from("output");
