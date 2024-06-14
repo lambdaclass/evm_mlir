@@ -22,6 +22,25 @@ pub struct Db {
     block_hashes: HashMap<U256, B256>,
 }
 
+impl Db{
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
+        let account_info = self.accounts.entry(address).or_default();
+        account_info.storage.insert(key, value);
+    }
+
+    pub fn read_storage(&self, address: Address, key: U256) -> U256 {
+        self.accounts
+            .get(&address)
+            .and_then(|account_info| account_info.storage.get(&key))
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
 pub trait Database {
     /// The database error type.
     type Error;
@@ -69,6 +88,7 @@ impl Database for Db {
             std::collections::hash_map::Entry::Vacant(entry) => Ok(B256::default()),
         }
     }
+
 }
 
 #[cfg(test)]
