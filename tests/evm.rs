@@ -454,3 +454,29 @@ fn callvalue_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn chainid_happy_path() {
+    let chainid: u64 = 1333;
+    let operations = vec![Operation::Chainid];
+    let mut env = Env::default();
+    env.cfg.chain_id = chainid;
+    let expected_result = BigUint::from(chainid);
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn chainid_gas_check() {
+    let operations = vec![Operation::Chainid];
+    let needed_gas = gas_cost::CHAINID;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn chainid_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Chainid);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
