@@ -624,15 +624,18 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    #[allow(unused)]
     pub(crate) fn get_block_number_syscall(
         &'c self,
         block: &'c Block,
+        number: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
+    ) {
         syscall::mlir::get_block_number_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,
+            number,
             location,
         )
     }

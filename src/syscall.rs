@@ -258,9 +258,12 @@ impl<'c> SyscallContext<'c> {
     }
 
     #[allow(improper_ctypes)]
-    pub extern "C" fn get_block_number(&self) -> &U256 {
-        self.env.block.number
-    }  
+    pub extern "C" fn get_block_number(&self, number: &mut U256) {
+        let block_number = self.env.block.number;
+
+        number.hi = (block_number >> 128).low_u128();
+        number.lo = block_number.low_u128();
+    }
 
     /// Receives a memory offset and size, and a vector of topics.
     /// Creates a Log with topics and data equal to memory[offset..offset + size]
@@ -353,7 +356,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
-            SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void) as *mut (),
+            SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -380,7 +383,6 @@ pub(crate) mod mlir {
         // Type declarations
         let ptr_type = pointer(context, 0);
         let uint32 = IntegerType::new(context, 32).into();
-        //let uint256 = IntegerType::new(context, 256).into();
         let uint64 = IntegerType::new(context, 64).into();
         let uint8 = IntegerType::new(context, 8).into();
 
@@ -505,7 +507,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -723,23 +725,19 @@ pub(crate) mod mlir {
 
     /// Returns a pointer to the calldata.
     #[allow(unused)]
-    pub(crate) fn get_block_number<'c>(
+    pub(crate) fn get_block_number_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
+        number: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
-                &[syscall_ctx],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
-
-        Ok(value.into())
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
+            &[syscall_ctx, number],
+            &[],
+            location,
+        ));
     }
 }
