@@ -12,19 +12,19 @@ impl Bytecode {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct AccountInfo {
-    nonce: u64,
-    balance: U256,
-    storage: HashMap<U256, U256>,
-    bytecode: B256,
+pub struct DbAccount {
+    pub nonce: u64,
+    pub balance: U256,
+    pub storage: HashMap<U256, U256>,
+    pub bytecode_hash: B256,
 }
 
 type B256 = U256;
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    accounts: HashMap<Address, AccountInfo>,
-    pub contracts: HashMap<B256, Bytecode>,
+    accounts: HashMap<Address, DbAccount>,
+    contracts: HashMap<B256, Bytecode>,
     block_hashes: HashMap<U256, B256>,
 }
 
@@ -40,17 +40,30 @@ impl Db {
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
-        let account_info = self.accounts.entry(address).or_default();
-        account_info.storage.insert(key, value);
+        let account = self.accounts.entry(address).or_default();
+        account.storage.insert(key, value);
     }
 
     pub fn read_storage(&self, address: Address, key: U256) -> U256 {
         self.accounts
             .get(&address)
-            .and_then(|account_info| account_info.storage.get(&key))
+            .and_then(|account| account.storage.get(&key))
             .cloned()
             .unwrap_or_default()
     }
+}
+
+#[derive(Default, Clone, PartialEq, Debug)]
+pub struct AccountInfo {
+    /// Account balance.
+    pub balance: U256,
+    /// Account nonce.
+    pub nonce: u64,
+    /// code hash,
+    pub code_hash: B256,
+    /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
+    /// inside of `revm`.
+    pub code: Option<Bytecode>,
 }
 
 pub trait Database {
@@ -77,31 +90,28 @@ impl Database for Db {
     type Error = DatabaseError;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        Ok(self.accounts.get(&address).cloned())
+        // Returns Ok(None) if no account with that address
+        Ok(self.accounts.get(&address).map(|db_account| AccountInfo {
+            balance: db_account.balance,
+            nonce: db_account.nonce,
+            code_hash: db_account.bytecode_hash,
+            code: None,
+        }))
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
+        // Returns Error if no contract with that address
         self.contracts.get(&code_hash).cloned().ok_or(DatabaseError)
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        //iterate the hashmap self.accounts and return the storage value of the address at index
-        for (iter_address, account_info) in self.accounts.iter() {
-            if *iter_address == address {
-                match account_info.storage.get(&index) {
-                    Some(value) => return Ok(*value),
-                    None => return Ok(U256::default()),
-                }
-            }
-        }
-        Ok(U256::default())
+        // Returns Ok(0) if no value with that address
+        Ok(self.read_storage(address, index))
     }
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
-        match self.block_hashes.entry(number) {
-            std::collections::hash_map::Entry::Occupied(entry) => Ok(*entry.get()),
-            std::collections::hash_map::Entry::Vacant(entry) => Ok(B256::default()),
-        }
+        // Returns Error if no block with that number
+        self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }
 
@@ -114,14 +124,15 @@ mod tests {
     #[test]
     fn db_returns_basic_account_info() {
         let mut accounts = HashMap::new();
-        let block_hashes = HashMap::new();
         let address = Address::default();
         let expected_account_info = AccountInfo::default();
-        accounts.insert(address, expected_account_info.clone());
+        let db_account = DbAccount::default();
+        accounts.insert(address, db_account);
+
         let mut db = Db {
             accounts,
             contracts: HashMap::new(),
-            block_hashes,
+            block_hashes: HashMap::new(),
         };
 
         let account_info = db.basic(address).unwrap().unwrap();
@@ -154,9 +165,9 @@ mod tests {
         let address = Address::default();
         let index = U256::from(1);
         let expected_storage = U256::from(2);
-        let mut account_info = AccountInfo::default();
-        account_info.storage.insert(index, expected_storage);
-        accounts.insert(address, account_info);
+        let mut db_account = DbAccount::default();
+        db_account.storage.insert(index, expected_storage);
+        accounts.insert(address, db_account);
         let mut db = Db {
             accounts,
             contracts: HashMap::new(),
