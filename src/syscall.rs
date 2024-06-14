@@ -188,7 +188,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.calldata.as_ptr()
+        self.env.tx.data.as_ptr()
     }
 
     pub extern "C" fn get_calldata_size_syscall(&self) -> u32 {
@@ -271,9 +271,6 @@ impl<'c> SyscallContext<'c> {
 
         let log = Log { data, topics };
         self.inner_context.logs.push(log);
-    }
-    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.data.as_ptr()
     }
 }
 
