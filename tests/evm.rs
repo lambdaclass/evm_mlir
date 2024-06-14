@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use evm_mlir::{
     constants::gas_cost,
     primitives::{Address, Bytes, U256 as EU256},
@@ -7,7 +9,7 @@ use evm_mlir::{
 };
 use num_bigint::BigUint;
 
-fn run_program_assert_result(
+fn run_program_assert_num_result(
     mut operations: Vec<Operation>,
     mut env: Env,
     expected_result: BigUint,
@@ -26,6 +28,25 @@ fn run_program_assert_result(
     assert!(&result.is_success());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
     assert_eq!(result_data, expected_result);
+}
+fn run_program_assert_bytes_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: &[u8],
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
@@ -433,10 +454,8 @@ fn callvalue_happy_path() {
     let operations = vec![Operation::Callvalue];
     let mut env = Env::default();
     env.tx.value = EU256::from(callvalue);
-
     let expected_result = BigUint::from(callvalue);
-
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_num_result(operations, env, expected_result);
 }
 
 #[test]
@@ -457,12 +476,17 @@ fn callvalue_stack_overflow() {
 
 #[test]
 fn caller_happy_path() {
-    let caller = &[0x30; 20];
+    let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
     let operations = vec![Operation::Caller];
     let mut env = Env::default();
-    env.tx.caller = Address::from_slice(caller);
-    let expected_result = BigUint::from_bytes_be(caller);
-    run_program_assert_result(operations, env, expected_result);
+    env.tx.caller = caller;
+    let caller_bytes = &caller.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+    run_program_assert_bytes_result(operations, env, &expected_result);
 }
 
 #[test]
