@@ -272,7 +272,7 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.as_ptr()
     }
 
-    pub extern "C" fn get_address(&mut self) -> *const u8 {
+    pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
         self.env.tx.get_address().as_ptr()
     }
 }
@@ -287,7 +287,7 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
-    pub const GET_ADDRESS: &str = "evm_mlir__get_address";
+    pub const GET_ADDRESS_PTR: &str = "evm_mlir__get_address_ptr";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
 }
 
@@ -347,8 +347,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
-            symbols::GET_ADDRESS,
-            SyscallContext::get_address as *const fn(*mut c_void) as *mut (),
+            symbols::GET_ADDRESS_PTR,
+            SyscallContext::get_address_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
@@ -503,7 +503,7 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_ADDRESS),
+            StringAttribute::new(context, symbols::GET_ADDRESS_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
@@ -720,9 +720,9 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
-    /// Returns the address of the current executing contract
+    /// Returns a pointer to the address of the current executing contract
     #[allow(unused)]
-    pub(crate) fn get_address_syscall<'c>(
+    pub(crate) fn get_address_ptr_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
@@ -733,7 +733,7 @@ pub(crate) mod mlir {
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ADDRESS),
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ADDRESS_PTR),
                 &[syscall_ctx],
                 &[ptr_type],
                 location,

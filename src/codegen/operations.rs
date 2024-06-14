@@ -3145,7 +3145,7 @@ fn codegen_address<'c, 'r>(
         location,
     ));
 
-    let address_ptr = op_ctx.get_address_syscall(&ok_block, location)?;
+    let address_ptr = op_ctx.get_address_ptr_syscall(&ok_block, location)?;
 
     let address = ok_block
         .append_operation(llvm::load(
