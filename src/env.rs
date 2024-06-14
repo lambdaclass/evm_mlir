@@ -157,11 +157,8 @@ impl TxEnv {
     pub fn get_address(&self) -> [u8; 20] {
         let address = match self.transact_to {
             TransactTo::Call(addr) => addr,
-            TransactTo::Create => return [0x00; 20],
+            TransactTo::Create => Address::zero(),
         };
-        let address = address.to_fixed_bytes();
-        let mut bytes: [u8; 20] = Default::default();
-        bytes.copy_from_slice(&address[0..20]);
-        bytes
+        address.to_fixed_bytes()
     }
 }

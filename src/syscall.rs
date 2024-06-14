@@ -278,20 +278,13 @@ impl<'c> SyscallContext<'c> {
 
     #[allow(improper_ctypes)]
     pub extern "C" fn store_in_address_ptr(&self, value: &mut U256) {
-        //let bytes: [u8; 20] = self.env.tx.get_address();
-        //let low: [u8; 16] = bytes[0..16].try_into().unwrap();
-        //let high: [u8; 16] = [&bytes[16..20], &[0u8; 12]].concat().try_into().unwrap();
-        let low = [0xff; 16];
-        let high = [0xff; 16];
-        // We have to check the system endianess in order to correctly construct a u128 from bytes
-        // We don't want the bytes order to be modified
-        if cfg!(target_endian = "little") {
-            value.lo = u128::from_le_bytes(low);
-            value.hi = u128::from_le_bytes(high);
-        } else {
-            value.lo = u128::from_be_bytes(low);
-            value.hi = u128::from_be_bytes(high);
-        };
+        let bytes: [u8; 20] = self.env.tx.get_address();
+
+        let low: [u8; 16] = bytes[4..20].try_into().unwrap();
+        let high: [u8; 16] = [&[0u8; 12], &bytes[0..4]].concat().try_into().unwrap();
+
+        value.lo = u128::from_be_bytes(low);
+        value.hi = u128::from_be_bytes(high);
     }
 }
 

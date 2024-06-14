@@ -3122,9 +3122,10 @@ fn codegen_address<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let flag = check_stack_has_space_for(context, &start_block, 1)?;
-    let uint160 = IntegerType::new(context, 160);
     let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    
     let gas_flag = consume_gas(context, &start_block, gas_cost::ADDRESS)?;
 
     let condition = start_block
@@ -3143,30 +3144,6 @@ fn codegen_address<'c, 'r>(
         &[],
         location,
     ));
-    /*
-    let address_ptr = op_ctx.get_address_syscall(&ok_block, location)?;
-
-    let address = ok_block
-        .append_operation(llvm::load(
-            context,
-            address_ptr,
-            uint160.into(),
-            location,
-            LoadStoreOptions::new()
-                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
-        ))
-        .result(0)?
-        .into();
-
-    let address = ok_block
-        .append_operation(arith::extui(address, uint256.into(), location))
-        .result(0)?
-        .into();
-
-    stack_push(context, &ok_block, address)?;
-
-        */
-    //
 
     let ptr_type = pointer(context, 0);
 
@@ -3178,7 +3155,8 @@ fn codegen_address<'c, 'r>(
         ))
         .result(0)?
         .into();
-
+    
+    // allocate memory for the address
     let address_ptr = ok_block
         .append_operation(llvm::alloca(
             context,
@@ -3189,9 +3167,11 @@ fn codegen_address<'c, 'r>(
         ))
         .result(0)?
         .into();
-
+    
+    // store the address in the allocated memory
     op_ctx.store_in_address_ptr(&ok_block, location, address_ptr);
-
+    
+    // load the address
     let address = ok_block
         .append_operation(llvm::load(
             context,
