@@ -22,7 +22,7 @@ pub struct Db {
     block_hashes: HashMap<U256, B256>,
 }
 
-impl Db{
+impl Db {
     pub fn new() -> Self {
         Self::default()
     }
@@ -88,7 +88,6 @@ impl Database for Db {
             std::collections::hash_map::Entry::Vacant(entry) => Ok(B256::default()),
         }
     }
-
 }
 
 #[cfg(test)]
