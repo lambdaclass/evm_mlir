@@ -454,3 +454,31 @@ fn callvalue_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn coinbase_happy_path() {
+    let coinbase: [u8; 20] = [0x00; 20];
+    let operations = vec![Operation::Coinbase];
+    let mut env = Env::default();
+    env.block.coinbase = coinbase.into();
+
+    let expected_result = BigUint::from_bytes_be(&coinbase);
+
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn coinbase_gas_check() {
+    let operations = vec![Operation::Coinbase];
+    let needed_gas = gas_cost::COINBASE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn coinbase_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Coinbase);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}

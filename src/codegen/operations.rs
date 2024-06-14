@@ -66,6 +66,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
+        Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -3112,4 +3113,68 @@ fn codegen_log<'c, 'r>(
     }
 
     Ok((start_block, log_block))
+}
+
+fn codegen_coinbase<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint160 = IntegerType::new(context, 160);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::COINBASE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let coinbase_ptr = op_ctx.get_coinbase_ptr_syscall(&ok_block, location)?;
+
+    let coinbase = ok_block
+        .append_operation(llvm::load(
+            context,
+            coinbase_ptr,
+            uint160.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    let coinbase = if cfg!(target_endian = "little") {
+        ok_block
+            .append_operation(llvm::intr_bswap(coinbase, uint160.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        coinbase
+    };
+
+    // coinbase is 160-bits long so we extend it to 256 bits before pushing it to the stack
+    let coinbase = ok_block
+        .append_operation(arith::extui(coinbase, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, coinbase)?;
+
+    Ok((start_block, ok_block))
 }
