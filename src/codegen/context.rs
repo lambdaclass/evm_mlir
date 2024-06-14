@@ -481,7 +481,7 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         address_ptr: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
+    ) {
         syscall::mlir::get_origin_syscall(
             self.mlir_context,
             self.syscall_ctx,

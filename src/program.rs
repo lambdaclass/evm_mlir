@@ -714,7 +714,6 @@ impl Program {
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
                 Opcode::ORIGIN => Operation::Origin,
-
             };
             operations.push(op);
             pc += 1;

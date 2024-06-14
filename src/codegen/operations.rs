@@ -17,7 +17,7 @@ use crate::{
     constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
-    syscall::{ExitStatusCode,U256},
+    syscall::ExitStatusCode,
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
@@ -140,9 +140,9 @@ fn codegen_origin<'c, 'r>(
         ))
         .result(0)?
         .into();
-    
+
     //address: the 20-byte address of the sender of the transaction. It can only be an account without code.
-    op_ctx.get_origin_syscall(&ok_block, address_ptr,location)?;
+    op_ctx.get_origin_syscall(&ok_block, address_ptr, location);
 
     let address_value = ok_block
         .append_operation(llvm::load(
@@ -156,9 +156,8 @@ fn codegen_origin<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, address_value)?;
-    
-    Ok((start_block, ok_block))
 
+    Ok((start_block, ok_block))
 }
 
 fn codegen_callvalue<'c, 'r>(
