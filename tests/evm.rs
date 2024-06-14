@@ -118,10 +118,8 @@ fn fibonacci_example() {
 fn test_opcode_origin() {
     let operations = vec![Operation::Origin];
     let mut env = Env::default();
-    let mut caller: [u8; 20] = [0u8; 20];
-    for i in 0..20 {
-        caller[i] = i as u8;
-    }
+    let caller: [u8; 20] = [0x01; 20];
+    
     env.tx.caller = H160::from(caller);
 
     let expected_result = BigUint::from_bytes_be(&caller);
