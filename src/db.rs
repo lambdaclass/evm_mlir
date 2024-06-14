@@ -49,7 +49,16 @@ impl Database for Db {
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        unimplemented!()
+        //iterate the hashmap self.accounts and return the storage value of the address at index
+        for (iter_address, account_info) in self.accounts.iter() {
+            if *iter_address == address {
+                match account_info.storage.get(&index) {
+                    Some(value) => return Ok(*value),
+                    None => return Ok(U256::default()),
+                }
+            }
+        }
+        Ok(U256::default())
     }
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
