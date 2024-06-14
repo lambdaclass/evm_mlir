@@ -30,9 +30,10 @@ pub struct Db {
 impl Db {
     pub fn with_bytecode(address: Address, bytecode: Bytecode) -> Self {
         let mut db = Db::default();
-        // db.contracts.insert(hash, bytecode); // TODO: compute bytecode hash
-        let mut account_info = AccountInfo::default();
-        account_info.bytecode = bytecode;
+        let account_info = AccountInfo {
+            bytecode: bytecode,
+            ..Default::default()
+        };
         db.accounts.insert(address, account_info);
         db
     }
