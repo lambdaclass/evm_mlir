@@ -1,10 +1,14 @@
 use evm_mlir::{
     constants::gas_cost,
+    env::TransactTo,
     primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
+
+use ethereum_types::Address;
+
 use num_bigint::BigUint;
 
 fn run_program_assert_result(
@@ -427,48 +431,6 @@ fn log4() {
     }];
     assert_eq!(logs.to_owned(), expected_logs);
 }
-/*
-#[test]
-fn address() {
-    use ethereum_types::Address;
-    let offset = 0_u8;
-    let size = 32_u8;
-    let program = vec![
-        Operation::Address,
-        Operation::Push((1_u8, offset.into())),
-        Operation::Mstore,
-        Operation::Push((1_u8, offset.into())),
-        Operation::Push((1_u8, size.into())),
-        Operation::Return,
-    ];
-
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.to = Address::from_slice(&[0xff; 20]);
-    let mut evm = Evm::new(env, program.into());
-
-    let result = evm.transact();
-
-    assert!(&result.is_success());
-    let address = result.return_data().unwrap();
-    assert_eq!(address, [0xff; 20]);
-}
- */
-
-#[test]
-fn address2() {
-    use ethereum_types::Address;
-    use evm_mlir::env::TransactTo;
-    let mut address: Vec<u8> = [0x00; 20].into();
-    let callvalue: u32 = 0;
-    //address[19] = 1;
-    let operations = vec![Operation::Address];
-    let mut env = Env::default();
-    env.tx.value = EU256::from(callvalue);
-    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
-    let expected_result = BigUint::from_bytes_be(&address);
-    run_program_assert_result(operations, env, expected_result);
-}
 
 #[test]
 fn callvalue_happy_path() {
@@ -494,6 +456,36 @@ fn callvalue_gas_check() {
 fn callvalue_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Callvalue);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn address() {
+    let mut address: Vec<u8> = [0x00; 20].into();
+    address[19] = 0xff;
+    let operations = vec![Operation::Address];
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
+    let expected_result = BigUint::from_bytes_be(&address);
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn address_with_gas_cost() {
+    let address = [0xff; 20];
+    let operations = vec![Operation::Address];
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
+
+    let needed_gas = gas_cost::ADDRESS;
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn address_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Address);
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
