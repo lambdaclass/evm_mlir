@@ -738,6 +738,13 @@ impl Program {
             })
             .sum()
     }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        self.operations
+            .iter()
+            .flat_map(Operation::to_bytecode)
+            .collect::<Vec<u8>>()
+    }
 }
 
 impl From<Vec<Operation>> for Program {

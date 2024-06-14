@@ -3,14 +3,20 @@ use ethereum_types::{Address, U256};
 use std::{collections::HashMap, fmt::Error};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(Vec<u8>);
+pub struct Bytecode(pub Vec<u8>);
+
+impl Bytecode {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AccountInfo {
     nonce: u64,
     balance: U256,
     storage: HashMap<U256, U256>,
-    bytecode: Bytecode,
+    pub bytecode: Bytecode,
 }
 
 type B256 = U256;
@@ -18,7 +24,18 @@ type B256 = U256;
 #[derive(Clone, Debug, Default)]
 pub struct Db {
     accounts: HashMap<Address, AccountInfo>,
-    contracts: HashMap<B256, Bytecode>,
+    pub contracts: HashMap<B256, Bytecode>,
+}
+
+impl Db {
+    pub fn with_bytecode(address: Address, bytecode: Bytecode) -> Self {
+        let mut db = Db::default();
+        // db.contracts.insert(hash, bytecode); // TODO: compute bytecode hash
+        let mut account_info = AccountInfo::default();
+        account_info.bytecode = bytecode;
+        db.accounts.insert(address, account_info);
+        db
+    }
 }
 
 pub trait Database {
