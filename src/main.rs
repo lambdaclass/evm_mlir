@@ -1,13 +1,24 @@
 use std::path::PathBuf;
 
 use evm_mlir::{
-    context::Context, db::Db, env::Env, executor::Executor, program::Program,
+    context::Context,
+    db::Db,
+    env::Env,
+    executor::{Executor, OptLevel},
+    program::Program,
     syscall::SyscallContext,
 };
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).expect("No path provided").as_str();
+    let opt_level = match args.get(2).map(String::as_str) {
+        None | Some("2") => OptLevel::Default,
+        Some("0") => OptLevel::None,
+        Some("1") => OptLevel::Less,
+        Some("3") => OptLevel::Aggressive,
+        _ => panic!("Invalid optimization level"),
+    };
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
@@ -24,7 +35,7 @@ fn main() {
         .compile(&program.unwrap(), &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, opt_level);
 
     let env = Env::default();
     let mut db = Db::default();

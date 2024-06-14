@@ -1,9 +1,57 @@
 use evm_mlir::{
+    constants::gas_cost,
+    primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
 use num_bigint::BigUint;
+
+fn run_program_assert_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: BigUint,
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
+    assert_eq!(result_data, expected_result);
+}
+
+fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(result.is_halt());
+}
+
+fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
+    //Ok run
+    let program = Program::from(operations.clone());
+    let mut env_success = env.clone();
+    env_success.tx.gas_limit = needed_gas;
+    let mut evm = Evm::new(env_success, program);
+    let result = evm.transact();
+    assert!(result.is_success());
+    //Halt run
+    let program = Program::from(operations.clone());
+    let mut env_halt = env.clone();
+    env_halt.tx.gas_limit = needed_gas - 1;
+    let mut evm = Evm::new(env_halt, program);
+    let result = evm.transact();
+    assert!(result.is_halt());
+}
 
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
     assert!(n > 0, "n must be greater than 0");
@@ -90,8 +138,9 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0x00; 64].into();
-    env.tx.calldata[31] = 1;
+    let mut calldata = vec![0x00; 64];
+    calldata[31] = 1;
+    env.tx.data = Bytes::from(calldata);
     let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
@@ -127,10 +176,10 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0x00; 32].into();
-    env.tx.calldata[31] = 1;
+    let mut calldata = vec![0x00; 32];
+    calldata[31] = 1;
+    env.tx.data = Bytes::from(calldata);
     let mut evm = Evm::new(env, program);
-
     let result = evm.transact();
 
     assert!(&result.is_success());
@@ -164,7 +213,7 @@ fn calldataload_with_offset_greater_than_calldata_size() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0xff; 32].into();
+    env.tx.data = Bytes::from(vec![0xff; 32]);
     let mut evm = Evm::new(env, program);
 
     let result = evm.transact();
@@ -502,4 +551,32 @@ fn log4() {
         ],
     }];
     assert_eq!(logs.to_owned(), expected_logs);
+}
+
+#[test]
+fn callvalue_happy_path() {
+    let callvalue: u32 = 1500;
+    let operations = vec![Operation::Callvalue];
+    let mut env = Env::default();
+    env.tx.value = EU256::from(callvalue);
+
+    let expected_result = BigUint::from(callvalue);
+
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn callvalue_gas_check() {
+    let operations = vec![Operation::Callvalue];
+    let needed_gas = gas_cost::CALLVALUE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn callvalue_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Callvalue);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
 }

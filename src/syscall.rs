@@ -180,12 +180,19 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
+        let aux = &self.env.tx.value;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
+    }
+
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.calldata.as_ptr()
     }
 
     pub extern "C" fn get_calldata_size_syscall(&self) -> u32 {
-        self.env.tx.calldata.len() as u32
+        self.env.tx.data.len() as u32
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -265,6 +272,9 @@ impl<'c> SyscallContext<'c> {
         let log = Log { data, topics };
         self.inner_context.logs.push(log);
     }
+    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
+        self.env.tx.data.as_ptr()
+    }
 }
 
 pub mod symbols {
@@ -277,6 +287,7 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
+    pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -338,6 +349,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
         );
+        engine.register_symbol(
+            symbols::STORE_IN_CALLVALUE_PTR,
+            SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
     };
 }
 
@@ -397,6 +412,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -535,6 +559,22 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    pub(crate) fn store_in_callvalue_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        callvalue_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
+            &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
     }
 
     /// Extends the memory segment of the syscall context.
