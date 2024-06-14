@@ -505,8 +505,8 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
-  
-        pub(crate) fn storage_read_syscall(
+
+    pub(crate) fn storage_read_syscall(
         &'c self,
         block: &'c Block,
         key: Value<'c, 'c>,

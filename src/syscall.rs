@@ -1,4 +1,3 @@
-
 //! # Module implementing syscalls for the EVM
 //!
 //! The syscalls implemented here are to be exposed to the generated code
@@ -213,13 +212,13 @@ impl<'c> SyscallContext<'c> {
             }
         }
     }
-  
-  pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
-        self.storage.insert(*stg_key, *stg_value);
+
+    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
+        self.db.insert(*stg_key, *stg_value);
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256) -> &U256 {
-        match self.storage.get(stg_key) {
+        match self.db.get(stg_key) {
             Some(v) => v,
             None => &U256 { hi: 0, lo: 0 },
         }
@@ -440,7 +439,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-      
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORAGE_READ),
@@ -462,7 +461,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-      
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::APPEND_LOG),
@@ -616,7 +615,7 @@ pub(crate) mod mlir {
             .result(0)?;
         Ok(value.into())
     }
-  
+
     /// Reads the storage given a key
     pub(crate) fn storage_read_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
