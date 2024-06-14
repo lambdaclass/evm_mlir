@@ -50,6 +50,7 @@ pub mod gas_cost {
     pub const BYTE: i64 = 3;
     pub const CALLDATALOAD: i64 = 3;
     pub const CALLDATASIZE: i64 = 2;
+    pub const CALLVALUE: i64 = 2;
     pub const JUMPI: i64 = 10;
     pub const KECCAK256: i64 = 30;
     pub const LOG: i64 = 375;

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use db::Db;
-use executor::Executor;
+use executor::{Executor, OptLevel};
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
 
@@ -15,6 +15,7 @@ pub mod env;
 pub mod errors;
 pub mod executor;
 pub mod module;
+pub mod primitives;
 pub mod program;
 pub mod syscall;
 pub mod utils;
@@ -46,7 +47,7 @@ impl Evm {
             .compile(&self.program, &output_file)
             .expect("failed to compile program");
 
-        let executor = Executor::new(&module);
+        let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
 
         executor.execute(&mut context, self.env.tx.gas_limit);
