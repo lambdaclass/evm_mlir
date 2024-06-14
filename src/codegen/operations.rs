@@ -3116,8 +3116,36 @@ fn codegen_log<'c, 'r>(
 }
 
 fn codegen_chaind<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CHAINID)?;
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    let chainid = op_ctx.get_chainid_syscall(&ok_block, location)?;
+    let uint256 = IntegerType::new(context, 256);
+    // Convert calldata_size from u32 to u256
+    let chainid = ok_block
+        .append_operation(arith::extui(chainid, uint256.into(), location))
+        .result(0)?
+        .into();
+    stack_push(context, &ok_block, chainid)?;
+    Ok((start_block, ok_block))
 }

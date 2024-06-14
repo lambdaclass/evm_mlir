@@ -187,6 +187,11 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn get_chainid(&self) -> u64 {
+        self.env.cfg.chain_id
+    }
+
     pub extern "C" fn get_calldata_size(&self) -> u32 {
         self.env.tx.data.len() as u32
     }
@@ -284,6 +289,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -345,6 +351,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
+        engine.register_symbol(
+            symbols::GET_CHAINID,
+            SyscallContext::get_chainid as *const fn(*mut c_void) as *mut (),
+        );
     };
 }
 
@@ -395,6 +405,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CHAINID),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -527,6 +546,25 @@ pub(crate) mod mlir {
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
                 &[syscall_ctx],
                 &[uint32],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    pub(crate) fn get_chainid_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CHAINID),
+                &[syscall_ctx],
+                &[uint64],
                 location,
             ))
             .result(0)?;
