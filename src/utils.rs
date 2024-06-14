@@ -1185,6 +1185,18 @@ pub(crate) fn return_result_with_offset_and_size(
     Ok(())
 }
 
+pub(crate) fn get_block_number(
+    op_ctx: &OperationCtx,
+    block: &Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let block_number = op_ctx.get_block_number_syscall(block, location)?;
+
+    Ok(block_number)
+}
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)
