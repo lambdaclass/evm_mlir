@@ -180,8 +180,15 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
+        let aux = &self.env.tx.value;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
+    }
+
     pub extern "C" fn get_calldata_size(&self) -> u32 {
-        self.env.tx.calldata.len() as u32
+        self.env.tx.data.len() as u32
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
@@ -262,7 +269,7 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.calldata.as_ptr()
+        self.env.tx.data.as_ptr()
     }
 
     pub extern "C" fn get_address(&mut self) -> *const u8 {
@@ -271,10 +278,11 @@ impl<'c> SyscallContext<'c> {
 
     #[allow(improper_ctypes)]
     pub extern "C" fn store_in_address_ptr(&self, value: &mut U256) {
-        let bytes = &self.env.tx.to.to_fixed_bytes();
-        let low: [u8; 16] = bytes[0..16].try_into().unwrap();
-        let high: [u8; 16] = [&bytes[16..20], &[0u8; 12]].concat().try_into().unwrap();
-
+        //let bytes: [u8; 20] = self.env.tx.get_address();
+        //let low: [u8; 16] = bytes[0..16].try_into().unwrap();
+        //let high: [u8; 16] = [&bytes[16..20], &[0u8; 12]].concat().try_into().unwrap();
+        let low = [0xff; 16];
+        let high = [0xff; 16];
         // We have to check the system endianess in order to correctly construct a u128 from bytes
         // We don't want the bytes order to be modified
         if cfg!(target_endian = "little") {
@@ -299,6 +307,7 @@ pub mod symbols {
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const GET_ADDRESS: &str = "evm_mlir__get_address";
     pub const STORE_IN_ADDRESS_PTR: &str = "evm_mlir__store_in_address_ptr";
+    pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -362,7 +371,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORE_IN_ADDRESS_PTR,
-            SyscallContext::get_calldata_size as *const fn(*mut c_void, *mut U256) as *mut (),
+            SyscallContext::store_in_address_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_CALLVALUE_PTR,
+            SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -414,6 +427,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_SIZE),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -558,6 +580,22 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    pub(crate) fn store_in_callvalue_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        callvalue_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
+            &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
     }
 
     /// Extends the memory segment of the syscall context.
