@@ -66,6 +66,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
+        Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -3112,4 +3113,67 @@ fn codegen_log<'c, 'r>(
     }
 
     Ok((start_block, log_block))
+}
+
+fn codegen_timestamp<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::TIMESTAMP)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
+
+    let timestamp_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_timestamp_ptr(&ok_block, location, timestamp_ptr);
+
+    let timestamp = ok_block
+        .append_operation(llvm::load(
+            context,
+            timestamp_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, timestamp)?;
+
+    Ok((start_block, ok_block))
 }

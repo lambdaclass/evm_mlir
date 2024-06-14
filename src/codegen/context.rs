@@ -623,4 +623,19 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+
+    pub(crate) fn store_in_timestamp_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        timestamp_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_timestamp_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            timestamp_ptr,
+        )
+    }
 }

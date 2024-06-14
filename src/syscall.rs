@@ -271,6 +271,13 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.data.as_ptr()
     }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_timestamp_ptr(&self, value: &mut U256) {
+        let aux = &self.env.block.timestamp;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
+    }
 }
 
 pub mod symbols {
@@ -284,6 +291,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const STORE_IN_TIMESTAMP_PTR: &str = "evm_mlir__store_in_timestamp_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -344,6 +352,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_TIMESTAMP_PTR,
+            SyscallContext::store_in_timestamp_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -487,6 +499,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_TIMESTAMP_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -700,5 +721,22 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    /// Stores the timestamp in the syscall context
+    pub(crate) fn store_in_timestamp_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        timestamp_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_TIMESTAMP_PTR),
+            &[syscall_ctx, timestamp_ptr],
+            &[],
+            location,
+        ));
     }
 }
