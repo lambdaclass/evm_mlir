@@ -499,6 +499,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_gasprice_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        gasprice_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_gasprice_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            gasprice_ptr,
+        )
+    }
+
     pub(crate) fn extend_memory_syscall(
         &'c self,
         block: &'c Block,
@@ -628,6 +643,22 @@ impl<'c> OperationCtx<'c> {
             self.mlir_context,
             self.syscall_ctx,
             block,
+            location,
+        )
+    }
+
+    #[allow(unused)]
+    pub(crate) fn get_block_number_syscall(
+        &'c self,
+        block: &'c Block,
+        number: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_block_number_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            number,
             location,
         )
     }

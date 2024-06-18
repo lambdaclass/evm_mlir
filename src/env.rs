@@ -76,7 +76,7 @@ pub struct TxEnv {
     /// The gas limit of the transaction.
     pub gas_limit: u64,
     /// The gas price of the transaction.
-    // pub gas_price: U256,
+    pub gas_price: U256,
     /// The destination of the transaction.
     pub transact_to: TransactTo,
     /// The value sent to `transact_to`.
@@ -130,7 +130,7 @@ impl Default for TxEnv {
         Self {
             caller: Address::zero(),
             gas_limit: u64::MAX,
-            // gas_price: U256::zero(),
+            gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
             value: U256::zero(),
