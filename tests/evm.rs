@@ -474,9 +474,10 @@ fn balance_with_unexisting_account() {
 fn balance_with_existing_account() {
     let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
     let balance = primitives::U256::from_dec_str("123456").unwrap();
-    let a = (BigUint::from(0) << 255) + 0x9bbfed6889322e016e0a02ee459d306fc19545d8;
+    let a = address.as_bytes();
+    let big_a = BigUint::from_bytes_be(address.as_bytes());
     let program = Program::from(vec![
-        Operation::Push((20_u8, )),
+        Operation::Push((20_u8, big_a)),
         Operation::Balance,
         Operation::Push0,
         Operation::Mstore,
