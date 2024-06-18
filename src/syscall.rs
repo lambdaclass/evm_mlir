@@ -17,6 +17,7 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
+use ethereum_types::Address;
 use melior::ExecutionEngine;
 
 use crate::{
@@ -282,12 +283,16 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.as_ptr()
     }
 
-    pub extern "C" fn get_balance(&self, address: &H160, balance: &mut U256) {
+    pub extern "C" fn get_balance(&mut self, address: &H160, balance: &mut U256) {
         let address_hi_slice = address.hi.to_be_bytes();
         let address_lo_slice = address.lo.to_be_bytes();
-        let address_slice = ([address_hi_slice, address_lo_slice]).concat();
+        let mut address_slice = Vec::from(address_hi_slice);
+        
+        address_lo_slice
+            .into_iter()
+            .for_each(|val| address_slice.push(val));
 
-        let address = ethereum_types::H160::from_slice(&address_slice);
+        let address = Address::from_slice(&(address_slice));
 
         match self.db.basic(address).unwrap() {
             Some(a) => {
@@ -299,6 +304,8 @@ impl<'c> SyscallContext<'c> {
                 balance.lo = 0;
             }
         };
+
+        dbg!("Balance1 {}", balance);
     }
 }
 
@@ -522,7 +529,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -531,7 +538,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BALANCE),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -756,17 +765,14 @@ pub(crate) mod mlir {
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
+    ) {
         let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BALANCE),
-                &[syscall_ctx, address, balance],
-                &[],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
+        let value = block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BALANCE),
+            &[syscall_ctx, address, balance],
+            &[],
+            location,
+        ));
     }
 }

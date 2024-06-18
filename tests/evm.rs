@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
+use ethereum_types::Address;
 use evm_mlir::{
     constants::gas_cost,
+    db::{Database, Db, DbAccount},
     primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
@@ -453,4 +457,81 @@ fn callvalue_stack_overflow() {
     program.push(Operation::Callvalue);
     let env = Env::default();
     run_program_assert_halt(program, env);
+}
+
+#[test]
+fn balance_with_unexisting_account() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let mut env = Env::default();
+
+    run_program_assert_result(operations, env, BigUint::from(0_u8));
+}
+
+#[test]
+fn balance_with_existing_account() {
+    let address = Address::from_low_u64_be(123456);
+    let balance = ethereum_types::U256::from_dec_str("123456").unwrap();
+    dbg!("Balance2 {}", balance);
+    let program = Program::from(vec![
+        Operation::Push((20_u8, BigUint::from(123456_u32))),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+
+    let mut accounts = HashMap::new();
+    let db_account = DbAccount {
+        nonce: 0,
+        balance,
+        storage: HashMap::new(),
+        bytecode_hash: ethereum_types::U256::zero(),
+    };
+
+    accounts.insert(address, db_account);
+
+    let mut db = Db {
+        accounts,
+        contracts: HashMap::new(),
+        block_hashes: HashMap::new(),
+    };
+
+    let mut env = Env::default();
+
+    env.tx.caller = address;
+    env.tx.gas_limit = 999_999;
+
+    let mut evm = Evm { env, program, db };
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let result = result.return_data().unwrap();
+    let expected_result = BigUint::from(123456_u32);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_stack_underflow() {
+    let mut program = vec![Operation::Balance];
+    let env = Env::default();
+
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn balance_static_gas_check() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let mut env = Env::default();
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
 }

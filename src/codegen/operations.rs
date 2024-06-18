@@ -1779,6 +1779,84 @@ fn codegen_balance<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, &start_block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+    let h160 = IntegerType::new(context, 160);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::BALANCE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+
+    let address_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(h160.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        address,
+        address_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let balance_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.get_balance_syscall(&ok_block, address_ptr, balance_ptr, location);
+
+    // get the value from the pointer
+    let balance = ok_block
+        .append_operation(llvm::load(
+            context,
+            balance_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, balance)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_byte<'c, 'r>(

@@ -638,6 +638,6 @@ impl<'c> OperationCtx<'c> {
             address,
             balance,
             location,
-        );
+        )
     }
 }
