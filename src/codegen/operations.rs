@@ -169,17 +169,22 @@ fn codegen_keccak256<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     let gas_flag = consume_gas(context, &start_block, gas_cost::KECCAK256)?;
-    let condition = start_block
+    let ok_condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+    let ok_condition = start_block
+        .append_operation(arith::andi(ok_condition, stack_flag, location))
         .result(0)?
         .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        ok_condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],

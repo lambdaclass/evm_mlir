@@ -115,6 +115,25 @@ fn test_keccak256() {
 }
 
 #[test]
+fn test_keccak_with_mstore() {
+    let program = vec![
+        Operation::Push((
+            32,
+            BigUint::from_bytes_be(&hex!(
+                "FFFFFFFF00000000000000000000000000000000000000000000000000000000"
+            )),
+        )),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Mstore,
+        Operation::Push((1, BigUint::from(4_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
+
+#[test]
 fn test_keccak256_with_size() {
     let program = vec![
         Operation::Push((1, BigUint::from(0x04_u8))),
@@ -123,6 +142,18 @@ fn test_keccak256_with_size() {
     ];
     let expected = hex!("e8e77626586f73b955364c7b4bbf0bb7f7685ebd40e852b164633a4acbd3244c");
     run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
+
+#[test]
+fn test_keccak_with_overflow() {
+    let program = vec![Operation::Push((1_u8, BigUint::from(88_u8))); 1025];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn test_keccak_with_underflow() {
+    let program = vec![Operation::Keccak256];
+    run_program_assert_halt(program);
 }
 
 #[test]
