@@ -187,6 +187,12 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
+    pub extern "C" fn store_in_blobbasefee_ptr(&self, value: &mut U256) {
+        let aux = &self.env.block.blob_base_fee;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
+    }
+
     pub extern "C" fn get_calldata_size(&self) -> u32 {
         self.env.tx.data.len() as u32
     }
@@ -292,6 +298,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const STORE_IN_BLOBBASEFEE_PTR: &str = "evm_mlir__store_in_blobbasefee_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
 }
 
@@ -355,6 +362,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
+            symbols::STORE_IN_BLOBBASEFEE_PTR,
+            SyscallContext::store_in_blobbasefee_ptr
+                as *const extern "C" fn(&SyscallContext, *mut U256) -> () as *mut (),
+        );
+        engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
         );
@@ -411,10 +423,19 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
+        
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_BLOBBASEFEE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -565,6 +586,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
             &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn store_in_blobbasefee_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        blob_base_fee_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BLOBBASEFEE_PTR),
+            &[syscall_ctx, blob_base_fee_ptr],
             &[],
             location,
         ));
