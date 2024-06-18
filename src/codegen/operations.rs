@@ -3119,5 +3119,39 @@ fn codegen_extcodesize<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256).into();
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // TODO: add dynamic gas computation
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+    let codesize = op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, location)?;
+    let codesize = ok_block
+        .append_operation(arith::extui(codesize, uint256, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, codesize)?;
+
+    Ok((start_block, ok_block))
 }

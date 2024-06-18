@@ -535,3 +535,37 @@ fn callvalue_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn extcodesize() {
+    let address = 40_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let program: Program = operations.clone().into();
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    // this operations are added in `run_program_assert_result` in order to get the execution result
+    // so they must be taken into account when computing the code size.
+    let program_extension: Program = vec![
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]
+    .into();
+
+    let expected_result = program.to_bytecode().len() + program_extension.to_bytecode().len();
+    run_program_assert_result(operations, env, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeSize];
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    run_program_assert_halt(program, env);
+}
