@@ -535,3 +535,32 @@ fn callvalue_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn sstore_happy_path() {
+    let key = BigUint::from(80_u8);
+    let value = BigUint::from(11_u8);
+    let program = Program::from(vec![
+        Operation::Push((1_u8, value.clone())),
+        Operation::Push((1_u8, key.clone())),
+        Operation::Sstore,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact();
+    assert!(&result.is_success());
+
+    let stored_value = evm.db.read_storage(address, EU256::from(80_u8));
+    assert_eq!(stored_value, EU256::from(11_u8)); // fails
+}
+
