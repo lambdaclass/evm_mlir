@@ -461,7 +461,7 @@ fn basefee() {
     let mut env = Env::default();
     let basefee = 10_u8;
     let expected_result = BigUint::from(basefee);
-    env.block.basefee = ethereum_types::U256::from(basefee);
+    env.block.basefee = EU256::from(basefee);
 
     run_program_assert_result(program, env, expected_result);
 }
