@@ -19,7 +19,6 @@ use std::ffi::c_void;
 
 use ethereum_types::U256 as EU256;
 use melior::ExecutionEngine;
-use ethereum_types::U256 as EU256;
 
 use crate::{db::Db, env::Env};
 
@@ -230,10 +229,12 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let address = self.env.tx.caller;
-        let mut key = ethereum_types::U256::zero();
-
-        key = (key + stg_key.hi) << 128 + stg_key.lo;
-
+        let mut combined = [0u8; 32];
+        
+        combined[..16].copy_from_slice(&stg_key.hi.to_be_bytes());
+        combined[16..].copy_from_slice(&stg_key.lo.to_be_bytes());
+        let key = EU256::from_big_endian(&combined);
+        dbg!("{}", stg_key);
         let result = self.db.read_storage(address, key);
 
         stg_value.hi = (result >> 128).low_u128();
