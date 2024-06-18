@@ -1770,6 +1770,8 @@ fn codegen_sstore<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     // TODO: add gas consumption
@@ -1788,7 +1790,49 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    write_storage(op_ctx, &ok_block, key, value)?;
+    let pointer_size = constant_value_from_i64(&context, &ok_block, MAX_STACK_SIZE as i64)?;
+
+    let key_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location);
 
     Ok((start_block, ok_block))
 }
