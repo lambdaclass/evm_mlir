@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use evm_mlir::{
     constants::gas_cost,
     primitives::{Bytes, U256 as EU256},
@@ -6,6 +8,7 @@ use evm_mlir::{
     Env, Evm,
 };
 use num_bigint::BigUint;
+type B256 = ethereum_types::U256;
 
 fn run_program_assert_result(
     mut operations: Vec<Operation>,
@@ -51,6 +54,26 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let mut evm = Evm::new(env_halt, program);
     let result = evm.transact();
     assert!(result.is_halt());
+}
+
+fn run_program_assert_bytes_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: &[u8],
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
@@ -481,5 +504,35 @@ fn block_number_with_stack_overflow() {
     let env = Env::default();
 
     program.push(Operation::Number);
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn prevrandao() {
+    let program = vec![Operation::Prevrandao];
+    let mut env = Env::default();
+    let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let randao = B256::from_str(&randao_str).expect("Error while converting str to B256");
+    let mut randao_bytes: [u8; 32] = [0x00; 32];
+    randao.to_big_endian(&mut randao_bytes);
+    env.block.prevrandao = Some(ethereum_types::U256::from(randao));
+    run_program_assert_bytes_result(program, env, &randao_bytes);
+}
+
+#[test]
+fn prevrandao_check_gas() {
+    let program = vec![Operation::Prevrandao];
+    let env = Env::default();
+    let gas_needed = gas_cost::PREVRANDAO;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn prevrandao_with_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    let env = Env::default();
+
+    program.push(Operation::Prevrandao);
     run_program_assert_halt(program, env);
 }

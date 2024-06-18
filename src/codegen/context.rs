@@ -639,4 +639,20 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+
+    #[allow(unused)]
+    pub(crate) fn get_prevrandao_syscall(
+        &'c self,
+        block: &'c Block,
+        prevrandao_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_prevrandao_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            prevrandao_ptr,
+            location,
+        )
+    }
 }

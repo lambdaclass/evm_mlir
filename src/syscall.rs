@@ -279,6 +279,14 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.data.as_ptr()
     }
+
+    #[allow(improper_ctypes)]
+    pub extern "C" fn get_prevrandao(&self, prevrandao: &mut U256) {
+        if let Some(randao) = self.env.block.prevrandao {
+            prevrandao.hi = (randao >> 128).low_u128();
+            prevrandao.lo = randao.low_u128();
+        }
+    }
 }
 
 pub mod symbols {
@@ -293,6 +301,7 @@ pub mod symbols {
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -357,6 +366,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_PREVRANDAO,
+            SyscallContext::get_prevrandao as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -507,6 +520,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_PREVRANDAO),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -736,6 +758,23 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
             &[syscall_ctx, number],
+            &[],
+            location,
+        ));
+    }
+
+    #[allow(unused)]
+    pub(crate) fn get_prevrandao_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        prevrandao_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_PREVRANDAO),
+            &[syscall_ctx, prevrandao_ptr],
             &[],
             location,
         ));
