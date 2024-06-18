@@ -50,7 +50,7 @@ pub enum Opcode {
     // RETURNDATASIZE = 0x3D,
     // RETURNDATACOPY = 0x3E,
     // EXTCODEHASH = 0x3F,
-    // BLOCKHASH = 0x40,
+    BLOCKHASH = 0x40,
     // COINBASE = 0x41,
     // TIMESTAMP = 0x42,
     NUMBER = 0x43,
@@ -352,6 +352,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    BlockHash,
 }
 
 impl Operation {
@@ -412,6 +413,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::BlockHash => vec![Opcode::BLOCKHASH as u8],
         }
     }
 }
@@ -715,6 +717,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::BLOCKHASH => Operation::BlockHash,
             };
             operations.push(op);
             pc += 1;

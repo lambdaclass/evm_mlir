@@ -86,6 +86,7 @@ pub fn generate_code_for_op<'c>(
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
+        Operation::BlockHash => todo!(),
     }
 }
 
