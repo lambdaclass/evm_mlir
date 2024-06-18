@@ -23,8 +23,8 @@ use crate::{
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
         get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result,
-        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -69,6 +69,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Sload => codegen_sload(op_ctx, region),
+        Operation::Sstore => codegen_sstore(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
@@ -1758,6 +1759,80 @@ fn codegen_sload<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, read_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_sstore<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // TODO: add gas consumption
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let key = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    let pointer_size = constant_value_from_i64(&context, &ok_block, MAX_STACK_SIZE as i64)?;
+
+    let key_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location);
 
     Ok((start_block, ok_block))
 }

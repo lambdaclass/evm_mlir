@@ -17,13 +17,11 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
+use ethereum_types::U256 as EU256;
 use melior::ExecutionEngine;
 use ethereum_types::U256 as EU256;
 
-use crate::{
-    db::{Database, Db},
-    env::Env,
-};
+use crate::{db::Db, env::Env};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -644,8 +642,6 @@ pub(crate) mod mlir {
         value: Value<'c, 'c>,
         location: Location<'c>,
     ) {
-        let ptr_type = pointer(mlir_ctx, 0);
-
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),

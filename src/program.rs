@@ -66,8 +66,8 @@ pub enum Opcode {
     MLOAD = 0x51,
     MSTORE = 0x52,
     MSTORE8 = 0x53,
+    SSTORE = 0x55,
     SLOAD = 0x54,
-    // SSTORE = 0x55,
     JUMP = 0x56,
     JUMPI = 0x57,
     PC = 0x58,
@@ -214,6 +214,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::MLOAD as u8 => Opcode::MLOAD,
             x if x == Opcode::SLOAD as u8 => Opcode::SLOAD,
+            x if x == Opcode::SSTORE as u8 => Opcode::SSTORE,
             x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
             x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
             x if x == Opcode::JUMP as u8 => Opcode::JUMP,
@@ -336,6 +337,7 @@ pub enum Operation {
     Pop,
     Mload,
     Sload,
+    Sstore,
     Jump,
     Jumpi,
     PC { pc: usize },
@@ -388,6 +390,7 @@ impl Operation {
             Operation::Pop => vec![Opcode::POP as u8],
             Operation::Mload => vec![Opcode::MLOAD as u8],
             Operation::Sload => vec![Opcode::SLOAD as u8],
+            Operation::Sstore => vec![Opcode::SSTORE as u8],
             Operation::Jump => vec![Opcode::JUMP as u8],
             Operation::Jumpi => vec![Opcode::JUMPI as u8],
             Operation::PC { pc: _ } => vec![Opcode::PC as u8],
@@ -411,7 +414,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
         }
     }
 }
@@ -474,6 +477,7 @@ impl Program {
                 Opcode::POP => Operation::Pop,
                 Opcode::MLOAD => Operation::Mload,
                 Opcode::SLOAD => Operation::Sload,
+                Opcode::SSTORE => Operation::Sstore,
                 Opcode::JUMP => Operation::Jump,
                 Opcode::JUMPI => Operation::Jumpi,
                 Opcode::PC => Operation::PC { pc },
@@ -741,6 +745,13 @@ impl Program {
                 _ => 1,
             })
             .sum()
+    }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        self.operations
+            .iter()
+            .flat_map(Operation::to_bytecode)
+            .collect::<Vec<u8>>()
     }
 }
 

@@ -1,7 +1,11 @@
 use std::{collections::HashSet, path::Path};
 mod ef_tests_executor;
 use ef_tests_executor::models::TestSuite;
-use evm_mlir::{program::Program, Env, Evm};
+use evm_mlir::{
+    db::{Bytecode, Db},
+    env::TransactTo,
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -138,9 +142,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(account) = unit.pre.get(&to) else {
             return Err("Callee doesn't exist".into());
         };
-        let env = Env::default();
-        let program = Program::from_bytecode(&account.code)?;
-        let mut evm = Evm::new(env, program);
+        let mut env = Env::default();
+        env.tx.transact_to = TransactTo::Call(to);
+        let db = Db::with_bytecode(to, Bytecode(Into::<Vec<u8>>::into(account.code.clone())));
+        let mut evm = Evm::new(env, db);
         // // TODO: check the result
         let _result = evm.transact();
     }
