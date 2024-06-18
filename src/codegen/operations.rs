@@ -141,7 +141,7 @@ fn codegen_origin<'c, 'r>(
         .result(0)?
         .into();
 
-    //address: the 20-byte address of the sender of the transaction. It can only be an account without code.
+    //Get the 20-byte address of the sender of the transaction
     op_ctx.get_origin_syscall(&ok_block, address_ptr, location);
 
     let address_value = ok_block

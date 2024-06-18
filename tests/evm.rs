@@ -119,7 +119,7 @@ fn test_opcode_origin() {
     let operations = vec![Operation::Origin];
     let mut env = Env::default();
     let caller: [u8; 20] = [0x01; 20];
-    
+
     env.tx.caller = H160::from(caller);
 
     let expected_result = BigUint::from_bytes_be(&caller);
