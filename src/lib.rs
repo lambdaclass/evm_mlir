@@ -53,7 +53,7 @@ impl Evm<Db> {
             TransactTo::Call(code_address) => code_address,
             TransactTo::Create => unimplemented!(), // TODO: implement creation
         };
-        println!("code_address = {:?}", code_address);
+
         let bytecode = self
             .db
             .code_by_address(code_address)
