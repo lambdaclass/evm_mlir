@@ -36,7 +36,7 @@ impl Db {
         hasher.update(bytecode.as_slice());
         let hash = B256::from_big_endian(&hasher.finalize());
         let account = DbAccount {
-            bytecode_hash: hash.clone(),
+            bytecode_hash: hash,
             ..Default::default()
         };
         db.accounts.insert(address, account);
