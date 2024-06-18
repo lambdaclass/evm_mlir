@@ -54,7 +54,7 @@ pub enum Opcode {
     // COINBASE = 0x41,
     // TIMESTAMP = 0x42,
     NUMBER = 0x43,
-    // DIFFICULTY = 0x44,
+    PREVRANDAO = 0x44,
     // GASLIMIT = 0x45,
     // CHAINID = 0x46,
     // SELFBALANCE = 0x47,
@@ -295,6 +295,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::PREVRANDAO as u8 => Opcode::PREVRANDAO,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -352,6 +353,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    Prevrandao,
 }
 
 impl Operation {
@@ -412,6 +414,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::Prevrandao => vec![Opcode::PREVRANDAO as u8],
         }
     }
 }
@@ -715,6 +718,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::PREVRANDAO => Operation::Prevrandao,
             };
             operations.push(op);
             pc += 1;
