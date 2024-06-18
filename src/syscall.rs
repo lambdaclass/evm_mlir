@@ -187,7 +187,6 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn get_chainid(&self) -> u64 {
         self.env.cfg.chain_id
     }
@@ -353,7 +352,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_CHAINID,
-            SyscallContext::get_chainid as *const fn(*mut c_void) as *mut (),
+            SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
         );
     };
 }
