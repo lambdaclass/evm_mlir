@@ -268,6 +268,12 @@ There are some example files under `programs/`, for example:
 cargo run programs/push32.bytecode
 ```
 
+You can also specify the optimization level:
+
+```bash
+cargo run programs/push32.bytecode 3  # ranges from 0 to 3
+```
+
 ### Testing
 
 To only run the ethereum foundation tests, run the command `make test-eth`. if you want to run the rest of the tests (those that are not the ethereum foundation tests) just run 

@@ -291,6 +291,14 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3, *topic4]);
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn get_block_number(&self, number: &mut U256) {
+        let block_number = self.env.block.number;
+
+        number.hi = (block_number >> 128).low_u128();
+        number.lo = block_number.low_u128();
+    }
+
     /// Receives a memory offset and size, and a vector of topics.
     /// Creates a Log with topics and data equal to memory[offset..offset + size]
     /// and pushes it to the logs vector.
@@ -319,6 +327,7 @@ pub mod symbols {
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
+    pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -383,6 +392,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_BLOCK_NUMBER,
+            SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -533,6 +546,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -763,5 +785,23 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    /// Returns a pointer to the calldata.
+    #[allow(unused)]
+    pub(crate) fn get_block_number_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        number: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
+            &[syscall_ctx, number],
+            &[],
+            location,
+        ));
     }
 }

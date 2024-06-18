@@ -484,3 +484,32 @@ fn callvalue_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn block_number_check() {
+    let program = vec![Operation::Number];
+    let mut env = Env::default();
+    let result = BigUint::from(2147483639_u32);
+
+    env.block.number = ethereum_types::U256::from(2147483639);
+
+    run_program_assert_result(program, env, result);
+}
+
+#[test]
+fn block_number_check_gas() {
+    let program = vec![Operation::Number];
+    let env = Env::default();
+    let gas_needed = gas_cost::NUMBER;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn block_number_with_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    let env = Env::default();
+
+    program.push(Operation::Number);
+    run_program_assert_halt(program, env);
+}

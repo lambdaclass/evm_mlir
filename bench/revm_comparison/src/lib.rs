@@ -9,6 +9,11 @@ use revm::{
 };
 use std::{hint::black_box, path::PathBuf};
 
+pub const FIBONACCI_BYTECODE: &str =
+    "5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3";
+pub const FACTORIAL_BYTECODE: &str =
+    "5f355f60015b8215601b57906001018091029160019003916005565b9150505f5260205ff3";
+
 pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
     let program = Program::from_bytecode(&bytes).unwrap();
@@ -21,7 +26,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
     let mut env: Env = Default::default();
     env.tx.gas_limit = 999_999;
     let mut calldata = vec![0x00; 32];
