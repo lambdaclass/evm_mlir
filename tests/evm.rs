@@ -6,6 +6,7 @@ use evm_mlir::{
     syscall::{Log, U256},
     Env, Evm,
 };
+use std::str::FromStr;
 
 use ethereum_types::Address;
 
@@ -28,7 +29,6 @@ fn run_program_assert_result(
     let mut evm = Evm::new(env, program);
     let result = evm.transact();
     assert!(&result.is_success());
-    println!("bytes = {:?}", result.return_data().unwrap());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
     assert_eq!(result_data, expected_result);
 }
@@ -56,6 +56,26 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let mut evm = Evm::new(env_halt, program);
     let result = evm.transact();
     assert!(result.is_halt());
+}
+
+fn run_program_assert_bytes_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: &[u8],
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
@@ -462,13 +482,17 @@ fn callvalue_stack_overflow() {
 
 #[test]
 fn address() {
-    let mut address: Vec<u8> = [0x00; 20].into();
-    address[19] = 0xff;
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
     let operations = vec![Operation::Address];
     let mut env = Env::default();
-    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
-    let expected_result = BigUint::from_bytes_be(&address);
-    run_program_assert_result(operations, env, expected_result);
+    env.tx.transact_to = TransactTo::Call(address);
+    let address_bytes = &address.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &address_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+    run_program_assert_bytes_result(operations, env, &expected_result);
 }
 
 #[test]

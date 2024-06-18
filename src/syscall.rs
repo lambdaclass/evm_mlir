@@ -273,7 +273,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
-        self.env.tx.get_address().as_ptr()
+        self.env.tx.get_address().to_fixed_bytes().as_ptr()
     }
 }
 
