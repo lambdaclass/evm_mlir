@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use builder::EvmBuilder;
 use db::{Database, Db};
 use env::TransactTo;
-use ethereum_types::Address;
 use executor::{Executor, OptLevel};
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
@@ -52,7 +51,7 @@ impl Evm<Db> {
 
         let code_address = match self.env.tx.transact_to {
             TransactTo::Call(code_address) => code_address,
-            TransactTo::Create => Address::zero(), // TODO: check this case
+            TransactTo::Create => unimplemented!(), // TODO: implement creation
         };
         let bytecode = self
             .db

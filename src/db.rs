@@ -34,12 +34,13 @@ impl Db {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();
         hasher.update(bytecode.as_slice());
-        let hash = hasher.finalize();
+        let hash = B256::from_big_endian(&hasher.finalize());
         let account = DbAccount {
-            bytecode_hash: B256::from_big_endian(&hash),
+            bytecode_hash: hash.clone(),
             ..Default::default()
         };
         db.accounts.insert(address, account);
+        db.contracts.insert(hash, bytecode);
         db
     }
 
