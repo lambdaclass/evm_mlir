@@ -54,6 +54,7 @@ pub mod gas_cost {
     pub const CALLVALUE: i64 = 2;
     pub const JUMPI: i64 = 10;
     pub const LOG: i64 = 375;
+    pub const BLOCKHASH: i64 = 20;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;

@@ -3,6 +3,7 @@ use evm_mlir::{
     primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
+    db::Db,
     Env, Evm,
 };
 use num_bigint::BigUint;

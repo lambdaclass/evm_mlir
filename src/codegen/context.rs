@@ -624,6 +624,23 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn get_block_hash_syscall(
+        &'c self,
+        block: &'c Block,
+        block_number: Value<'c, 'c>,
+        block_hash: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_block_hash_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            block_number,
+            block_hash,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall(
         &'c self,

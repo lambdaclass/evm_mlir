@@ -86,8 +86,98 @@ pub fn generate_code_for_op<'c>(
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
-        Operation::BlockHash => todo!(),
+        Operation::BlockHash => codegen_blockhash(op_ctx,region),
     }
+}
+
+fn codegen_blockhash<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError>{
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let gas_flag = consume_gas(context, &start_block, gas_cost::BLOCKHASH)?;
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let block_number = stack_pop(context, &ok_block)?;
+    //TODO: Check that the valid range is the last 256 blocks (not including the current one)
+    //TODO: Check if the block_number is the current block number, if so return 0
+    
+    //let current_block_number = get_block_number(op_ctx, &ok_block)?;
+    
+    // let block_number_flag = ok_block
+    //     .append_operation(arith::cmpi(
+    //         context,
+    //         CmpiPredicate::Eq,
+    //         block_number,
+    //         current_block_number,
+    //         location,
+    //     ))
+    //     .result(0)?
+    //     .into();
+
+    //TODO: if block_number_flag is true or block_number is not in the valid range then push 0
+    
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    //This may be refactored to use constant_value_from_i64 util function
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let block_hash_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+    
+
+    op_ctx.get_block_hash_syscall(&ok_block, block_number,block_hash_ptr,location);
+
+    let block_hash_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            block_hash_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, block_hash_value)?;
+
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_callvalue<'c, 'r>(

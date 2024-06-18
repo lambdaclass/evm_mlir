@@ -13,7 +13,7 @@ pub struct DbAccount {
     pub bytecode_hash: B256,
 }
 
-type B256 = U256;
+pub type B256 = U256;
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
@@ -25,6 +25,10 @@ pub struct Db {
 impl Db {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
+        self.block_hashes.insert(number, hash);
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {

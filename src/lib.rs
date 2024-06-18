@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use builder::EvmBuilder;
 use db::{Database, Db};
+use ethereum_types::U256;
 use executor::{Executor, OptLevel};
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
@@ -43,6 +44,7 @@ impl<DB: Database + Default> Evm<DB> {
 
         Self { env, program, db }
     }
+
 }
 
 impl Evm<Db> {
