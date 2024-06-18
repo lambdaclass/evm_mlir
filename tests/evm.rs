@@ -590,7 +590,7 @@ fn sstore_happy_path() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
-    env.tx.caller = caller_address.clone();
+    env.tx.caller = caller_address;
     let db = Db::with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
