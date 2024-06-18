@@ -423,7 +423,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-        
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
