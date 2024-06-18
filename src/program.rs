@@ -414,7 +414,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
         }
     }
 }
@@ -745,6 +745,13 @@ impl Program {
                 _ => 1,
             })
             .sum()
+    }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        self.operations
+            .iter()
+            .flat_map(Operation::to_bytecode)
+            .collect::<Vec<u8>>()
     }
 }
 
