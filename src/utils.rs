@@ -1185,6 +1185,44 @@ pub(crate) fn return_result_with_offset_and_size(
     Ok(())
 }
 
+pub(crate) fn get_block_number<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let block_number_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.get_block_number_syscall(block, block_number_ptr, location);
+
+    // get the value from the pointer
+    let block_number = block
+        .append_operation(llvm::load(
+            context,
+            block_number_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(block_number)
+}
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)

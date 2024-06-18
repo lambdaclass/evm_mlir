@@ -22,9 +22,9 @@ use crate::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        get_block_number, get_nth_from_stack, get_remaining_gas, get_stack_pointer,
+        inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -66,6 +66,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
+        Operation::Number => codegen_number(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -1511,6 +1512,43 @@ fn codegen_shl<'c, 'r>(
     altv_block.append_operation(cf::br(&empty_block, &[], location));
 
     Ok((start_block, empty_block))
+}
+
+fn codegen_number<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough space for 1 element in stack
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    let gas_flag = consume_gas(context, &start_block, gas_cost::NUMBER)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let block_number = get_block_number(op_ctx, &ok_block)?;
+
+    stack_push(context, &ok_block, block_number)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_pop<'c, 'r>(
