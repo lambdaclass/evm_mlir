@@ -28,7 +28,7 @@ impl Db {
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
-        let account = self.accounts.entry(address).or_default();
+        let account = self.accounts.entry(address).or_insert(U256::zero());
         account.storage.insert(key, value);
     }
 
@@ -37,7 +37,7 @@ impl Db {
             .get(&address)
             .and_then(|account| account.storage.get(&key))
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or(U256::zero())
     }
 }
 
