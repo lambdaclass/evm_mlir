@@ -118,36 +118,25 @@ fn codegen_blockhash<'c, 'r>(
         location,
     ));
 
-    let block_number = stack_pop(context, &ok_block)?;
-    //TODO: Check that the valid range is the last 256 blocks (not including the current one)
-    //TODO: Check if the block_number is the current block number, if so return 0
-    
-    //let current_block_number = get_block_number(op_ctx, &ok_block)?;
-    
-    // let block_number_flag = ok_block
-    //     .append_operation(arith::cmpi(
-    //         context,
-    //         CmpiPredicate::Eq,
-    //         block_number,
-    //         current_block_number,
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
-
-    //TODO: if block_number_flag is true or block_number is not in the valid range then push 0
-    
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
     //This may be refactored to use constant_value_from_i64 util function
     let pointer_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    .append_operation(arith::constant(
+        context,
+        IntegerAttribute::new(uint256.into(), 1_i64).into(),
+        location,
+    ))
+    .result(0)?
+    .into();
+
+    let block_number = stack_pop(context, &ok_block)?;
+
+    //TODO: Check that the valid range is the last 256 blocks (not including the current one)
+    //TODO: Check if the block_number is the current block number, if so return 0
+    let block_number_ptr = allocate_and_store_value(op_ctx, &ok_block, block_number, location)?;
+
+    //TODO: if block_number_flag is true or block_number is not in the valid range then push 0
 
     let block_hash_ptr = ok_block
         .append_operation(llvm::alloca(
@@ -161,7 +150,7 @@ fn codegen_blockhash<'c, 'r>(
         .into();
     
 
-    op_ctx.get_block_hash_syscall(&ok_block, block_number,block_hash_ptr,location);
+    op_ctx.get_block_hash_syscall(&ok_block, block_number_ptr,block_hash_ptr,location);
 
     let block_hash_value = ok_block
         .append_operation(llvm::load(
@@ -174,7 +163,10 @@ fn codegen_blockhash<'c, 'r>(
         .result(0)?
         .into();
 
+    
+
     stack_push(context, &ok_block, block_hash_value)?;
+
 
 
     Ok((start_block, ok_block))

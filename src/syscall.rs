@@ -19,7 +19,8 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::{Db,Database}, env::Env};
+use crate::{db::{Db,Database}, env::Env,primitives::U256 as EU256};
+
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -265,10 +266,15 @@ impl<'c> SyscallContext<'c> {
         number.lo = block_number.low_u128();
     }
 
-    pub extern "C" fn get_block_hash(&mut self, number: &mut ethereum_types::U256, hash: &mut U256) {
-        let block_hash = self.db.block_hash(*number).unwrap_or(ethereum_types::U256::default());
+    #[allow(improper_ctypes)]
+    pub extern "C" fn get_block_hash(&mut self, number: &U256, hash: &mut U256) {
+        let number_asu256 = ethereum_types::U256::from_big_endian(&[number.hi.to_be_bytes(), number.lo.to_be_bytes()].concat());
+        println!("Block number: {:?}, number: {:?}", number_asu256, number);
+        println!("Block hashes: {:?}", self.db.block_hashes);
+        let block_hash = self.db.block_hash_from_number(number_asu256).unwrap_or(ethereum_types::U256::default());
         hash.hi = (block_hash >> 128).low_u128();
         hash.lo = block_hash.low_u128();
+        println!("Block hash: {:?}", block_hash);
     }
 
     /// Receives a memory offset and size, and a vector of topics.

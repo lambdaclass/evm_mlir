@@ -26,7 +26,7 @@ pub type B256 = U256;
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
-    block_hashes: HashMap<U256, B256>,
+    pub block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {
@@ -44,8 +44,30 @@ impl Db {
         db
     }
 
+    pub fn with_bytecode_and_block_hash(address: Address, bytecode: Bytecode,number: U256,hash:B256) -> Self {
+        let mut db = Db::default();
+        let mut hasher = Keccak256::new();
+        hasher.update(bytecode.as_slice());
+        let hash = B256::from_big_endian(&hasher.finalize());
+        let account = DbAccount {
+            bytecode_hash: hash,
+            ..Default::default()
+        };
+        db.accounts.insert(address, account);
+        db.contracts.insert(hash, bytecode);
+        db.block_hashes.insert(number, hash);
+        db
+    }
+
     pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
         self.block_hashes.insert(number, hash);
+        println!("block_hashes: {:?}", self.block_hashes);
+    }
+
+    pub fn block_hash_from_number(&self, number: U256) -> Option<B256> {
+        println!("number: {:?}", number);
+        println!("returning: {:?}", self.block_hashes.get(&number).cloned());
+        self.block_hashes.get(&number).cloned()
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -70,6 +92,7 @@ impl Db {
             .bytecode_hash;
         self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
+
 }
 
 #[derive(Default, Clone, PartialEq, Debug)]
@@ -128,8 +151,11 @@ impl Database for Db {
         Ok(self.read_storage(address, index))
     }
 
-    fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
+    fn block_hash(&mut self, number: U256) -> Result<U256, Self::Error> {
         // Returns Error if no block with that number
+        println!("number: {:?}", number);
+        println!("block_hashes: {:?}", self.block_hashes);
+        println!("returning: {:?}", self.block_hashes.get(&number).cloned().ok_or(DatabaseError));
         self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }

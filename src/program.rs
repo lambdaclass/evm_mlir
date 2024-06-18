@@ -295,6 +295,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::BLOCKHASH as u8 => Opcode::BLOCKHASH,
             x => return Err(OpcodeParseError(x)),
         };
 

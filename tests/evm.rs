@@ -150,6 +150,34 @@ fn fibonacci_example() {
     assert_eq!(number, 55_u32.into());
 }
 
+
+#[test]
+fn test_block_hash(){
+    let block_number = 1_u8;
+    let block_hash = 2_u8;
+    let expected_block_hash = BigUint::from(block_hash);
+    let operations = vec![
+        Operation::Push((1, BigUint::from(block_number))),
+        Operation::BlockHash,
+    ];
+    let mut env = Env::default();
+    let program = Program::from(operations.clone());
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let block_hash_number = ethereum_types::U256::from(block_number);
+    let block_hash = ethereum_types::U256::from(block_hash);
+    let mut db = Db::with_bytecode_and_block_hash(address, bytecode,block_hash_number,block_hash);
+
+    db.insert_block_hash(block_hash_number, block_hash);
+
+    let mut evm = Evm::new(env.clone(), db);
+    let result = evm.transact();
+    run_program_assert_result(operations, env, expected_block_hash);
+}
+
 #[test]
 fn calldataload_with_all_bytes_before_end_of_calldata() {
     // in this case offset + 32 < calldata_size
