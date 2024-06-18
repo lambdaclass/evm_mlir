@@ -115,12 +115,10 @@ pub mod gas_cost {
                 if new == original {
                     if original == BigUint::ZERO {
                         gas_refunds += 19_900;
+                    } else if is_warm {
+                        gas_refunds += 2_800;
                     } else {
-                        if is_warm {
-                            gas_refunds += 2_800;
-                        } else {
-                            gas_refunds += 4_900;
-                        }
+                        gas_refunds += 4_900;
                     }
                 }
             }

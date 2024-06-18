@@ -1774,7 +1774,7 @@ fn codegen_sstore<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // TODO: add gas consumption
+    // TODO: add gas consumption and check gas_left > 2300 + gas_needed
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -1790,7 +1790,7 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let pointer_size = constant_value_from_i64(&context, &ok_block, MAX_STACK_SIZE as i64)?;
+    let pointer_size = constant_value_from_i64(context, &ok_block, MAX_STACK_SIZE as i64)?;
 
     let key_ptr = ok_block
         .append_operation(llvm::alloca(
