@@ -151,8 +151,6 @@ fn codegen_exp<'c, 'r>(
         .result(0)?
         .into();
 
-    // TODO: compute dynamic gas cost depending on the size in bytes of the exponent
-    // dynamic_gas = 50 * exponent_byte_size
     let result_type = IntegerType::new(context, 256);
     let leading_zeros = ok_block
         .append_operation(llvm::intr_ctlz(
@@ -174,7 +172,6 @@ fn codegen_exp<'c, 'r>(
         .result(0)?
         .into();
 
-    // Correct calculation of number of bytes required to represent the exponent
     let bits_with_offset = ok_block
         .append_operation(arith::addi(
             number_of_bits,
@@ -204,7 +201,7 @@ fn codegen_exp<'c, 'r>(
 
     let total_gas_cost = ok_block
         .append_operation(arith::addi(
-            constant_value_from_i64(context, &ok_block, 10)?,
+            constant_value_from_i64(context, &ok_block, gas_cost::EXP)?,
             dynamic_gas_cost,
             location,
         ))
@@ -212,7 +209,6 @@ fn codegen_exp<'c, 'r>(
         .into();
 
     let uint64 = IntegerType::new(context, 64);
-    // truncate it to 64 bits
     let total_gas_cost = ok_block
         .append_operation(arith::trunci(total_gas_cost, uint64.into(), location))
         .result(0)?
