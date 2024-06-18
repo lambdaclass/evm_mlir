@@ -624,7 +624,7 @@ impl<'c> OperationCtx<'c> {
         )
     }
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn append_log_with_three_topics_syscall(
+    pub(crate) fn get_balance_syscall(
         &'c self,
         block: &'c Block,
         address: Value<'c, 'c>,
