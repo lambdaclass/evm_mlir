@@ -623,4 +623,19 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+    #[allow(unused)]
+    pub(crate) fn get_basefee_syscall(
+        &'c self,
+        basefee_ptr: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_basefee_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            basefee_ptr,
+            block,
+            location,
+        )
+    }
 }

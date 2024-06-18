@@ -45,7 +45,7 @@ pub struct BlockEnv {
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    //pub basefee: U256,
+    pub basefee: U256,
     // The difficulty of the block.
     //
     // Unused after the Paris (AKA the merge) upgrade, and replaced by `prevrandao`.
