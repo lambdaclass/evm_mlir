@@ -67,6 +67,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
+        Operation::Blobbasefee => codegen_blobbasefee(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -3154,4 +3155,11 @@ fn codegen_log<'c, 'r>(
     }
 
     Ok((start_block, log_block))
+}
+
+fn codegen_blobbasefee<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
