@@ -512,10 +512,10 @@ fn prevrandao() {
     let program = vec![Operation::Prevrandao];
     let mut env = Env::default();
     let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
-    let randao = B256::from_str(&randao_str).expect("Error while converting str to B256");
+    let randao = B256::from_str(randao_str).expect("Error while converting str to B256");
     let mut randao_bytes: [u8; 32] = [0x00; 32];
     randao.to_big_endian(&mut randao_bytes);
-    env.block.prevrandao = Some(ethereum_types::U256::from(randao));
+    env.block.prevrandao = Some(B256::from(randao));
     run_program_assert_bytes_result(program, env, &randao_bytes);
 }
 
