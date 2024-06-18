@@ -1,11 +1,12 @@
 use evm_mlir::{
     constants::gas_cost,
-    primitives::{Bytes, H160, U256 as EU256},
+    primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
 use num_bigint::BigUint;
+use std::str::FromStr;
 
 fn run_program_assert_result(
     mut operations: Vec<Operation>,
@@ -118,13 +119,15 @@ fn fibonacci_example() {
 fn test_opcode_origin() {
     let operations = vec![Operation::Origin];
     let mut env = Env::default();
-    let caller: [u8; 20] = [0x01; 20];
-
-    env.tx.caller = H160::from(caller);
-
-    let expected_result = BigUint::from_bytes_be(&caller);
-
-    run_program_assert_result(operations, env, expected_result);
+    let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    env.tx.caller = caller;
+    let caller_bytes = &caller.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+    run_program_assert_result(operations, env, BigUint::from_bytes_be(&expected_result));
 }
 
 #[test]

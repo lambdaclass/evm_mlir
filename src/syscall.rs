@@ -19,7 +19,7 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env};
+use crate::{db::Db, env::Env, primitives::Address};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -31,13 +31,6 @@ pub struct U256 {
     pub hi: u128,
 }
 
-impl std::fmt::Display for U256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        // Format as a single hexadecimal string
-        write!(f, "{:032x}{:032x}", self.hi, self.lo)
-    }
-}
-
 impl U256 {
     pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
         let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
@@ -45,17 +38,10 @@ impl U256 {
         U256 { hi, lo }
     }
 
-    pub fn store_h160_in_u256(&mut self, value: &ethereum_types::H160) {
-        // Crear un buffer temporal de 32 bytes (256 bits) e inicializarlo con ceros
+    pub fn copy_from_address(&mut self, value: &Address) {
         let mut buffer = [0u8; 32];
-
-        // Copiar los últimos 20 bytes del H160 en los últimos 20 bytes del buffer
         buffer[12..32].copy_from_slice(&value.0);
-
-        // Interpretar los primeros 16 bytes como u128 para lo
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
-
-        // Interpretar los siguientes 16 bytes como u128 para hi
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
 }
@@ -221,8 +207,8 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_origin(&self, address: &mut U256) {
-        let aux: &ethereum_types::H160 = &self.env.tx.caller;
-        address.store_h160_in_u256(aux);
+        let aux = &self.env.tx.caller;
+        address.copy_from_address(aux);
     }
 
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
