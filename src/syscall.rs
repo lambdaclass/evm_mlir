@@ -304,8 +304,6 @@ impl<'c> SyscallContext<'c> {
                 balance.lo = 0;
             }
         };
-
-        dbg!("Balance1 {}", balance);
     }
 }
 

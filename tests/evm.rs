@@ -1,10 +1,10 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
-use ethereum_types::Address;
 use evm_mlir::{
     constants::gas_cost,
     db::{Db, DbAccount},
-    primitives::{Bytes, U256 as EU256},
+    primitives::{self, Address, Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
@@ -472,11 +472,11 @@ fn balance_with_unexisting_account() {
 
 #[test]
 fn balance_with_existing_account() {
-    let address = Address::from_low_u64_be(123456);
-    let balance = ethereum_types::U256::from_dec_str("123456").unwrap();
-    dbg!("Balance2 {}", balance);
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let balance = primitives::U256::from_dec_str("123456").unwrap();
+    let a = (BigUint::from(0) << 255) + 0x9bbfed6889322e016e0a02ee459d306fc19545d8;
     let program = Program::from(vec![
-        Operation::Push((20_u8, BigUint::from(123456_u32))),
+        Operation::Push((20_u8, )),
         Operation::Balance,
         Operation::Push0,
         Operation::Mstore,
@@ -490,7 +490,7 @@ fn balance_with_existing_account() {
         nonce: 0,
         balance,
         storage: HashMap::new(),
-        bytecode_hash: ethereum_types::U256::zero(),
+        bytecode_hash: primitives::U256::zero(),
     };
 
     accounts.insert(address, db_account);
