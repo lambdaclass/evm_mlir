@@ -1,4 +1,5 @@
 use num_bigint::BigUint;
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -37,8 +38,8 @@ pub enum Opcode {
     // BALANCE = 0x31,
     // ORIGIN = 0x32,
     // CALLER = 0x33,
-    // CALLVALUE = 0x34,
-    // CALLDATALOAD = 0x35,
+    CALLVALUE = 0x34,
+    CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
@@ -141,11 +142,11 @@ pub enum Opcode {
     SWAP14 = 0x9D,
     SWAP15 = 0x9E,
     SWAP16 = 0x9F,
-    // LOG0 = 0xA0,
-    // LOG1 = 0xA1,
-    // LOG2 = 0xA2,
-    // LOG3 = 0xA3,
-    // LOG4 = 0xA4,
+    LOG0 = 0xA0,
+    LOG1 = 0xA1,
+    LOG2 = 0xA2,
+    LOG3 = 0xA3,
+    LOG4 = 0xA4,
     // unused 0xA5-0xEF
     // CREATE = 0xF0,
     // CALL = 0xF1,
@@ -166,8 +167,16 @@ pub enum Opcode {
 pub struct OpcodeParseError(u8);
 
 #[derive(Error, Debug)]
-#[error("The following opcodes are not valid: `{:#?}`", self.0)]
 pub struct ParseError(Vec<OpcodeParseError>);
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let opcodes: Vec<_> = self.0.iter().map(|x| format!("{:02X}", x.0)).collect();
+        writeln!(f, "The following opcodes could not be parsed: ")?;
+        writeln!(f, "{:#?}", opcodes)?;
+        Ok(())
+    }
+}
 
 impl TryFrom<u8> for Opcode {
     type Error = OpcodeParseError;
@@ -194,13 +203,20 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::AND as u8 => Opcode::AND,
             x if x == Opcode::OR as u8 => Opcode::OR,
             x if x == Opcode::XOR as u8 => Opcode::XOR,
-            x if x == Opcode::SHR as u8 => Opcode::SHR,
+            x if x == Opcode::BYTE as u8 => Opcode::BYTE,
             x if x == Opcode::SHL as u8 => Opcode::SHL,
+            x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
+            x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
+            x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
+            x if x == Opcode::CALLDATASIZE as u8 => Opcode::CALLDATASIZE,
             x if x == Opcode::CODESIZE as u8 => Opcode::CODESIZE,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::MLOAD as u8 => Opcode::MLOAD,
             x if x == Opcode::SLOAD as u8 => Opcode::SLOAD,
+            x if x == Opcode::SSTORE as u8 => Opcode::SSTORE,
+            x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
+            x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
             x if x == Opcode::JUMP as u8 => Opcode::JUMP,
             x if x == Opcode::JUMPI as u8 => Opcode::JUMPI,
             x if x == Opcode::PC as u8 => Opcode::PC,
@@ -273,10 +289,13 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::SWAP14 as u8 => Opcode::SWAP14,
             x if x == Opcode::SWAP15 as u8 => Opcode::SWAP15,
             x if x == Opcode::SWAP16 as u8 => Opcode::SWAP16,
-            x if x == Opcode::BYTE as u8 => Opcode::BYTE,
+            x if x == Opcode::LOG0 as u8 => Opcode::LOG0,
+            x if x == Opcode::LOG1 as u8 => Opcode::LOG1,
+            x if x == Opcode::LOG2 as u8 => Opcode::LOG2,
+            x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
+            x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
-            x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
-            x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
+            x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -311,10 +330,14 @@ pub enum Operation {
     Shr,
     Shl,
     Sar,
+    Callvalue,
+    CalldataLoad,
+    CallDataSize,
     Codesize,
     Pop,
     Mload,
     Sload,
+    Sstore,
     Jump,
     Jumpi,
     PC { pc: usize },
@@ -330,8 +353,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
-    Sstore,
-    CallDataSize,
+    Log(u8),
 }
 
 impl Operation {
@@ -361,6 +383,9 @@ impl Operation {
             Operation::Shr => vec![Opcode::SHR as u8],
             Operation::Shl => vec![Opcode::SHL as u8],
             Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Callvalue => vec![Opcode::CALLVALUE as u8],
+            Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
+            Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
             Operation::Codesize => vec![Opcode::CODESIZE as u8],
             Operation::Pop => vec![Opcode::POP as u8],
             Operation::Mload => vec![Opcode::MLOAD as u8],
@@ -389,7 +414,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
         }
     }
 }
@@ -415,6 +440,7 @@ impl Program {
 
             if let Err(e) = opcode {
                 failed_opcodes.push(e);
+                pc += 1;
                 continue;
             }
 
@@ -444,10 +470,14 @@ impl Program {
                 Opcode::SHR => Operation::Shr,
                 Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
+                Opcode::CALLVALUE => Operation::Callvalue,
+                Opcode::CALLDATALOAD => Operation::CalldataLoad,
+                Opcode::CALLDATASIZE => Operation::CallDataSize,
                 Opcode::CODESIZE => Operation::Codesize,
                 Opcode::POP => Operation::Pop,
                 Opcode::MLOAD => Operation::Mload,
                 Opcode::SLOAD => Operation::Sload,
+                Opcode::SSTORE => Operation::Sstore,
                 Opcode::JUMP => Operation::Jump,
                 Opcode::JUMPI => Operation::Jumpi,
                 Opcode::PC => Operation::PC { pc },
@@ -457,6 +487,7 @@ impl Program {
                 Opcode::MCOPY => Operation::Mcopy,
                 Opcode::PUSH0 => Operation::Push0,
                 Opcode::PUSH1 => {
+                    // TODO: return error if not enough bytes (same for PUSHN)
                     pc += 1;
                     let x = bytecode[pc..(pc + 1)].try_into().unwrap();
                     Operation::Push((1, (BigUint::from_bytes_be(x))))
@@ -683,8 +714,11 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::SSTORE => Operation::Sstore,
-                Opcode::CALLDATASIZE => Operation::CallDataSize,
+                Opcode::LOG0 => Operation::Log(0),
+                Opcode::LOG1 => Operation::Log(1),
+                Opcode::LOG2 => Operation::Log(2),
+                Opcode::LOG3 => Operation::Log(3),
+                Opcode::LOG4 => Operation::Log(4),
             };
             operations.push(op);
             pc += 1;
