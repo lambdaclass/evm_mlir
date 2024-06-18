@@ -483,3 +483,30 @@ fn block_number_with_stack_overflow() {
     program.push(Operation::Number);
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn blobbasefee_happy_path() {
+    let blob_base_fee: u32 = 1500;
+    let operations = vec![Operation::BlobBaseFee];
+    let mut env = Env::default();
+    env.block.blob_base_fee = EU256::from(blob_base_fee);
+    let expected_result = BigUint::from(blob_base_fee);
+
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn blobbasefee_gas_check() {
+    let operations = vec![Operation::BlobBaseFee];
+    let needed_gas = gas_cost::BLOBBASEFEE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn blobbasefee_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::BlobBaseFee);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
