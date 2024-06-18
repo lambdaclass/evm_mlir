@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ethereum_types::Address;
 use evm_mlir::{
     constants::gas_cost,
-    db::{Database, Db, DbAccount},
+    db::{Db, DbAccount},
     primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
@@ -465,7 +465,7 @@ fn balance_with_unexisting_account() {
         Operation::Push((20_u8, BigUint::from(1_u8))),
         Operation::Balance,
     ];
-    let mut env = Env::default();
+    let env = Env::default();
 
     run_program_assert_result(operations, env, BigUint::from(0_u8));
 }
@@ -495,7 +495,7 @@ fn balance_with_existing_account() {
 
     accounts.insert(address, db_account);
 
-    let mut db = Db {
+    let db = Db {
         accounts,
         contracts: HashMap::new(),
         block_hashes: HashMap::new(),
@@ -518,7 +518,7 @@ fn balance_with_existing_account() {
 
 #[test]
 fn balance_with_stack_underflow() {
-    let mut program = vec![Operation::Balance];
+    let program = vec![Operation::Balance];
     let env = Env::default();
 
     run_program_assert_halt(program, env);
@@ -530,7 +530,7 @@ fn balance_static_gas_check() {
         Operation::Push((20_u8, BigUint::from(1_u8))),
         Operation::Balance,
     ];
-    let mut env = Env::default();
+    let env = Env::default();
     let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
 
     run_program_assert_gas_exact(operations, env, needed_gas as _);

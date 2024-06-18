@@ -287,7 +287,7 @@ impl<'c> SyscallContext<'c> {
         let address_hi_slice = address.hi.to_be_bytes();
         let address_lo_slice = address.lo.to_be_bytes();
         let mut address_slice = Vec::from(address_hi_slice);
-        
+
         address_lo_slice
             .into_iter()
             .for_each(|val| address_slice.push(val));
@@ -392,7 +392,6 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
 
 /// MLIR util for declaring syscalls
 pub(crate) mod mlir {
-    use ethereum_types::Address;
     use melior::{
         dialect::{func, llvm::r#type::pointer},
         ir::{
