@@ -459,7 +459,7 @@ fn callvalue_stack_overflow() {
 fn basefee() {
     let program = vec![Operation::Basefee];
     let mut env = Env::default();
-    let basefee = 1_u8;
+    let basefee = 10_u8;
     let expected_result = BigUint::from(basefee);
     env.block.basefee = ethereum_types::U256::from(basefee);
 
