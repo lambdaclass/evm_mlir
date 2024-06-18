@@ -19,7 +19,10 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::{Database, Db}, env::Env};
+use crate::{
+    db::{Database, Db},
+    env::Env,
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -214,11 +217,26 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
-        self.db.write_storage(address, *stg_key, *stg_value);
+        let address = self.env.tx.caller;
+        let mut key = ethereum_types::U256::zero();
+        let mut value = ethereum_types::U256::zero();
+
+        key = (key + stg_key.hi) << 128 + stg_key.lo;
+        value = (value + stg_value.hi) << 128 + stg_value.lo;
+
+        self.db.write_storage(address, key, value);
     }
 
-    pub extern "C" fn read_storage(&mut self, stg_key: &U256) -> &U256 {
-        &self.db.read_storage(address, *stg_key);
+    pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let address = self.env.tx.caller;
+        let mut key = ethereum_types::U256::zero();
+
+        key = (key + stg_key.hi) << 128 + stg_key.lo;
+
+        let result = self.db.read_storage(address, key);
+
+        stg_value.hi = (result >> 128).low_u128();
+        stg_value.lo = result.low_u128();
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
@@ -311,7 +329,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_READ,
-            SyscallContext::read_storage as *const fn(*const c_void, *const U256) as *mut (),
+            SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
@@ -441,7 +460,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_READ),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type], &[ptr_type]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
             ),
             Region::new(),
             attributes,
@@ -619,20 +638,18 @@ pub(crate) mod mlir {
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
+    ) {
         let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
-                &[syscall_ctx, key],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
 
-        Ok(value.into())
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
     }
 
     /// Writes the storage given a key value pair
@@ -643,7 +660,7 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<(), CodegenError> {
+    ) {
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
@@ -651,8 +668,6 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
-
-        Ok(())
     }
 
     /// Receives log data and appends a log to the logs vector

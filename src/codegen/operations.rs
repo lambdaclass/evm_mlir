@@ -14,7 +14,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -23,7 +23,7 @@ use crate::{
         check_stack_has_space_for, compare_values, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
         get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, read_storage, return_empty_result,
+        integer_constant_from_i64, llvm_mlir, return_empty_result,
         return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
@@ -1674,6 +1674,16 @@ fn codegen_sload<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = start_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), MAX_STACK_SIZE as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
     // Check there's enough elements in the stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
@@ -1699,7 +1709,53 @@ fn codegen_sload<'c, 'r>(
 
     let key = stack_pop(context, &ok_block)?;
 
-    let read_value = read_storage(op_ctx, &ok_block, key)?;
+    // get the address of the key parameter
+    let key_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    // get the address of the key parameter
+    let read_value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    // storage_read_syscall returns a pointer to the value
+    op_ctx.storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location);
+
+    // get the value from the pointer
+    let read_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            read_value_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
 
     stack_push(context, &ok_block, read_value)?;
 

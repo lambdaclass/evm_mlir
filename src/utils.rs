@@ -952,7 +952,7 @@ pub(crate) fn compute_memory_cost<'c>(
     Ok(memory_cost)
 }
 
-/// Wrapper for calling the [`write_storage`](crate::syscall::SyscallContext::write_storage) syscall.
+// /// Wrapper for calling the [`write_storage`](crate::syscall::SyscallContext::write_storage) syscall.
 pub(crate) fn write_storage<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
@@ -1014,66 +1014,9 @@ pub(crate) fn write_storage<'c>(
     ));
     assert!(res.verify());
 
-    op_ctx.storage_write_syscall(block, key, value, location)
-}
+    op_ctx.storage_write_syscall(block, key, value, location);
 
-/// Wrapper for calling the [`read_storage`](crate::syscall::SyscallContext::read_storage) syscall.
-/// If the given key haven't been used yet, it returns 0
-pub(crate) fn read_storage<'c>(
-    op_ctx: &'c OperationCtx,
-    block: &'c Block,
-    key: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
-    let context = op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
-    let pointer_size = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // get the address of the key parameter
-    let key_ptr = block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    let res = block.append_operation(llvm::store(
-        context,
-        key,
-        key_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    // storage_read_syscall returns a pointer to the value
-    let read_value_ptr = op_ctx.storage_read_syscall(block, key_ptr, location)?;
-
-    // get the value from the pointer
-    let read_value = block
-        .append_operation(llvm::load(
-            context,
-            read_value_ptr,
-            IntegerType::new(context, 256).into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    Ok(read_value)
+    Ok(())
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
