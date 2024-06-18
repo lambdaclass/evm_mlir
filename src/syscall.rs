@@ -17,6 +17,7 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
+use ethereum_types::U256 as EU256;
 use melior::ExecutionEngine;
 
 use crate::{db::Db, env::Env};
@@ -215,12 +216,14 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
         let address = self.env.tx.caller;
-        let mut key = ethereum_types::U256::zero();
-        let mut value = ethereum_types::U256::zero();
+        let mut combined = [0u8; 32];
+        combined[..16].copy_from_slice(&stg_key.hi.to_be_bytes());
+        combined[16..].copy_from_slice(&stg_key.lo.to_be_bytes());
+        let key = EU256::from_big_endian(&combined);
 
-        key = (key + stg_key.hi) << 128 + stg_key.lo;
-        value = (value + stg_value.hi) << 128 + stg_value.lo;
-
+        combined[..16].copy_from_slice(&stg_value.hi.to_be_bytes());
+        combined[16..].copy_from_slice(&stg_value.lo.to_be_bytes());
+        let value = EU256::from_big_endian(&combined);
         self.db.write_storage(address, key, value);
     }
 
