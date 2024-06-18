@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use evm_mlir::{
     constants::gas_cost,
     primitives::{Bytes, U256 as EU256},
@@ -51,6 +53,26 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let mut evm = Evm::new(env_halt, program);
     let result = evm.transact();
     assert!(result.is_halt());
+}
+
+fn run_program_assert_bytes_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: &[u8],
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let mut evm = Evm::new(env, program);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
@@ -482,4 +504,49 @@ fn block_number_with_stack_overflow() {
 
     program.push(Operation::Number);
     run_program_assert_halt(program, env);
+}
+
+#[test]
+fn blobhash() {
+    // set 2 blobhashes in env.tx.blob_hashes and retrieve the one at index 1.
+    let index = 1_u8;
+    let program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    let mut env = Env::default();
+
+    let blobhash_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let blobhash = EU256::from_str(blobhash_str).expect("Error while converting str to B256");
+    let mut blobhash_bytes: [u8; 32] = [0x00; 32];
+    blobhash.to_big_endian(&mut blobhash_bytes);
+
+    env.tx.blob_hashes = vec![EU256::from(10), blobhash];
+
+    run_program_assert_bytes_result(program, env, &blobhash_bytes);
+}
+
+#[test]
+fn blobhash_check_gas() {
+    let program = vec![Operation::Push((1_u8, 0_u8.into())), Operation::BlobHash];
+    let mut env = Env::default();
+    env.tx.blob_hashes = vec![EU256::from(10)];
+    let gas_needed = gas_cost::PUSHN + gas_cost::BLOBHASH;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn blobhash_with_stack_underflow() {
+    let program = vec![Operation::BlobHash];
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn blobhash_with_index_out_of_bounds() {
+    // when index >= len(blob_hashes) the result must be a 32-byte-zero.
+    let index = 2_u8;
+    let program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    let env = Env::default();
+
+    let expected_result = [0x00; 32];
+    run_program_assert_bytes_result(program, env, &expected_result);
 }

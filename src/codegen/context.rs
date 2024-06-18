@@ -639,4 +639,22 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+
+    #[allow(unused)]
+    pub(crate) fn get_blob_hash_at_index_syscall(
+        &'c self,
+        block: &'c Block,
+        index: Value<'c, 'c>,
+        blobhash: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_blob_hash_at_index_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            index,
+            blobhash,
+            location,
+        )
+    }
 }
