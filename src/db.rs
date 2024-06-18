@@ -1,9 +1,16 @@
 #![allow(unused)]
 use ethereum_types::{Address, U256};
+use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, fmt::Error};
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(Vec<u8>);
+pub struct Bytecode(pub Vec<u8>);
+
+impl Bytecode {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DbAccount {
@@ -23,8 +30,18 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn with_bytecode(address: Address, bytecode: Bytecode) -> Self {
+        let mut db = Db::default();
+        let mut hasher = Keccak256::new();
+        hasher.update(bytecode.as_slice());
+        let hash = B256::from_big_endian(&hasher.finalize());
+        let account = DbAccount {
+            bytecode_hash: hash,
+            ..Default::default()
+        };
+        db.accounts.insert(address, account);
+        db.contracts.insert(hash, bytecode);
+        db
     }
 
     pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
@@ -42,6 +59,16 @@ impl Db {
             .and_then(|account| account.storage.get(&key))
             .cloned()
             .unwrap_or_default()
+    }
+
+    pub fn code_by_address(&self, address: Address) -> Result<Bytecode, DatabaseError> {
+        // Returns the bytecode of an address
+        let hash = self
+            .accounts
+            .get(&address)
+            .ok_or(DatabaseError)?
+            .bytecode_hash;
+        self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
 }
 

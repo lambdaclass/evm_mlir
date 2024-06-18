@@ -1,5 +1,8 @@
+use ethereum_types::Address;
 use evm_mlir::{
     constants::gas_cost,
+    db::{Bytecode, Db},
+    env::TransactTo,
     primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
@@ -20,9 +23,15 @@ fn run_program_assert_result(
         Operation::Push0,
         Operation::Return,
     ]);
-    let program = Program::from(operations);
     env.tx.gas_limit = 999_999;
-    let mut evm = Evm::new(env, program);
+    let program = Program::from(operations);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
     let result = evm.transact();
     assert!(&result.is_success());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
@@ -32,7 +41,14 @@ fn run_program_assert_result(
 fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
     let program = Program::from(operations);
     env.tx.gas_limit = 999_999;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
     let result = evm.transact();
     assert!(result.is_halt());
 }
@@ -42,14 +58,28 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas;
-    let mut evm = Evm::new(env_success, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env_success.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env_success, db);
+
     let result = evm.transact();
     assert!(result.is_success());
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit = needed_gas - 1;
-    let mut evm = Evm::new(env_halt, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env_halt.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env_halt, db);
+
     let result = evm.transact();
     assert!(result.is_halt());
 }
@@ -106,7 +136,13 @@ fn fibonacci_example() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -142,7 +178,13 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
     let mut calldata = vec![0x00; 64];
     calldata[31] = 1;
     env.tx.data = Bytes::from(calldata);
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -180,7 +222,14 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
     let mut calldata = vec![0x00; 32];
     calldata[31] = 1;
     env.tx.data = Bytes::from(calldata);
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
     let result = evm.transact();
 
     assert!(&result.is_success());
@@ -215,7 +264,13 @@ fn calldataload_with_offset_greater_than_calldata_size() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.data = Bytes::from(vec![0xff; 32]);
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -244,7 +299,13 @@ fn log0() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -280,7 +341,10 @@ fn log1() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (Address::zero(), Bytecode(program.to_bytecode()));
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -319,7 +383,13 @@ fn log2() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -360,8 +430,13 @@ fn log3() {
 
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
-
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -410,7 +485,13 @@ fn log4() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 

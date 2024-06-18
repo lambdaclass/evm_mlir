@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use builder::EvmBuilder;
 use db::{Database, Db};
 use ethereum_types::U256;
+use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};
@@ -27,7 +28,6 @@ pub use env::Env;
 #[derive(Debug)]
 pub struct Evm<DB: Database> {
     pub env: Env,
-    pub program: Program,
     pub db: DB,
 }
 
@@ -37,12 +37,9 @@ impl<DB: Database + Default> Evm<DB> {
         EvmBuilder::default()
     }
 
-    /// Creates a new EVM instance with the given environment and program.
-    // TODO: the program should be loaded from the bytecode of the configured transaction.
-    pub fn new(env: Env, program: Program) -> Self {
-        let db = DB::default();
-
-        Self { env, program, db }
+    /// Creates a new EVM instance with the given environment and database.
+    pub fn new(env: Env, db: DB) -> Self {
+        Self { env, db }
     }
 
 }
@@ -53,8 +50,19 @@ impl Evm<Db> {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
+
+        let code_address = match self.env.tx.transact_to {
+            TransactTo::Call(code_address) => code_address,
+            TransactTo::Create => unimplemented!(), // TODO: implement creation
+        };
+        let bytecode = self
+            .db
+            .code_by_address(code_address)
+            .expect("failed to load bytecode");
+        let program = Program::from_bytecode(bytecode.as_slice()).unwrap();
+
         let module = context
-            .compile(&self.program, &output_file)
+            .compile(&program, &output_file)
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
