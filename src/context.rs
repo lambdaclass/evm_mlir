@@ -31,12 +31,14 @@ use std::{
 
 use crate::{
     codegen::{context::OperationCtx, operations::generate_code_for_op, run_pass_manager},
-    constants::{CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, MAIN_ENTRYPOINT},
+    constants::MAIN_ENTRYPOINT,
     errors::CodegenError,
     module::MLIRModule,
     program::Program,
     syscall::ExitStatusCode,
-    utils::{llvm_mlir, return_empty_result, setup_calldata_ptr, setup_calldata_size},
+    utils::{
+        declare_calldata_globals, return_empty_result, setup_calldata_ptr, setup_calldata_size,
+    },
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -230,27 +232,7 @@ fn compile_program(
 
     let mut op_ctx = OperationCtx::new(context, module, &main_region, &setup_block, program)?;
 
-    //Declare the calldata ptr and size globals variables
-    let location = Location::unknown(context);
-    let ptr_type = pointer(context, 0);
-    let uint32 = IntegerType::new(context, 32).into();
-
-    let body = module.body();
-    let res = body.append_operation(llvm_mlir::global(
-        context,
-        CALLDATA_PTR_GLOBAL,
-        ptr_type,
-        location,
-    ));
-    assert!(res.verify());
-    let res = body.append_operation(llvm_mlir::global(
-        context,
-        CALLDATA_SIZE_GLOBAL,
-        uint32,
-        location,
-    ));
-    assert!(res.verify());
-
+    declare_calldata_globals(module, context);
     setup_calldata_ptr(&op_ctx, &setup_block, location)?;
     setup_calldata_size(&op_ctx, &setup_block, location)?;
 

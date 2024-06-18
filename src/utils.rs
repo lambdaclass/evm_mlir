@@ -10,7 +10,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Region, Value, ValueLike,
+        Block, Location, Module as MeliorModule, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -950,6 +950,28 @@ pub(crate) fn compute_memory_cost<'c>(
         .into();
 
     Ok(memory_cost)
+}
+
+pub(crate) fn declare_calldata_globals(module: &MeliorModule, context: &MeliorContext) {
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint32 = IntegerType::new(context, 32).into();
+
+    let body = module.body();
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        CALLDATA_PTR_GLOBAL,
+        ptr_type,
+        location,
+    ));
+    assert!(res.verify());
+    let res = body.append_operation(llvm_mlir::global(
+        context,
+        CALLDATA_SIZE_GLOBAL,
+        uint32,
+        location,
+    ));
+    assert!(res.verify());
 }
 
 pub(crate) fn setup_calldata_ptr<'c>(
