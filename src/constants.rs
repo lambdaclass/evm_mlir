@@ -35,6 +35,7 @@ pub mod gas_cost {
     pub const SLT: i64 = 3;
     pub const XOR: i64 = 3;
     pub const SAR: i64 = 3;
+    pub const BALANCE: i64 = 100;
     pub const CODESIZE: i64 = 2;
     pub const POP: i64 = 2;
     pub const PC: i64 = 2;

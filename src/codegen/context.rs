@@ -623,4 +623,21 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn append_log_with_three_topics_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
+            location,
+        );
+    }
 }

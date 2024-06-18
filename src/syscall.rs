@@ -19,7 +19,10 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env};
+use crate::{
+    db::{Database, Db},
+    env::Env,
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -29,6 +32,13 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 pub struct U256 {
     pub lo: u128,
     pub hi: u128,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(C, align(16))]
+pub struct H160 {
+    pub lo: u128,
+    pub hi: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -271,6 +281,25 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
         self.env.tx.data.as_ptr()
     }
+
+    pub extern "C" fn get_balance(&self, address: &H160, balance: &mut U256) {
+        let address_hi_slice = address.hi.to_be_bytes();
+        let address_lo_slice = address.lo.to_be_bytes();
+        let address_slice = ([address_hi_slice, address_lo_slice]).concat();
+
+        let address = ethereum_types::H160::from_slice(&address_slice);
+
+        match self.db.basic(address).unwrap() {
+            Some(a) => {
+                balance.hi = (a.balance >> 128).low_u128();
+                balance.lo = a.balance.low_u128();
+            }
+            None => {
+                balance.hi = 0;
+                balance.lo = 0;
+            }
+        };
+    }
 }
 
 pub mod symbols {
@@ -284,6 +313,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_BALANCE: &str = "evm_mlir__get_balance";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -345,11 +375,17 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
+        engine.register_symbol(
+            symbols::GET_BALANCE,
+            SyscallContext::get_balance as *const fn(*mut c_void, *const H160, *mut U256)
+                as *mut (),
+        );
     };
 }
 
 /// MLIR util for declaring syscalls
 pub(crate) mod mlir {
+    use ethereum_types::Address;
     use melior::{
         dialect::{func, llvm::r#type::pointer},
         ir::{
@@ -486,6 +522,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BALANCE),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
@@ -696,6 +741,29 @@ pub(crate) mod mlir {
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
                 &[syscall_ctx],
                 &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    /// Returns a pointer to the calldata.
+    #[allow(unused)]
+    pub(crate) fn get_balance_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BALANCE),
+                &[syscall_ctx, address, balance],
+                &[],
                 location,
             ))
             .result(0)?;
