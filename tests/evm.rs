@@ -600,6 +600,8 @@ fn block_number_with_stack_overflow() {
 #[test]
 fn sstore_with_stack_underflow() {
     let program = vec![Operation::Push0, Operation::Sstore];
+    let env = Env::default();
+
     run_program_assert_halt(program, env);
 }
 
