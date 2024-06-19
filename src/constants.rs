@@ -35,11 +35,16 @@ pub mod gas_cost {
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
+    pub const ORIGIN: i64 = 2;
     pub const CALLER: i64 = 2;
     pub const CALLVALUE: i64 = 2;
     pub const CALLDATALOAD: i64 = 3;
     pub const CALLDATASIZE: i64 = 2;
+    pub const CALLDATACOPY: i64 = 3;
     pub const CODESIZE: i64 = 2;
+    pub const GASPRICE: i64 = 2;
+    pub const NUMBER: i64 = 2;
+    pub const CHAINID: i64 = 2;
     pub const POP: i64 = 2;
     pub const MLOAD: i64 = 3;
     pub const MSTORE: i64 = 3;
@@ -67,6 +72,11 @@ pub mod gas_cost {
         (new_memory_cost - last_memory_cost).into()
     }
 
+    pub fn memory_copy_cost(size: u32) -> i64 {
+        let memory_word_size = (size + 31) / 32;
+
+        (memory_word_size * 3).into()
+    }
     pub fn log_dynamic_gas_cost(size: u32, topic_count: u32) -> i64 {
         (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
     }
