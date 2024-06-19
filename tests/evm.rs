@@ -3,12 +3,12 @@ use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Bytes, U256 as EU256},
+    primitives::{Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
-use melior::dialect::ods::vector::print;
+
 use num_bigint::BigUint;
 use std::str::FromStr;
 
@@ -152,16 +152,25 @@ fn fibonacci_example() {
     assert_eq!(number, 55_u32.into());
 }
 
-
 #[test]
-fn test_block_hash(){
+fn test_block_hash() {
     let block_number = 1_u8;
     let block_hash = 2_u8;
     let expected_block_hash = BigUint::from(block_hash);
     let operations = vec![
         Operation::Push((1, BigUint::from(block_number))),
         Operation::BlockHash,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
     ];
+    let mut result_bytes = [0_u8; 32];
+    if expected_block_hash != BigUint::ZERO {
+        let bytes = expected_block_hash.to_bytes_be();
+        result_bytes[32 - bytes.len()..].copy_from_slice(&bytes);
+    }
     let mut env = Env::default();
     let program = Program::from(operations.clone());
     let (address, bytecode) = (
@@ -169,18 +178,20 @@ fn test_block_hash(){
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
+    env.tx.gas_limit = 999_999;
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    let mut block_hash_as_slice = [0u8;32];
+    let mut block_hash_as_slice = [0u8; 32];
     block_hash_as_slice[31] = block_hash;
-    let block_hash_number = ethereum_types::H256::from_slice(&block_hash_as_slice);
+    let block_hash_number: B256 = B256::from_slice(&block_hash_as_slice);
     let block_number = ethereum_types::U256::from(block_number);
 
     db.insert_block_hash(block_number, block_hash_number);
 
     let mut evm = Evm::new(env.clone(), db);
-    let _result = evm.transact();
-    run_program_assert_result(operations, env, expected_block_hash);
+    let result = evm.transact();
+    assert!(result.is_success());
+    assert_eq!(result.return_data().unwrap(), result_bytes);
 }
 
 #[test]

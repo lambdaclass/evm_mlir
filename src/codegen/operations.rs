@@ -90,14 +90,14 @@ pub fn generate_code_for_op<'c>(
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
         Operation::Origin => codegen_origin(op_ctx, region),
-        Operation::BlockHash => codegen_blockhash(op_ctx,region),
+        Operation::BlockHash => codegen_blockhash(op_ctx, region),
     }
 }
 
 fn codegen_blockhash<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
-) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError>{
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -126,13 +126,13 @@ fn codegen_blockhash<'c, 'r>(
     let ptr_type = pointer(context, 0);
     //This may be refactored to use constant_value_from_i64 util function
     let pointer_size = ok_block
-    .append_operation(arith::constant(
-        context,
-        IntegerAttribute::new(uint256.into(), 1_i64).into(),
-        location,
-    ))
-    .result(0)?
-    .into();
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
     let block_number = stack_pop(context, &ok_block)?;
 
@@ -152,9 +152,8 @@ fn codegen_blockhash<'c, 'r>(
         ))
         .result(0)?
         .into();
-    
 
-    op_ctx.get_block_hash_syscall(&ok_block, block_number_ptr,block_hash_ptr,location);
+    op_ctx.get_block_hash_syscall(&ok_block, block_number_ptr, block_hash_ptr, location);
 
     let block_hash_value = ok_block
         .append_operation(llvm::load(
@@ -167,11 +166,7 @@ fn codegen_blockhash<'c, 'r>(
         .result(0)?
         .into();
 
-    
-
     stack_push(context, &ok_block, block_hash_value)?;
-
-
 
     Ok((start_block, ok_block))
 }

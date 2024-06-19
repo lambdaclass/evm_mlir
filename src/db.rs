@@ -127,7 +127,10 @@ impl Database for Db {
         // Returns Error if no block with that number
         println!("number received from block_hash: {:?}", number);
         println!("block_hashes from block_hash: {:?}", self.block_hashes);
-        println!("returning from block_hash: {:?}", self.block_hashes.get(&number).cloned().ok_or(DatabaseError));
+        println!(
+            "returning from block_hash: {:?}",
+            self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
+        );
         self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }

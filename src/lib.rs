@@ -40,7 +40,6 @@ impl<DB: Database + Default> Evm<DB> {
     pub fn new(env: Env, db: DB) -> Self {
         Self { env, db }
     }
-
 }
 
 impl Evm<Db> {
