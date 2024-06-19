@@ -53,6 +53,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x51) MLOAD
 1. (0x52) MSTORE
 1. (0x53) MSTORE8
+1. (0x54) SLOAD
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
@@ -157,7 +158,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
-1. (0x54) SLOAD
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
