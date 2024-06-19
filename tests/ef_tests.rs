@@ -140,6 +140,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
         let mut env = Env::default();
         env.tx.transact_to = TransactTo::Call(to);
+
         let db = Db::new().with_bytecode(to, account.code.clone());
         let mut evm = Evm::new(env, db);
         // TODO: check the result
