@@ -6,13 +6,22 @@ use crate::{
     syscall::{self, MainFunc, SyscallContext},
 };
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum OptLevel {
+    None = 0,
+    Less,
+    #[default]
+    Default,
+    Aggressive,
+}
+
 pub struct Executor {
     engine: ExecutionEngine,
 }
 
 impl Executor {
-    pub fn new(module: &MLIRModule) -> Self {
-        let engine = ExecutionEngine::new(module.module(), 0, &[], false);
+    pub fn new(module: &MLIRModule, opt_level: OptLevel) -> Self {
+        let engine = ExecutionEngine::new(module.module(), opt_level as usize, &[], false);
         syscall::register_syscalls(&engine);
         Self { engine }
     }

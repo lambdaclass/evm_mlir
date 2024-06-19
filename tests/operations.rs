@@ -26,7 +26,7 @@ fn run_program_get_result_with_gas(
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
 
     let env = Env::default();
     let mut db = Db::default();
@@ -2337,12 +2337,60 @@ fn mstore_mcopy_mload_with_zero_address_and_gas() {
         Operation::Push((1_u8, BigUint::from(32_u8))),
         Operation::Mload,
     ];
-    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64);
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64) + gas_cost::memory_copy_cost(32);
     let gas_needed = gas_cost::PUSH0 * 2
         + gas_cost::PUSHN * 4
         + gas_cost::MCOPY
         + gas_cost::MLOAD
         + gas_cost::MSTORE
+        + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn mcopy_dynamic_gas() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push0,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mcopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Mload,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 64) + gas_cost::memory_copy_cost(1);
+    let gas_needed = gas_cost::PUSH0 * 2
+        + gas_cost::PUSHN * 4
+        + gas_cost::MLOAD
+        + gas_cost::MSTORE
+        + gas_cost::MCOPY
+        + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
+fn mcopy_gas_zero_byte_copy() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(10_u8))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push0,
+        Operation::Push0,
+        Operation::Push0,
+        Operation::Mcopy,
+        Operation::Push0,
+        Operation::Mload,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32) + gas_cost::memory_copy_cost(0);
+    let gas_needed = gas_cost::PUSH0 * 5
+        + gas_cost::PUSHN
+        + gas_cost::MLOAD
+        + gas_cost::MSTORE
+        + gas_cost::MCOPY
         + dynamic_gas;
 
     run_program_assert_gas_exact(program, gas_needed as _);

@@ -1,5 +1,6 @@
 use evm_mlir::{
-    context::Context, db::Db, executor::Executor, program::Program, syscall::SyscallContext, Env,
+    context::Context, db::Db, executor::Executor, primitives::Bytes, program::Program,
+    syscall::SyscallContext, Env,
 };
 use revm::{
     db::BenchmarkDB,
@@ -7,6 +8,11 @@ use revm::{
     Evm,
 };
 use std::{hint::black_box, path::PathBuf};
+
+pub const FIBONACCI_BYTECODE: &str =
+    "5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3";
+pub const FACTORIAL_BYTECODE: &str =
+    "5f355f60015b8215601b57906001018091029160019003916005565b9150505f5260205ff3";
 
 pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
@@ -20,11 +26,12 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
         .compile(&program, &output_file)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module);
+    let executor = Executor::new(&module, Default::default());
     let mut env: Env = Default::default();
     env.tx.gas_limit = 999_999;
-    env.tx.calldata = [0x00; 32].into();
-    env.tx.calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
+    let mut calldata = vec![0x00; 32];
+    calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
+    env.tx.data = Bytes::from(calldata);
     let mut db = Db::default();
     let mut context = SyscallContext::new(env, &mut db);
     let initial_gas = 999_999_999;
