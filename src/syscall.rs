@@ -305,6 +305,23 @@ impl<'c> SyscallContext<'c> {
         let log = Log { data, topics };
         self.inner_context.logs.push(log);
     }
+
+    pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
+        // supposing the index is a usize at most
+        // TODO: check if this is ok
+        let index = index.lo as usize;
+        let aux = self.env.tx.blob_hashes.get(index);
+        match aux {
+            Some(hash) => {
+                blobhash.lo = hash.low_u128();
+                blobhash.hi = (hash >> 128).low_u128();
+            }
+            None => {
+                blobhash.lo = 0;
+                blobhash.hi = 0;
+            }
+        }
+    }
 }
 
 pub mod symbols {
@@ -322,6 +339,7 @@ pub mod symbols {
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const GET_BLOB_HASH_AT_INDEX: &str = "evm_mlir__get_blob_hash_at_index";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -398,6 +416,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_BLOB_HASH_AT_INDEX,
+            SyscallContext::get_blob_hash_at_index as *const fn(*mut c_void, *mut U256, *mut U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CHAINID,
@@ -579,6 +602,17 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BLOB_HASH_AT_INDEX),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -858,6 +892,24 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
             &[syscall_ctx, number],
+            &[],
+            location,
+        ));
+    }
+
+    #[allow(unused)]
+    pub(crate) fn get_blob_hash_at_index_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        index: Value<'c, 'c>,
+        blobhash: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOB_HASH_AT_INDEX),
+            &[syscall_ctx, index, blobhash],
             &[],
             location,
         ));

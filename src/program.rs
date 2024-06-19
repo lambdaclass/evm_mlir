@@ -59,7 +59,7 @@ pub enum Opcode {
     CHAINID = 0x46,
     // SELFBALANCE = 0x47,
     // BASEFEE = 0x48,
-    // BLOBHASH = 0x49,
+    BLOBHASH = 0x49,
     // BLOBBASEFEE = 0x4A,
     // unused 0x4B-0x4F
     POP = 0x50,
@@ -297,6 +297,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::BLOBHASH as u8 => Opcode::BLOBHASH,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
             x => return Err(OpcodeParseError(x)),
@@ -359,6 +360,7 @@ pub enum Operation {
     Mstore8,
     CallDataCopy,
     Log(u8),
+    BlobHash,
     Origin,
 }
 
@@ -421,6 +423,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+            Operation::BlobHash => vec![Opcode::BLOBHASH as u8],
             Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
@@ -730,6 +733,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::BLOBHASH => Operation::BlobHash,
                 Opcode::ORIGIN => Operation::Origin,
             };
             operations.push(op);

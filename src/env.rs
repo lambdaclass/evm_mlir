@@ -1,5 +1,5 @@
 use crate::primitives::{Address, Bytes, U256};
-
+type B256 = U256;
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
 //-> https://github.com/bluealloy/revm/blob/main/crates/primitives/src/env.rs
@@ -115,8 +115,7 @@ pub struct TxEnv {
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
     //
     // [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844
-    // pub blob_hashes: Vec<B256>,
-
+    pub blob_hashes: Vec<B256>,
     // The max fee per blob gas.
     //
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
@@ -138,7 +137,7 @@ impl Default for TxEnv {
             // chain_id: None,
             // nonce: None,
             // access_list: Vec::new(),
-            // blob_hashes: Vec::new(),
+            blob_hashes: Vec::new(),
             // max_fee_per_blob_gas: None,
         }
     }

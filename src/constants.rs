@@ -56,6 +56,7 @@ pub mod gas_cost {
     pub const CALLVALUE: i64 = 2;
     pub const JUMPI: i64 = 10;
     pub const LOG: i64 = 375;
+    pub const BLOBHASH: i64 = 3;
     pub const ORIGIN: i64 = 2;
     pub const GASPRICE: i64 = 2;
 
