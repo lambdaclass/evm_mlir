@@ -1735,7 +1735,7 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_256() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(255) as i64;
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(255);
     let result = run_program_get_result_with_gas(program, 1000);
     assert_eq!(
         result,
@@ -1756,7 +1756,7 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_256() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256) as i64;
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256);
     let result = run_program_get_result_with_gas(program, 1000);
     assert_eq!(
         result,
@@ -1777,7 +1777,7 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_65536() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65535) as i64;
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65535);
     let result = run_program_get_result_with_gas(program, 1000);
     assert_eq!(
         result,
@@ -1798,7 +1798,7 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_65536() {
         Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
-    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65536) as i64;
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65536);
     let result = run_program_get_result_with_gas(program, 1000);
     assert_eq!(
         result,
@@ -2006,7 +2006,7 @@ fn exp_reverts_when_program_runs_out_of_gas() {
         Operation::Exp,
     ];
 
-    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256) as i64;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256);
     run_program_assert_gas_exact(program, needed_gas as _);
 }
 
