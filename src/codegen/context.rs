@@ -523,23 +523,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn storage_write_syscall(
-        &'c self,
-        block: &'c Block,
-        key: Value<'c, 'c>,
-        value: Value<'c, 'c>,
-        location: Location<'c>,
-    ) {
-        syscall::mlir::storage_write_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            key,
-            value,
-            location,
-        )
-    }
-
     pub(crate) fn append_log_syscall(
         &'c self,
         block: &'c Block,

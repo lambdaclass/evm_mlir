@@ -537,36 +537,6 @@ fn callvalue_stack_overflow() {
 }
 
 #[test]
-fn sstore_happy_path() {
-    let key = 80_u8;
-    let value = 11_u8;
-    let program = Program::from(vec![
-        Operation::Push((1_u8, BigUint::from(value))),
-        Operation::Push((1_u8, BigUint::from(key))),
-        Operation::Sstore,
-    ]);
-
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode(program.to_bytecode()),
-    );
-    let caller_address = Address::from_low_u64_be(41);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(address);
-    env.tx.caller = caller_address;
-    let db = Db::with_bytecode(address, bytecode);
-    let mut evm = Evm::new(env, db);
-
-    let result = evm.transact();
-    assert!(&result.is_success());
-
-    let stored_value = evm.db.read_storage(caller_address, EU256::from(key));
-    assert_eq!(stored_value, EU256::from(value));
-}
-
-
-#[test]
 fn sload_gas_consumtion() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
@@ -599,16 +569,17 @@ fn sload_with_valid_key() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
-    env.tx.caller = caller_address.clone();
+    env.tx.caller = caller_address;
     let db = Db::with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    
-    evm.db.write_storage(caller_address, EU256::from(key), EU256::from(value));
+
+    evm.db
+        .write_storage(caller_address, EU256::from(key), EU256::from(value));
 
     let result = evm.transact();
     assert!(&result.is_success());
     let result = result.return_data().unwrap();
-    
+
     assert_eq!(EU256::from(result), EU256::from(value));
 }
 
