@@ -316,14 +316,16 @@ impl<'c> SyscallContext<'c> {
         // supposing the index is a usize at most
         // TODO: check if this is ok
         let index = index.lo as usize;
-
-        if index < self.env.tx.blob_hashes.len() {
-            let aux = self.env.tx.blob_hashes[index];
-            blobhash.lo = aux.low_u128();
-            blobhash.hi = (aux >> 128).low_u128();
-        } else {
-            blobhash.lo = 0;
-            blobhash.hi = 0;
+        let aux = self.env.tx.blob_hashes.get(index);
+        match aux {
+            Some(hash) => {
+                blobhash.lo = hash.low_u128();
+                blobhash.hi = (hash >> 128).low_u128();
+            }
+            None => {
+                blobhash.lo = 0;
+                blobhash.hi = 0;
+            }
         }
     }
 }
