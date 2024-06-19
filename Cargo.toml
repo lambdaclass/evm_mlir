@@ -11,7 +11,6 @@ license = "LICENSE"
 keywords = ["ethereum", "evm"]
 
 [dependencies]
-hex-literal = "0.4.1"
 llvm-sys = "180.0.0"
 melior = { version = "0.18.1", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"
@@ -23,6 +22,7 @@ ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
 
 [dev-dependencies]
+hex-literal = "0.4.1"
 rstest = "0.21.0"
 serde = { version = "1.0.203", features = ["derive", "rc"] }
 serde_json = { version = "1.0.117" }

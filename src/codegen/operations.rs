@@ -169,17 +169,13 @@ fn codegen_keccak256<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     let gas_flag = consume_gas(context, &start_block, gas_cost::KECCAK256)?;
     let ok_condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
         .result(0)?
         .into();
-    let ok_condition = start_block
-        .append_operation(arith::andi(ok_condition, stack_flag, location))
-        .result(0)?
-        .into();
+
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -247,7 +243,7 @@ fn codegen_keccak256<'c, 'r>(
         .result(0)?
         .into();
 
-    op_ctx.keccak256_hasher_syscall(&memory_access_block, offset, size, hash_ptr, location);
+    op_ctx.keccak256_syscall(&memory_access_block, offset, size, hash_ptr, location);
 
     let read_value = memory_access_block
         .append_operation(llvm::load(

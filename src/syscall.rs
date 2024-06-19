@@ -550,7 +550,7 @@ pub(crate) mod mlir {
         ));
     }
 
-    pub(crate) fn keccak256_hasher_syscall<'c>(
+    pub(crate) fn keccak256_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,

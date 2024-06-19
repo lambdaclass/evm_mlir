@@ -463,7 +463,7 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn keccak256_hasher_syscall(
+    pub(crate) fn keccak256_syscall(
         &'c self,
         block: &'c Block,
         offset: Value<'c, 'c>,
@@ -471,7 +471,7 @@ impl<'c> OperationCtx<'c> {
         hash_ptr: Value<'c, 'c>,
         location: Location<'c>,
     ) {
-        syscall::mlir::keccak256_hasher_syscall(
+        syscall::mlir::keccak256_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,
