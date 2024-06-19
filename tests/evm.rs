@@ -516,3 +516,57 @@ fn block_number_with_stack_overflow() {
     program.push(Operation::Number);
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn gasprice_happy_path() {
+    let gas_price: u32 = 33192;
+    let operations = vec![Operation::Gasprice];
+    let mut env = Env::default();
+    env.tx.gas_price = EU256::from(gas_price);
+
+    let expected_result = BigUint::from(gas_price);
+
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn gasprice_gas_check() {
+    let operations = vec![Operation::Gasprice];
+    let needed_gas = gas_cost::GASPRICE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn gasprice_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Gasprice);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn chainid_happy_path() {
+    let chainid: u64 = 1333;
+    let operations = vec![Operation::Chainid];
+    let mut env = Env::default();
+    env.cfg.chain_id = chainid;
+    let expected_result = BigUint::from(chainid);
+    run_program_assert_result(operations, env, expected_result);
+}
+
+#[test]
+fn chainid_gas_check() {
+    let operations = vec![Operation::Chainid];
+    let needed_gas = gas_cost::CHAINID;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn chainid_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Chainid);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}

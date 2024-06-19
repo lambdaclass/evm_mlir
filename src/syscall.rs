@@ -202,6 +202,17 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
+        let aux = &self.env.tx.gas_price;
+        value.lo = aux.low_u128();
+        value.hi = (aux >> 128).low_u128();
+    }
+
+    pub extern "C" fn get_chainid(&self) -> u64 {
+        self.env.cfg.chain_id
+    }
+
     pub extern "C" fn get_calldata_size(&self) -> u32 {
         self.env.tx.data.len() as u32
     }
@@ -313,6 +324,8 @@ pub mod symbols {
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
+    pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
+    pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
 }
 
@@ -380,8 +393,16 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
+            symbols::STORE_IN_GASPRICE_PTR,
+            SyscallContext::store_in_gasprice_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_CHAINID,
+            SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
         );
     };
 }
@@ -439,7 +460,25 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
+            StringAttribute::new(context, symbols::GET_CHAINID),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
             StringAttribute::new(context, symbols::STORE_IN_CALLVALUE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_GASPRICE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -587,6 +626,25 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
+    pub(crate) fn get_chainid_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CHAINID),
+                &[syscall_ctx],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
     pub(crate) fn store_in_callvalue_ptr<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -598,6 +656,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLVALUE_PTR),
             &[syscall_ctx, callvalue_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn store_in_gasprice_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        gasprice_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_GASPRICE_PTR),
+            &[syscall_ctx, gasprice_ptr],
             &[],
             location,
         ));
