@@ -890,7 +890,7 @@ pub(crate) mod mlir {
         ));
     }
 
-    /// Stores the timestamp in the syscall context
+    /// Stores the current block's timestamp in the `timestamp_ptr`.
     pub(crate) fn store_in_timestamp_ptr<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
