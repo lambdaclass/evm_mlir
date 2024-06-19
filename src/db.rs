@@ -15,14 +15,21 @@ pub struct DbAccount {
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    pub accounts: HashMap<Address, DbAccount>,
-    pub contracts: HashMap<B256, Bytecode>,
-    pub block_hashes: HashMap<U256, B256>,
+    accounts: HashMap<Address, DbAccount>,
+    contracts: HashMap<B256, Bytecode>,
+    block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+        if let Some(a) = self.accounts.get_mut(&address) {
+            a.nonce = nonce;
+            a.balance = balance;
+        }
     }
 
     pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {

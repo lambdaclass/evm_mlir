@@ -677,8 +677,8 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
-  
-  #[allow(clippy::too_many_arguments)]
+
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn get_balance_syscall(
         &'c self,
         block: &'c Block,

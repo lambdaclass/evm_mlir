@@ -1,6 +1,6 @@
 use evm_mlir::{
     constants::gas_cost,
-    db::{Bytecode, Database, Db},
+    db::{Bytecode, Db},
     env::TransactTo,
     primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
@@ -666,7 +666,6 @@ fn balance_with_unexisting_account() {
 fn balance_with_existing_account() {
     let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
     let balance = EU256::from_dec_str("123456").unwrap();
-    let a = address.as_bytes();
     let big_a = BigUint::from_bytes_be(address.as_bytes());
     let program = Program::from(vec![
         Operation::Push((20_u8, big_a)),
@@ -688,7 +687,7 @@ fn balance_with_existing_account() {
     env.tx.transact_to = TransactTo::Call(address);
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.basic(address).unwrap().unwrap().balance = balance;
+    db.update_account(address, 0, balance);
 
     let mut evm = Evm::new(env, db);
 

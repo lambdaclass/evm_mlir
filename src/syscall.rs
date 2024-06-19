@@ -19,7 +19,11 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::{Database, Db}, env::Env, primitives::Address};
+use crate::{
+    db::{Database, Db},
+    env::Env,
+    primitives::Address,
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -29,13 +33,6 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 pub struct U256 {
     pub lo: u128,
     pub hi: u128,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(C, align(16))]
-pub struct H160 {
-    pub lo: u128,
-    pub hi: u32,
 }
 
 impl U256 {
@@ -318,16 +315,12 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.as_ptr()
     }
 
-    pub extern "C" fn get_balance(&mut self, address: &H160, balance: &mut U256) {
+    pub extern "C" fn get_balance(&mut self, address: &U256, balance: &mut U256) {
         let address_hi_slice = address.hi.to_be_bytes();
         let address_lo_slice = address.lo.to_be_bytes();
-        let mut address_slice = Vec::from(address_hi_slice);
+        let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
 
-        address_lo_slice
-            .into_iter()
-            .for_each(|val| address_slice.push(val));
-
-        let address = Address::from_slice(&(address_slice));
+        let address = Address::from_slice(&address_slice);
         dbg!("{}", &self.db);
         match self.db.basic(address).unwrap() {
             Some(a) => {
@@ -439,7 +432,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_BALANCE,
-            SyscallContext::get_balance as *const fn(*mut c_void, *const H160, *mut U256)
+            SyscallContext::get_balance as *const fn(*mut c_void, *const U256, *mut U256)
                 as *mut (),
         );
     };
@@ -622,7 +615,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-      
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BALANCE),
@@ -895,7 +888,7 @@ pub(crate) mod mlir {
             .result(0)?;
         Ok(value.into())
     }
-  
+
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
@@ -912,8 +905,8 @@ pub(crate) mod mlir {
             location,
         ));
     }
-  
-  #[allow(unused)]
+
+    #[allow(unused)]
     pub(crate) fn get_balance_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
