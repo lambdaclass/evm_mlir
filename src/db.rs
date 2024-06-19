@@ -1,4 +1,3 @@
-
 #![allow(unused)]
 use crate::primitives::{Address, Bytes, B256, U256};
 use sha3::{Digest, Keccak256};
