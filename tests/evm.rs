@@ -547,7 +547,7 @@ fn extcodesize() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
 
-    // this operations are added in `run_program_assert_result` in order to get the execution result
+    // these operations are added in `run_program_assert_result` in order to get the execution result
     // so they must be taken into account when computing the code size.
     let program_extension: Program = vec![
         Operation::Push0,
@@ -568,4 +568,32 @@ fn extcodesize_with_stack_underflow() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     run_program_assert_halt(program, env);
+}
+
+#[test]
+fn extcodesize_gas_check() {
+    // in this case we are not considering cold and warm accesses
+    // we assume every access is warm
+    let address = 40_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE + gas_cost::EXTCODESIZE_WARM;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn extcodesize_with_wrong_address() {
+    let address = 0_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let expected_result = 0_u8;
+    run_program_assert_result(operations, env, expected_result.into())
 }
