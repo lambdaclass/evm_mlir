@@ -869,7 +869,7 @@ pub(crate) mod mlir {
         ));
     }
 
-    /// Returns a pointer to the calldata.
+    /// Returns a pointer to the coinbase address.
     pub(crate) fn get_coinbase_ptr_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
