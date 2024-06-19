@@ -36,7 +36,7 @@ pub enum Opcode {
     // unused 0x21-0x2F
     // ADDRESS = 0x30,
     // BALANCE = 0x31,
-    // ORIGIN = 0x32,
+    ORIGIN = 0x32,
     // CALLER = 0x33,
     CALLVALUE = 0x34,
     CALLDATALOAD = 0x35,
@@ -44,7 +44,7 @@ pub enum Opcode {
     // CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
     // CODECOPY = 0x39,
-    // GASPRICE = 0x3A,
+    GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
     // EXTCODECOPY = 0x3C,
     // RETURNDATASIZE = 0x3D,
@@ -53,10 +53,10 @@ pub enum Opcode {
     // BLOCKHASH = 0x40,
     // COINBASE = 0x41,
     // TIMESTAMP = 0x42,
-    // NUMBER = 0x43,
+    NUMBER = 0x43,
     // DIFFICULTY = 0x44,
     // GASLIMIT = 0x45,
-    // CHAINID = 0x46,
+    CHAINID = 0x46,
     // SELFBALANCE = 0x47,
     // BASEFEE = 0x48,
     // BLOBHASH = 0x49,
@@ -211,6 +211,9 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::CALLDATALOAD as u8 => Opcode::CALLDATALOAD,
             x if x == Opcode::CALLDATASIZE as u8 => Opcode::CALLDATASIZE,
             x if x == Opcode::CODESIZE as u8 => Opcode::CODESIZE,
+            x if x == Opcode::GASPRICE as u8 => Opcode::GASPRICE,
+            x if x == Opcode::NUMBER as u8 => Opcode::NUMBER,
+            x if x == Opcode::CHAINID as u8 => Opcode::CHAINID,
             x if x == Opcode::POP as u8 => Opcode::POP,
             x if x == Opcode::MLOAD as u8 => Opcode::MLOAD,
             x if x == Opcode::SLOAD as u8 => Opcode::SLOAD,
@@ -295,6 +298,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -333,6 +337,9 @@ pub enum Operation {
     CalldataLoad,
     CallDataSize,
     Codesize,
+    Gasprice,
+    Number,
+    Chainid,
     Pop,
     Mload,
     Sload,
@@ -352,6 +359,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    Origin,
 }
 
 impl Operation {
@@ -385,6 +393,9 @@ impl Operation {
             Operation::CalldataLoad => vec![Opcode::CALLDATALOAD as u8],
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
             Operation::Codesize => vec![Opcode::CODESIZE as u8],
+            Operation::Gasprice => vec![Opcode::GASPRICE as u8],
+            Operation::Number => vec![Opcode::NUMBER as u8],
+            Operation::Chainid => vec![Opcode::CHAINID as u8],
             Operation::Pop => vec![Opcode::POP as u8],
             Operation::Mload => vec![Opcode::MLOAD as u8],
             Operation::Sload => vec![Opcode::SLOAD as u8],
@@ -412,6 +423,7 @@ impl Operation {
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
+            Operation::Origin => vec![Opcode::ORIGIN as u8],
         }
     }
 }
@@ -471,6 +483,9 @@ impl Program {
                 Opcode::CALLDATALOAD => Operation::CalldataLoad,
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
                 Opcode::CODESIZE => Operation::Codesize,
+                Opcode::GASPRICE => Operation::Gasprice,
+                Opcode::NUMBER => Operation::Number,
+                Opcode::CHAINID => Operation::Chainid,
                 Opcode::POP => Operation::Pop,
                 Opcode::MLOAD => Operation::Mload,
                 Opcode::SLOAD => Operation::Sload,
@@ -715,6 +730,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::ORIGIN => Operation::Origin,
             };
             operations.push(op);
             pc += 1;
