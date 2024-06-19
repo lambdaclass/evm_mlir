@@ -187,10 +187,8 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
-    #[allow(improper_ctypes)]
-    pub extern "C" fn store_in_gaslimit_ptr(&self, value: &mut U256) {
-        value.lo = self.env.tx.gas_limit as u128;
-        value.hi = 0;
+    pub extern "C" fn get_gaslimit(&self) -> u64 {
+        self.env.tx.gas_limit
     }
 
     pub extern "C" fn get_calldata_size(&self) -> u32 {
@@ -290,7 +288,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
-    pub const STORE_IN_GASLIMIT_PTR: &str = "evm_mlir__store_in_gaslimit_ptr";
+    pub const GET_GASLIMIT: &str = "evm_mlir__get_gaslimit";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -353,8 +351,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
-            symbols::STORE_IN_GASLIMIT_PTR,
-            SyscallContext::store_in_gaslimit_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+            symbols::GET_GASLIMIT,
+            SyscallContext::get_gaslimit as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -422,8 +420,8 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::STORE_IN_GASLIMIT_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            StringAttribute::new(context, symbols::GET_GASLIMIT),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -569,20 +567,23 @@ pub(crate) mod mlir {
         ));
     }
 
-    pub(crate) fn store_in_gaslimit_ptr<'c>(
+    pub(crate) fn get_gaslimit<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         location: Location<'c>,
-        gaslimit_ptr: Value<'c, 'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_GASLIMIT_PTR),
-            &[syscall_ctx, gaslimit_ptr],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_GASLIMIT),
+                &[syscall_ctx],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Extends the memory segment of the syscall context.

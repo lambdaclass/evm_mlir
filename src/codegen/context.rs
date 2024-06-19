@@ -491,19 +491,12 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn store_in_gaslimit_ptr(
+    pub(crate) fn get_gaslimit(
         &'c self,
         block: &'c Block,
         location: Location<'c>,
-        gaslimit_ptr: Value<'c, 'c>,
-    ) {
-        syscall::mlir::store_in_gaslimit_ptr(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            location,
-            gaslimit_ptr,
-        )
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_gaslimit(self.mlir_context, self.syscall_ctx, block, location)
     }
 
     pub(crate) fn extend_memory_syscall(

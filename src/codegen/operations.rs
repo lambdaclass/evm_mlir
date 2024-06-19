@@ -3144,35 +3144,15 @@ fn codegen_gaslimit<'c, 'r>(
         location,
     ));
 
+    let gaslimit = op_ctx.get_gaslimit(&ok_block, location)?;
+
     let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
-
-    let pointer_size = constant_value_from_i64(context, &ok_block, 1)?;
-    let gaslimit_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
+    let result = ok_block
+        .append_operation(arith::extui(gaslimit, uint256.into(), location))
         .result(0)?
         .into();
 
-    op_ctx.store_in_gaslimit_ptr(&ok_block, location, gaslimit_ptr);
-
-    let gaslimit = ok_block
-        .append_operation(llvm::load(
-            context,
-            gaslimit_ptr,
-            uint256.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    stack_push(context, &ok_block, gaslimit)?;
+    stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
 }
