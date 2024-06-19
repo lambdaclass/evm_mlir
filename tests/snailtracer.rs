@@ -15,7 +15,7 @@ fn snailtracer() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![48, 98, 123, 124]);
     env.tx.gas_limit = 999_999;
-    let mut caller_address = vec![0x0; 160];
+    let mut caller_address = vec![0x0; 20];
     caller_address[0] = 16;
     env.tx.caller = Address::from_slice(&caller_address);
     env.tx.transact_to = TransactTo::Call(address);

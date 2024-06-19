@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
@@ -8,9 +10,8 @@ use evm_mlir::{
     Env, Evm,
 };
 use num_bigint::BigUint;
-use std::str::FromStr;
 
-fn run_program_assert_result(
+fn run_program_assert_num_result(
     mut operations: Vec<Operation>,
     mut env: Env,
     expected_result: BigUint,
@@ -35,6 +36,31 @@ fn run_program_assert_result(
     assert!(&result.is_success());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
     assert_eq!(result_data, expected_result);
+}
+fn run_program_assert_bytes_result(
+    mut operations: Vec<Operation>,
+    mut env: Env,
+    expected_result: &[u8],
+) {
+    operations.extend([
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let program = Program::from(operations);
+    env.tx.gas_limit = 999_999;
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    assert_eq!(result.return_data().unwrap(), expected_result);
 }
 
 fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
@@ -162,7 +188,7 @@ fn test_opcode_origin() {
         .concat()
         .try_into()
         .unwrap();
-    run_program_assert_result(operations, env, BigUint::from_bytes_be(&expected_result));
+    run_program_assert_bytes_result(operations, env, &expected_result);
 }
 
 #[test]
@@ -702,10 +728,8 @@ fn callvalue_happy_path() {
     let operations = vec![Operation::Callvalue];
     let mut env = Env::default();
     env.tx.value = EU256::from(callvalue);
-
     let expected_result = BigUint::from(callvalue);
-
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_num_result(operations, env, expected_result);
 }
 
 #[test]
@@ -732,7 +756,7 @@ fn basefee() {
     let expected_result = BigUint::from(basefee);
     env.block.basefee = EU256::from(basefee);
 
-    run_program_assert_result(program, env, expected_result);
+    run_program_assert_num_result(program, env, expected_result);
 }
 
 #[test]
@@ -759,7 +783,7 @@ fn block_number_check() {
 
     env.block.number = ethereum_types::U256::from(2147483639);
 
-    run_program_assert_result(program, env, result);
+    run_program_assert_num_result(program, env, result);
 }
 
 #[test]
@@ -789,7 +813,7 @@ fn gasprice_happy_path() {
 
     let expected_result = BigUint::from(gas_price);
 
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_num_result(operations, env, expected_result);
 }
 
 #[test]
@@ -815,7 +839,7 @@ fn chainid_happy_path() {
     let mut env = Env::default();
     env.cfg.chain_id = chainid;
     let expected_result = BigUint::from(chainid);
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_num_result(operations, env, expected_result);
 }
 
 #[test]
@@ -830,6 +854,37 @@ fn chainid_gas_check() {
 fn chainid_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Chainid);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn caller_happy_path() {
+    let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let operations = vec![Operation::Caller];
+    let mut env = Env::default();
+    env.tx.caller = caller;
+    let caller_bytes = &caller.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+    run_program_assert_bytes_result(operations, env, &expected_result);
+}
+
+#[test]
+fn caller_gas_check() {
+    let operations = vec![Operation::Caller];
+    let needed_gas = gas_cost::CALLER;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn caller_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Caller);
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
