@@ -189,6 +189,8 @@ impl<'c> SyscallContext<'c> {
 
     #[allow(improper_ctypes)]
     pub extern "C" fn store_in_caller_ptr(&self, value: &mut U256) {
+        //TODO: Here we are returning the tx.caller value, which in fact corresponds to ORIGIN
+        //opcode. For the moment it's ok, but it should be changed when we implement the CALL opcode.
         let bytes = &self.env.tx.caller.to_fixed_bytes();
         let high: [u8; 16] = [&[0u8; 12], &bytes[..4]].concat().try_into().unwrap();
         let low: [u8; 16] = bytes[4..20].try_into().unwrap();
