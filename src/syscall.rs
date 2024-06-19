@@ -121,6 +121,8 @@ pub struct InnerContext {
     memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
+    // The program bytecode
+    pub program: Vec<u8>,
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<Log>,
@@ -130,8 +132,6 @@ pub struct InnerContext {
 #[derive(Debug)]
 pub struct SyscallContext<'c> {
     pub env: Env,
-    // The program bytecode
-    pub program: Vec<u8>,
     pub db: &'c mut Db,
     pub inner_context: InnerContext,
 }
@@ -149,7 +149,6 @@ impl<'c> SyscallContext<'c> {
             env,
             db,
             inner_context: Default::default(),
-            program: Default::default(),
         }
     }
 
@@ -257,25 +256,33 @@ impl<'c> SyscallContext<'c> {
         size: u32,
         dest_offset: u32,
     ) {
-        let code_size = self.program.len() as u32;
-        // if the offset is out of bounds then nothing is copied
+        let code_size = self.inner_context.program.len();
+        // cast everything to `usize`
+        let code_offset = code_offset as usize;
+        let size = size as usize;
+        let dest_offset = dest_offset as usize;
+
+        // if offset is out of bounds then nothing is copied
         if code_offset >= code_size {
             return;
         }
+
         // adjust the size so it does not go out of bounds
-        let size: u32 = if code_offset + size > code_size {
+        let size: usize = if code_offset + size > code_size {
             code_size - code_offset
         } else {
             size
         };
+
+        let code_slice = &self.inner_context.program[code_offset..code_offset + size];
         // copy the program into memory
-        for (i, j) in (code_offset..code_offset + size).enumerate() {
-            self.inner_context.memory[dest_offset as usize + i] = self.program[j as usize];
-        }
+        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
+
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
         self.create_log(offset, size, vec![]);
     }
+
     #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
         self.create_log(offset, size, vec![*topic]);

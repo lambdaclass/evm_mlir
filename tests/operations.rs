@@ -2403,7 +2403,7 @@ fn codecopy_with_gas_cost() {
     ];
 
     let static_gas = gas_cost::CODECOPY + gas_cost::PUSHN * 3;
-    let dynamic_gas = gas_cost::codecopy_dynamic_gas_cost(size.into())
+    let dynamic_gas = gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32);
     let expected_gas = static_gas + dynamic_gas;
     run_program_assert_gas_exact(program, expected_gas as _);

@@ -1020,69 +1020,6 @@ pub(crate) fn compute_memory_cost<'c>(
     Ok(memory_cost)
 }
 
-pub(crate) fn compute_codecopy_gas_cost<'c>(
-    op_ctx: &'c OperationCtx,
-    block: &'c Block,
-    size: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
-    let context = op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint64 = IntegerType::new(context, 64);
-    let constant_3 = block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 3).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_31 = block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 31).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_32 = block
-        .append_operation(arith::constant(
-            context,
-            integer_constant_from_i64(context, 32).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let size_plus_31 = block
-        .append_operation(arith::addi(size, constant_31, location))
-        .result(0)?
-        .into();
-
-    // minimum_word_size = (size + 31) / 32
-    let minimum_word_size = block
-        .append_operation(arith::divui(size_plus_31, constant_32, location))
-        .result(0)?
-        .into();
-
-    let minimum_word_size_x_3 = block
-        .append_operation(arith::muli(minimum_word_size, constant_3, location))
-        .result(0)?
-        .into();
-
-    let minimum_word_size_x_3 = block
-        .append_operation(arith::trunci(
-            minimum_word_size_x_3,
-            uint64.into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    Ok(minimum_word_size_x_3)
-}
-
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
 /// Extends memory only if the current memory size is less than the required size, consuming the corresponding gas.
 pub(crate) fn extend_memory<'c>(

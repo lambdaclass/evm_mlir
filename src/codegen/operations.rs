@@ -20,9 +20,9 @@ use crate::{
     syscall::ExitStatusCode,
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
-        check_stack_has_space_for, compare_values, compute_codecopy_gas_cost, compute_copy_cost,
-        compute_log_dynamic_gas, constant_value_from_i64, consume_gas, consume_gas_as_value,
-        extend_memory, get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
+        check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
+        get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
         get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
@@ -3548,7 +3548,7 @@ fn codegen_codecopy<'c, 'r>(
         .into();
 
     // consume 3 * (size + 31) / 32 gas
-    let dynamic_gas_cost = compute_codecopy_gas_cost(op_ctx, &ok_block, size_u256)?;
+    let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
     let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
 
     let memory_extension_block = region.append_block(Block::new(&[]));

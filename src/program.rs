@@ -296,8 +296,6 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
-            x if x == Opcode::MSTORE as u8 => Opcode::MSTORE,
-            x if x == Opcode::MSTORE8 as u8 => Opcode::MSTORE8,
             x if x == Opcode::CODECOPY as u8 => Opcode::CODECOPY,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
