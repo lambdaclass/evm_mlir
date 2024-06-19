@@ -22,7 +22,7 @@ use melior::ExecutionEngine;
 use crate::{
     db::{Database, Db},
     env::Env,
-    primitives::Address
+    primitives::Address,
 };
 
 /// Function type for the main entrypoint of the generated code
