@@ -352,7 +352,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_GASLIMIT,
-            SyscallContext::get_gaslimit as *const fn(*mut c_void, *mut U256) as *mut (),
+            SyscallContext::get_gaslimit as *const fn(*mut c_void) as *mut (),
         );
     };
 }
