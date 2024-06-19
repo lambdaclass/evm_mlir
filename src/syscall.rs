@@ -17,10 +17,9 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
-use ethereum_types::Address;
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{db::{Database, Db}, env::Env, primitives::Address};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -329,15 +328,17 @@ impl<'c> SyscallContext<'c> {
             .for_each(|val| address_slice.push(val));
 
         let address = Address::from_slice(&(address_slice));
-
+        dbg!("{}", &self.db);
         match self.db.basic(address).unwrap() {
             Some(a) => {
                 balance.hi = (a.balance >> 128).low_u128();
                 balance.lo = a.balance.low_u128();
+                dbg!("SOME");
             }
             None => {
                 balance.hi = 0;
                 balance.lo = 0;
+                dbg!("NONE");
             }
         };
     }

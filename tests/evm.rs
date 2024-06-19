@@ -1,6 +1,6 @@
 use evm_mlir::{
     constants::gas_cost,
-    db::{Bytecode, Db},
+    db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
@@ -665,7 +665,7 @@ fn balance_with_unexisting_account() {
 #[test]
 fn balance_with_existing_account() {
     let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
-    let balance = primitives::U256::from_dec_str("123456").unwrap();
+    let balance = EU256::from_dec_str("123456").unwrap();
     let a = address.as_bytes();
     let big_a = BigUint::from_bytes_be(address.as_bytes());
     let program = Program::from(vec![
@@ -677,29 +677,20 @@ fn balance_with_existing_account() {
         Operation::Push0,
         Operation::Return,
     ]);
-
-    let mut accounts = HashMap::new();
-    let db_account = DbAccount {
-        nonce: 0,
-        balance,
-        storage: HashMap::new(),
-        bytecode_hash: primitives::U256::zero(),
-    };
-
-    accounts.insert(address, db_account);
-
-    let db = Db {
-        accounts,
-        contracts: HashMap::new(),
-        block_hashes: HashMap::new(),
-    };
-
     let mut env = Env::default();
-
-    env.tx.caller = address;
     env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm { env, program, db };
+    let (address, bytecode) = (
+        Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap(),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.basic(address).unwrap().unwrap().balance = balance;
+
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
