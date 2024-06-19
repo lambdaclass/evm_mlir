@@ -247,7 +247,6 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let address = self.env.tx.caller;
-        let mut combined = [0u8; 32];
 
         let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
 

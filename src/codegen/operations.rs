@@ -14,7 +14,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
