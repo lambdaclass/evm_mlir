@@ -67,11 +67,11 @@ pub mod gas_cost {
         (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
     }
 
-    pub fn exponent_byte_size(exponent: u64) -> u32 {
-        ((64 - exponent.leading_zeros()) + 7) / 8
+    fn exponent_byte_size(exponent: u64) -> i64 {
+        (((64 - exponent.leading_zeros()) + 7) / 8).into()
     }
 
-    pub fn exp_dynamic_cost(exponent: u64) -> u32 {
+    pub fn exp_dynamic_cost(exponent: u64) -> i64 {
         10 + 50 * exponent_byte_size(exponent)
     }
 }
