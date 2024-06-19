@@ -330,7 +330,6 @@ impl<'c> SyscallContext<'c> {
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
-    //pub const STORAGE_WRITE: &str = "evm_mlir__write_storage";
     pub const STORAGE_READ: &str = "evm_mlir__read_storage";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
     pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
