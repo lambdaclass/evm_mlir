@@ -18,7 +18,7 @@ pub struct Env {
 pub struct CfgEnv {
     // Chain ID of the EVM, it will be compared to the transaction's Chain ID.
     // Chain ID is introduced EIP-155
-    //pub chain_id: u64,
+    pub chain_id: u64,
     // Bytecode that is created with CREATE/CREATE2 is by default analysed and jumptable is created.
     // This is very beneficial for testing and speeds up execution of that bytecode if called multiple times.
     //
@@ -45,7 +45,7 @@ pub struct BlockEnv {
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    //pub basefee: U256,
+    pub basefee: U256,
     // The difficulty of the block.
     //
     // Unused after the Paris (AKA the merge) upgrade, and replaced by `prevrandao`.
@@ -76,7 +76,7 @@ pub struct TxEnv {
     /// The gas limit of the transaction.
     pub gas_limit: u64,
     /// The gas price of the transaction.
-    // pub gas_price: U256,
+    pub gas_price: U256,
     /// The destination of the transaction.
     pub transact_to: TransactTo,
     /// The value sent to `transact_to`.
@@ -130,7 +130,7 @@ impl Default for TxEnv {
         Self {
             caller: Address::zero(),
             gas_limit: u64::MAX,
-            // gas_price: U256::zero(),
+            gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
             value: U256::zero(),

@@ -852,6 +852,74 @@ pub(crate) fn round_up_32<'c>(
     Ok(memory_size_bytes)
 }
 
+pub(crate) fn compute_copy_cost<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    memory_byte_size: Value<'c, 'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    // this function computes memory copying cost (excluding expansion), which is given by the following equations
+    // memory_size_word = (memory_byte_size + 31) / 32
+    // memory_cost = 3 * memory_size_word
+    //
+    //
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64).into();
+
+    let memory_size_extended = block
+        .append_operation(arith::extui(memory_byte_size, uint64, location))
+        .result(0)?
+        .into();
+
+    let constant_3 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 3).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_31 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 31).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let constant_32 = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 32).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_byte_size_plus_31 = block
+        .append_operation(arith::addi(memory_size_extended, constant_31, location))
+        .result(0)?
+        .into();
+
+    let memory_size_word = block
+        .append_operation(arith::divui(
+            memory_byte_size_plus_31,
+            constant_32,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let memory_cost = block
+        .append_operation(arith::muli(memory_size_word, constant_3, location))
+        .result(0)?
+        .into();
+
+    Ok(memory_cost)
+}
+
 pub(crate) fn compute_memory_cost<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
@@ -1090,6 +1158,36 @@ pub(crate) fn extend_memory<'c>(
     Ok(())
 }
 
+pub(crate) fn get_memory_pointer<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let memory_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    Ok(memory_ptr.into())
+}
+
 pub(crate) fn return_empty_result(
     op_ctx: &OperationCtx,
     block: &Block,
@@ -1185,6 +1283,44 @@ pub(crate) fn return_result_with_offset_and_size(
     Ok(())
 }
 
+pub(crate) fn get_block_number<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let block_number_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.get_block_number_syscall(block, block_number_ptr, location);
+
+    // get the value from the pointer
+    let block_number = block
+        .append_operation(llvm::load(
+            context,
+            block_number_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(block_number)
+}
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)
@@ -1237,6 +1373,45 @@ pub(crate) fn allocate_and_store_value<'a>(
     ));
 
     Ok(value_ptr)
+}
+
+/// Returns the basefee
+pub(crate) fn get_basefee<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let basefee_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_basefee_ptr_syscall(basefee_ptr, block, location);
+
+    // get the value from the pointer
+    let basefee = block
+        .append_operation(llvm::load(
+            context,
+            basefee_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(basefee)
 }
 
 pub mod llvm_mlir {
