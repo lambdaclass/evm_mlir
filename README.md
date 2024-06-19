@@ -43,6 +43,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x34) CALLVALUE
 1. (0x35) CALLDATALOAD
 1. (0x36) CALLDATASIZE
+1. (0x37) CALLDATACOPY
 1. (0x38) CODESIZE
 1. (0x3A) GASPRICE
 1. (0x46) CHAINID
@@ -140,7 +141,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x30) ADDRESS
 1. (0x31) BALANCE
 1. (0x33) CALLER
-1. (0x37) CALLDATACOPY
 1. (0x39) CODECOPY
 1. (0x3B) EXTCODESIZE
 1. (0x3C) EXTCODECOPY
@@ -215,7 +215,7 @@ If you decide to build from source, here are some indications:
 wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.4/llvm-project-18.1.4.src.tar.xz
 tar xf llvm-project-18.1.4.src.tar.xz
 
-cd llvm-project-18.1.4.src.tar
+cd llvm-project-18.1.4.src
 mkdir build
 cd build
 

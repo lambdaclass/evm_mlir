@@ -213,14 +213,12 @@ impl<'c> SyscallContext<'c> {
         };
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
         value.lo = aux.low_u128();
         value.hi = (aux >> 128).low_u128();
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.gas_price;
         value.lo = aux.low_u128();
@@ -231,7 +229,11 @@ impl<'c> SyscallContext<'c> {
         self.env.cfg.chain_id
     }
 
-    pub extern "C" fn get_calldata_size(&self) -> u32 {
+    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
+        self.env.tx.data.as_ptr()
+    }
+
+    pub extern "C" fn get_calldata_size_syscall(&self) -> u32 {
         self.env.tx.data.len() as u32
     }
 
@@ -265,12 +267,11 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
         self.create_log(offset, size, vec![]);
     }
-    #[allow(improper_ctypes)]
+
     pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
         self.create_log(offset, size, vec![*topic]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_two_topics(
         &mut self,
         offset: u32,
@@ -281,7 +282,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_three_topics(
         &mut self,
         offset: u32,
@@ -293,7 +293,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_four_topics(
         &mut self,
         offset: u32,
@@ -306,7 +305,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3, *topic4]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn get_block_number(&self, number: &mut U256) {
         let block_number = self.env.block.number;
 
@@ -324,9 +322,6 @@ impl<'c> SyscallContext<'c> {
 
         let log = Log { data, topics };
         self.inner_context.logs.push(log);
-    }
-    pub extern "C" fn get_calldata_ptr(&mut self) -> *const u8 {
-        self.env.tx.data.as_ptr()
     }
 }
 
@@ -401,7 +396,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
-            SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
+            SyscallContext::get_calldata_size_syscall as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::EXTEND_MEMORY,
+            SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
         );
         engine.register_symbol(
             symbols::GET_ORIGIN,
@@ -468,6 +467,15 @@ pub(crate) mod mlir {
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, uint64, uint8], &[]).into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -602,15 +610,6 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
-            Region::new(),
-            attributes,
-            location,
-        ));
-
-        module.body().append_operation(func::func(
-            context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
@@ -653,6 +652,26 @@ pub(crate) mod mlir {
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_SIZE),
                 &[syscall_ctx],
                 &[uint32],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    /// Returns a pointer to the start of the calldata
+    pub(crate) fn get_calldata_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
                 location,
             ))
             .result(0)?;
@@ -873,27 +892,6 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
-    }
-
-    /// Returns a pointer to the calldata.
-    #[allow(unused)]
-    pub(crate) fn get_calldata_ptr_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
-                &[syscall_ctx],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
     }
 
     /// Returns a pointer to the calldata.

@@ -41,7 +41,7 @@ pub enum Opcode {
     CALLVALUE = 0x34,
     CALLDATALOAD = 0x35,
     CALLDATASIZE = 0x36,
-    // CALLDATACOPY = 0x37,
+    CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
     // CODECOPY = 0x39,
     GASPRICE = 0x3A,
@@ -299,6 +299,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
+            x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -358,6 +359,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
+    CallDataCopy,
     Log(u8),
     Origin,
 }
@@ -422,6 +424,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
+            Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
         }
@@ -725,6 +728,7 @@ impl Program {
                 Opcode::REVERT => Operation::Revert,
                 Opcode::MSTORE => Operation::Mstore,
                 Opcode::MSTORE8 => Operation::Mstore8,
+                Opcode::CALLDATACOPY => Operation::CallDataCopy,
                 Opcode::LOG0 => Operation::Log(0),
                 Opcode::LOG1 => Operation::Log(1),
                 Opcode::LOG2 => Operation::Log(2),
