@@ -46,7 +46,7 @@ pub enum Opcode {
     // CODECOPY = 0x39,
     GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
-    // EXTCODECOPY = 0x3C,
+    EXTCODECOPY = 0x3C,
     // RETURNDATASIZE = 0x3D,
     // RETURNDATACOPY = 0x3E,
     // EXTCODEHASH = 0x3F,
@@ -299,6 +299,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
+            x if x == Opcode::EXTCODECOPY as u8 => Opcode::EXTCODECOPY,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -360,6 +361,7 @@ pub enum Operation {
     CallDataCopy,
     Log(u8),
     Origin,
+    ExtcodeCopy,
 }
 
 impl Operation {
@@ -424,6 +426,7 @@ impl Operation {
             Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
+            Operation::ExtcodeCopy => vec![Opcode::EXTCODECOPY as u8],
         }
     }
 }
@@ -731,6 +734,7 @@ impl Program {
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
                 Opcode::ORIGIN => Operation::Origin,
+                Opcode::EXTCODECOPY => Operation::ExtcodeCopy,
             };
             operations.push(op);
             pc += 1;

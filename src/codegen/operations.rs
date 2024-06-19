@@ -90,6 +90,7 @@ pub fn generate_code_for_op<'c>(
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
         Operation::Origin => codegen_origin(op_ctx, region),
+        Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
     }
 }
 
@@ -3495,4 +3496,11 @@ fn codegen_chaind<'c, 'r>(
         .into();
     stack_push(context, &ok_block, chainid)?;
     Ok((start_block, ok_block))
+}
+
+fn codegen_extcodecopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
