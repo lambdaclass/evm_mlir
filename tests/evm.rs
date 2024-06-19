@@ -4,7 +4,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
-    syscall::{Log, U256},
+    syscall::{LogData, U256},
     Env, Evm,
 };
 use num_bigint::BigUint;
@@ -342,7 +342,7 @@ fn log0() {
 
     assert!(&result.is_success());
     let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![],
     }];
@@ -381,7 +381,7 @@ fn log1() {
 
     assert!(&result.is_success());
     let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }],
     }];
@@ -426,7 +426,7 @@ fn log2() {
 
     assert!(&result.is_success());
     let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }, U256 { lo: 2, hi: 0 }],
     }];
@@ -473,7 +473,7 @@ fn log3() {
 
     assert!(&result.is_success());
     let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
             U256 { lo: 1, hi: 0 },
@@ -528,7 +528,7 @@ fn log4() {
 
     assert!(&result.is_success());
     let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
             U256 { lo: 1, hi: 0 },
