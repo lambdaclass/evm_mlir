@@ -17,9 +17,9 @@ type B256 = U256;
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    accounts: HashMap<Address, DbAccount>,
-    contracts: HashMap<B256, Bytecode>,
-    block_hashes: HashMap<U256, B256>,
+    pub accounts: HashMap<Address, DbAccount>,
+    pub contracts: HashMap<B256, Bytecode>,
+    pub block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {

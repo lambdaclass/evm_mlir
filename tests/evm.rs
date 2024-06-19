@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+use std::str::FromStr;
+
 use evm_mlir::{
     constants::gas_cost,
-    primitives::{Bytes, U256 as EU256},
+    db::{Db, DbAccount},
+    primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
@@ -10,6 +14,7 @@ use num_bigint::BigUint;
 fn run_program_assert_result(
     mut operations: Vec<Operation>,
     mut env: Env,
+    db: Db,
     expected_result: BigUint,
 ) {
     operations.extend([
@@ -21,7 +26,7 @@ fn run_program_assert_result(
     ]);
     let program = Program::from(operations);
     env.tx.gas_limit = 999_999;
-    let mut evm = Evm::new(env, program);
+    let mut evm = Evm { env, program, db };
     let result = evm.transact();
     assert!(&result.is_success());
     let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
@@ -36,19 +41,28 @@ fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
     assert!(result.is_halt());
 }
 
-fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
+fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, db: Db, needed_gas: u64) {
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas;
-    let mut evm = Evm::new(env_success, program);
+    let mut evm = Evm {
+        env: env_success,
+        program,
+        db: db.clone(),
+    };
     let result = evm.transact();
     assert!(result.is_success());
+
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit = needed_gas - 1;
-    let mut evm = Evm::new(env_halt, program);
+    let mut evm = Evm {
+        env: env_halt,
+        program,
+        db: db.clone(),
+    };
     let result = evm.transact();
     assert!(result.is_halt());
 }
@@ -432,11 +446,12 @@ fn callvalue_happy_path() {
     let callvalue: u32 = 1500;
     let operations = vec![Operation::Callvalue];
     let mut env = Env::default();
+    let db = Db::default();
     env.tx.value = EU256::from(callvalue);
 
     let expected_result = BigUint::from(callvalue);
 
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_result(operations, env, db, expected_result);
 }
 
 #[test]
@@ -444,7 +459,8 @@ fn callvalue_gas_check() {
     let operations = vec![Operation::Callvalue];
     let needed_gas = gas_cost::CALLVALUE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    let db = Db::default();
+    run_program_assert_gas_exact(operations, env, db, needed_gas as _);
 }
 
 #[test]
@@ -459,20 +475,22 @@ fn callvalue_stack_overflow() {
 fn block_number_check() {
     let program = vec![Operation::Number];
     let mut env = Env::default();
+    let db = Db::default();
     let result = BigUint::from(2147483639_u32);
 
     env.block.number = ethereum_types::U256::from(2147483639);
 
-    run_program_assert_result(program, env, result);
+    run_program_assert_result(program, env, db, result);
 }
 
 #[test]
 fn block_number_check_gas() {
     let program = vec![Operation::Number];
     let env = Env::default();
+    let db = Db::default();
     let gas_needed = gas_cost::NUMBER;
 
-    run_program_assert_gas_exact(program, env, gas_needed as _);
+    run_program_assert_gas_exact(program, env, db, gas_needed as _);
 }
 
 #[test]
@@ -489,11 +507,12 @@ fn gasprice_happy_path() {
     let gas_price: u32 = 33192;
     let operations = vec![Operation::Gasprice];
     let mut env = Env::default();
+    let db = Db::default();
     env.tx.gas_price = EU256::from(gas_price);
 
     let expected_result = BigUint::from(gas_price);
 
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_result(operations, env, db, expected_result);
 }
 
 #[test]
@@ -501,7 +520,8 @@ fn gasprice_gas_check() {
     let operations = vec![Operation::Gasprice];
     let needed_gas = gas_cost::GASPRICE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    let db = Db::default();
+    run_program_assert_gas_exact(operations, env, db, needed_gas as _);
 }
 
 #[test]
@@ -517,9 +537,10 @@ fn chainid_happy_path() {
     let chainid: u64 = 1333;
     let operations = vec![Operation::Chainid];
     let mut env = Env::default();
+    let db = Db::default();
     env.cfg.chain_id = chainid;
     let expected_result = BigUint::from(chainid);
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_result(operations, env, db, expected_result);
 }
 
 #[test]
@@ -527,7 +548,8 @@ fn chainid_gas_check() {
     let operations = vec![Operation::Chainid];
     let needed_gas = gas_cost::CHAINID;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    let db = Db::default();
+    run_program_assert_gas_exact(operations, env, db, needed_gas as _);
 }
 
 #[test]
@@ -536,4 +558,77 @@ fn chainid_stack_overflow() {
     program.push(Operation::Chainid);
     let env = Env::default();
     run_program_assert_halt(program, env);
+}
+
+#[test]
+fn selfbalance_with_unexisting_account() {
+    // This example should never happen in real execution, since the caller address is always set
+    // But its good to have the program's output correctly defined anyways
+    let operations = vec![Operation::SelfBalance];
+    let db = Db::default();
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let expected_result = BigUint::from(0_u8);
+    run_program_assert_result(operations, env, db, expected_result);
+}
+
+#[test]
+fn selfbalance_with_existing_account() {
+    let caller_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let caller_balance: u64 = 12345;
+    let operations = vec![Operation::SelfBalance];
+    let mut accounts = HashMap::new();
+    // Caller account
+    let db_account = DbAccount {
+        nonce: 0,
+        balance: caller_balance.into(),
+        storage: HashMap::new(),
+        bytecode_hash: EU256::zero(),
+    };
+    accounts.insert(caller_address, db_account);
+    let db = Db {
+        accounts,
+        contracts: HashMap::new(),
+        block_hashes: HashMap::new(),
+    };
+    let mut env = Env::default();
+    env.tx.caller = caller_address;
+    env.tx.gas_limit = 999_999;
+    let expected_result = BigUint::from(caller_balance);
+    run_program_assert_result(operations, env, db, expected_result);
+}
+
+#[test]
+fn selfbalance_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::SelfBalance);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn selfbalance_gas_check() {
+    let caller_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let caller_balance: u64 = 12345;
+    let operations = vec![Operation::SelfBalance];
+    let mut accounts = HashMap::new();
+    // Caller account
+    let db_account = DbAccount {
+        nonce: 0,
+        balance: caller_balance.into(),
+        storage: HashMap::new(),
+        bytecode_hash: EU256::zero(),
+    };
+    accounts.insert(caller_address, db_account);
+    let db = Db {
+        accounts,
+        contracts: HashMap::new(),
+        block_hashes: HashMap::new(),
+    };
+    let mut env = Env::default();
+    env.tx.caller = caller_address;
+    env.tx.gas_limit = 999_999;
+    let needed_gas = gas_cost::SELFBALANCE;
+
+    run_program_assert_gas_exact(operations, env, db, needed_gas as _);
 }
