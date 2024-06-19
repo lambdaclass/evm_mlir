@@ -888,3 +888,70 @@ fn caller_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn sload_gas_consumption() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+    let result = gas_cost::PUSHN + gas_cost::SLOAD;
+    let env = Env::default();
+
+    run_program_assert_gas_exact(program, env, result as _);
+}
+
+#[test]
+fn sload_with_valid_key() {
+    let key = 80_u8;
+    let value = 11_u8;
+    let program = Program::from(vec![
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sload,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let caller_address = Address::from_low_u64_be(41);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(address);
+    env.tx.caller = caller_address;
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    evm.db
+        .write_storage(caller_address, EU256::from(key), EU256::from(value));
+
+    let result = evm.transact();
+    assert!(&result.is_success());
+    let result = result.return_data().unwrap();
+
+    assert_eq!(EU256::from(result), EU256::from(value));
+}
+
+#[test]
+fn sload_with_invalid_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(5_u8))),
+        Operation::Sload,
+    ];
+    let env = Env::default();
+    let result = BigUint::from(0_u8);
+
+    run_program_assert_num_result(program, env, result);
+}
+
+#[test]
+fn sload_with_stack_underflow() {
+    let program = vec![Operation::Sload];
+    let env = Env::default();
+
+    run_program_assert_halt(program, env);
+}

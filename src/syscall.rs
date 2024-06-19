@@ -19,7 +19,11 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{
+    db::Db,
+    env::Env,
+    primitives::{Address, U256 as EU256},
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -258,6 +262,17 @@ impl<'c> SyscallContext<'c> {
         }
     }
 
+    pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let address = self.env.tx.caller;
+
+        let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
+
+        let result = self.db.read_storage(address, key);
+
+        stg_value.hi = (result >> 128).low_u128();
+        stg_value.lo = result.low_u128();
+    }
+
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
         self.create_log(offset, size, vec![]);
     }
@@ -327,6 +342,7 @@ impl<'c> SyscallContext<'c> {
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const STORAGE_READ: &str = "evm_mlir__read_storage";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
     pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
     pub const APPEND_LOG_TWO_TOPICS: &str = "evm_mlir__append_log_with_two_topics";
@@ -355,6 +371,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORAGE_READ,
+            SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::APPEND_LOG,
@@ -536,6 +557,18 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORAGE_READ),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::APPEND_LOG),
@@ -777,6 +810,24 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    /// Reads the storage given a key
+    pub(crate) fn storage_read_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
     }
 
     /// Receives log data and appends a log to the logs vector

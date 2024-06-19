@@ -50,6 +50,7 @@ pub mod gas_cost {
     pub const MLOAD: i64 = 3;
     pub const MSTORE: i64 = 3;
     pub const MSTORE8: i64 = 3;
+    pub const SLOAD: i64 = 100; // assuming the key is warm for now
     pub const JUMP: i64 = 8;
     pub const JUMPI: i64 = 10;
     pub const PC: i64 = 2;
