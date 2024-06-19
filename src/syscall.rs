@@ -195,14 +195,12 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
         value.lo = aux.low_u128();
         value.hi = (aux >> 128).low_u128();
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.gas_price;
         value.lo = aux.low_u128();
@@ -251,12 +249,11 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
         self.create_log(offset, size, vec![]);
     }
-    #[allow(improper_ctypes)]
+
     pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
         self.create_log(offset, size, vec![*topic]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_two_topics(
         &mut self,
         offset: u32,
@@ -267,7 +264,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_three_topics(
         &mut self,
         offset: u32,
@@ -279,7 +275,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_four_topics(
         &mut self,
         offset: u32,
@@ -292,7 +287,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3, *topic4]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn get_block_number(&self, number: &mut U256) {
         let block_number = self.env.block.number;
 
