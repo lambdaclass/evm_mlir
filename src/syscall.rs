@@ -586,8 +586,17 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_CALLDATA_PTR),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            StringAttribute::new(context, symbols::GET_ORIGIN),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -863,26 +872,22 @@ pub(crate) mod mlir {
         ));
     }
 
-    /// Returns a pointer to the calldata.
+    /// Returns the block number.
     #[allow(unused)]
-    pub(crate) fn get_calldata_ptr_syscall<'c>(
+    pub(crate) fn get_block_number_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         number: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALLDATA_PTR),
-                &[syscall_ctx],
-                &[ptr_type],
-                location,
-            ))
-            .result(0)?;
-        Ok(value.into())
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
+            &[syscall_ctx, number],
+            &[],
+            location,
+        ));
     }
 
     /// Stores the timestamp in the syscall context
