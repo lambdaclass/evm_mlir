@@ -40,6 +40,7 @@ impl<DB: Database + Default> Evm<DB> {
     pub fn new(env: Env, db: DB) -> Self {
         Self { env, db }
     }
+
 }
 
 impl Evm<Db> {
@@ -65,7 +66,6 @@ impl Evm<Db> {
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
-
         executor.execute(&mut context, self.env.tx.gas_limit);
         context.get_result()
     }

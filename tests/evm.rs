@@ -1,12 +1,14 @@
+use ethereum_types::Address;
 use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, U256 as EU256},
+    primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
+use melior::dialect::ods::vector::print;
 use num_bigint::BigUint;
 use std::str::FromStr;
 
@@ -148,6 +150,37 @@ fn fibonacci_example() {
     assert!(&result.is_success());
     let number = BigUint::from_bytes_be(result.return_data().unwrap());
     assert_eq!(number, 55_u32.into());
+}
+
+
+#[test]
+fn test_block_hash(){
+    let block_number = 1_u8;
+    let block_hash = 2_u8;
+    let expected_block_hash = BigUint::from(block_hash);
+    let operations = vec![
+        Operation::Push((1, BigUint::from(block_number))),
+        Operation::BlockHash,
+    ];
+    let mut env = Env::default();
+    let program = Program::from(operations.clone());
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    let mut block_hash_as_slice = [0u8;32];
+    block_hash_as_slice[31] = block_hash;
+    let block_hash_number = ethereum_types::H256::from_slice(&block_hash_as_slice);
+    let block_number = ethereum_types::U256::from(block_number);
+
+    db.insert_block_hash(block_number, block_hash_number);
+
+    let mut evm = Evm::new(env.clone(), db);
+    let _result = evm.transact();
+    run_program_assert_result(operations, env, expected_block_hash);
 }
 
 #[test]

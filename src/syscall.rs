@@ -19,7 +19,8 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{db::{Db,Database}, env::Env,primitives::U256 as EU256, primitives::Address,primitives::B256};
+
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -41,6 +42,13 @@ impl U256 {
     pub fn copy_from_address(&mut self, value: &Address) {
         let mut buffer = [0u8; 32];
         buffer[12..32].copy_from_slice(&value.0);
+        self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
+        self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
+
+    pub fn copy_from_B256(&mut self, value:B256){
+        let mut buffer = [0u8; 32];
+        buffer.copy_from_slice(&value.0);
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
@@ -294,6 +302,16 @@ impl<'c> SyscallContext<'c> {
         number.lo = block_number.low_u128();
     }
 
+    #[allow(improper_ctypes)]
+    pub extern "C" fn get_block_hash(&mut self, number: &U256, hash: &mut U256) {
+        let number_asu256 = ethereum_types::U256::from_big_endian(&[number.hi.to_be_bytes(), number.lo.to_be_bytes()].concat());
+        println!("Block number: {:?}, number: {:?}", number_asu256, number);
+        println!("Block hashes: {:?}", self.db.block_hashes);
+        let block_hash = self.db.block_hash(number_asu256).unwrap_or(ethereum_types::H256::default());
+        println!("Block has received from syscall: {:?}", block_hash);
+        hash.copy_from_B256(block_hash);
+    }
+
     /// Receives a memory offset and size, and a vector of topics.
     /// Creates a Log with topics and data equal to memory[offset..offset + size]
     /// and pushes it to the logs vector.
@@ -322,6 +340,7 @@ pub mod symbols {
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const GET_BLOCK_HASH: &str = "evm_mlir__get_block_hash";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -402,6 +421,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CHAINID,
             SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_BLOCK_HASH,
+            SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256, *mut U256) as *mut (),
         );
     };
 }
@@ -579,6 +602,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BLOCK_HASH),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -858,6 +890,23 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
             &[syscall_ctx, number],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn get_block_hash_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        block_number: Value<'c, 'c>,
+        block_hash: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_HASH),
+            &[syscall_ctx, block_number, block_hash],
             &[],
             location,
         ));

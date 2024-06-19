@@ -17,12 +17,16 @@ pub struct DbAccount {
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
-    block_hashes: HashMap<U256, B256>,
+    pub block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
+        self.block_hashes.insert(number, hash);
     }
 
     pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
@@ -121,6 +125,9 @@ impl Database for Db {
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
         // Returns Error if no block with that number
+        println!("number received from block_hash: {:?}", number);
+        println!("block_hashes from block_hash: {:?}", self.block_hashes);
+        println!("returning from block_hash: {:?}", self.block_hashes.get(&number).cloned().ok_or(DatabaseError));
         self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }

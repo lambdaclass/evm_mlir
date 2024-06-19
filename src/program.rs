@@ -50,7 +50,7 @@ pub enum Opcode {
     // RETURNDATASIZE = 0x3D,
     // RETURNDATACOPY = 0x3E,
     // EXTCODEHASH = 0x3F,
-    // BLOCKHASH = 0x40,
+    BLOCKHASH = 0x40,
     // COINBASE = 0x41,
     // TIMESTAMP = 0x42,
     NUMBER = 0x43,
@@ -299,6 +299,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
+            x if x == Opcode::BLOCKHASH as u8 => Opcode::BLOCKHASH,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -360,6 +361,7 @@ pub enum Operation {
     CallDataCopy,
     Log(u8),
     Origin,
+    BlockHash,
 }
 
 impl Operation {
@@ -424,6 +426,7 @@ impl Operation {
             Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
+            Operation::BlockHash => vec![Opcode::BLOCKHASH as u8],
         }
     }
 }
@@ -731,6 +734,7 @@ impl Program {
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
                 Opcode::ORIGIN => Operation::Origin,
+                Opcode::BLOCKHASH => Operation::BlockHash,
             };
             operations.push(op);
             pc += 1;
