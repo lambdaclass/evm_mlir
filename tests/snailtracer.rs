@@ -1,5 +1,9 @@
-use ethereum_types::Address;
-use evm_mlir::{program::Program, Env, Evm};
+use evm_mlir::{
+    db::{Bytecode, Db},
+    env::TransactTo,
+    primitives::{Address, Bytes},
+    Env, Evm,
+};
 
 const SNAILTRACER_BYTECODE: &[u8] = include_bytes!("../programs/snailtracer.bytecode");
 
@@ -7,16 +11,18 @@ const SNAILTRACER_BYTECODE: &[u8] = include_bytes!("../programs/snailtracer.byte
 #[ignore]
 // TODO: this test requires SSTORE, SLOAD, and CALLDATA related opcodes
 fn snailtracer() {
-    let program = Program::from_bytecode(SNAILTRACER_BYTECODE);
-
+    let address = Address::zero();
     let mut env = Env::default();
-    env.tx.calldata = vec![48, 98, 123, 124];
+    env.tx.data = Bytes::from(vec![48, 98, 123, 124]);
     env.tx.gas_limit = 999_999;
-    env.tx.from = Address::from([0; 20]);
-    env.tx.from.0[0] = 16;
-    env.tx.to = Address::from([0; 20]);
+    let mut caller_address = vec![0x0; 160];
+    caller_address[0] = 16;
+    env.tx.caller = Address::from_slice(&caller_address);
+    env.tx.transact_to = TransactTo::Call(address);
 
-    let mut evm = Evm::new(env, program.expect("Error parsing opcodes"));
+    let db = Db::new().with_bytecode(address, Bytecode::from(SNAILTRACER_BYTECODE));
+
+    let mut evm = Evm::new(env, db);
 
     let _ = evm.transact();
 }

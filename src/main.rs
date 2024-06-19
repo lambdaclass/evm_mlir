@@ -1,4 +1,10 @@
-use evm_mlir::{program::Program, Env, Evm};
+use evm_mlir::{
+    db::{Bytecode, Db},
+    env::{Env, TransactTo},
+    primitives::Address,
+    program::Program,
+    Evm,
+};
 use num_bigint::BigUint;
 
 fn main() {
@@ -13,10 +19,15 @@ fn main() {
     }
 
     let mut env = Env::default();
-    let initial_gas = 1000;
-    env.tx.gas_limit = initial_gas;
+    env.tx.gas_limit = 999_999;
 
-    let mut evm = Evm::new(env, program.unwrap());
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.unwrap().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
