@@ -942,8 +942,9 @@ fn sload_with_invalid_key() {
         Operation::Push((1_u8, BigUint::from(5_u8))),
         Operation::Sload,
     ];
-    let env = Env::default();
+    let mut env = Env::default();
     let result = BigUint::from(0_u8);
+    env.tx.gas_limit = 999_999;
 
     run_program_assert_num_result(program, env, result);
 }
