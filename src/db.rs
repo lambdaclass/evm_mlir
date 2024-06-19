@@ -1,9 +1,9 @@
 #![allow(unused)]
-use ethereum_types::{Address, U256};
+use crate::primitives::{Address, Bytes, B256, U256};
+use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, fmt::Error};
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(Vec<u8>);
+pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DbAccount {
@@ -12,8 +12,6 @@ pub struct DbAccount {
     pub storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
 }
-
-type B256 = U256;
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
@@ -27,6 +25,20 @@ impl Db {
         Self::default()
     }
 
+    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
+        let mut db = Db::default();
+        let mut hasher = Keccak256::new();
+        hasher.update(&bytecode);
+        let hash = B256::from_slice(&hasher.finalize());
+        let account = DbAccount {
+            bytecode_hash: hash,
+            ..Default::default()
+        };
+        db.accounts.insert(address, account);
+        db.contracts.insert(hash, bytecode);
+        db
+    }
+
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
         let account = self.accounts.entry(address).or_default();
         account.storage.insert(key, value);
@@ -38,6 +50,16 @@ impl Db {
             .and_then(|account| account.storage.get(&key))
             .cloned()
             .unwrap_or_default()
+    }
+
+    pub fn code_by_address(&self, address: Address) -> Result<Bytecode, DatabaseError> {
+        // Returns the bytecode of an address
+        let hash = self
+            .accounts
+            .get(&address)
+            .ok_or(DatabaseError)?
+            .bytecode_hash;
+        self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
 }
 
@@ -172,7 +194,7 @@ mod tests {
         let accounts = HashMap::new();
         let mut block_hashes = HashMap::new();
         let number = U256::from(1);
-        let expected_hash = B256::from(2);
+        let expected_hash = B256::from_low_u64_be(2);
         block_hashes.insert(number, expected_hash);
         let mut db = Db {
             accounts,
