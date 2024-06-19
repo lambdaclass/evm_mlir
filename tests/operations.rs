@@ -2174,7 +2174,7 @@ fn not_with_stack_underflow() {
 }
 #[test]
 fn push_push_normal_not() {
-    let a = BigUint::from(90_u8);
-    let program = vec![Operation::Push((1_u8, a.clone())), Operation::Not];
-    run_program_assert_stack_top(program, (!90_u8).into());
+    let program = vec![Operation::Push0, Operation::Not];
+    let expected_result = BigUint::from_bytes_be(&[0xff; 32]);
+    run_program_assert_stack_top(program, expected_result);
 }
