@@ -1,5 +1,5 @@
 #![allow(unused)]
-use crate::primitives::{Address, Bytes, U256};
+use crate::primitives::{Address, Bytes, B256, U256};
 use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, fmt::Error};
 
@@ -13,12 +13,10 @@ pub struct DbAccount {
     pub bytecode_hash: B256,
 }
 
-type B256 = U256;
-
 #[derive(Clone, Debug, Default)]
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
-    contracts: HashMap<B256, Bytes>,
+    contracts: HashMap<B256, Bytecode>,
     block_hashes: HashMap<U256, B256>,
 }
 
@@ -27,11 +25,11 @@ impl Db {
         Self::default()
     }
 
-    pub fn with_bytecode(self, address: Address, bytecode: Bytes) -> Self {
+    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
-        let hash = B256::from_big_endian(&hasher.finalize());
+        let hash = B256::from_slice(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,
             ..Default::default()
@@ -196,7 +194,7 @@ mod tests {
         let accounts = HashMap::new();
         let mut block_hashes = HashMap::new();
         let number = U256::from(1);
-        let expected_hash = B256::from(2);
+        let expected_hash = B256::from_low_u64_be(2);
         block_hashes.insert(number, expected_hash);
         let mut db = Db {
             accounts,
