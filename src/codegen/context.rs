@@ -476,6 +476,29 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn get_origin_syscall(
+        &'c self,
+        block: &'c Block,
+        address_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_origin_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address_ptr,
+            location,
+        )
+    }
+
+    pub(crate) fn get_chainid_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_chainid_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
     pub(crate) fn store_in_callvalue_ptr(
         &'c self,
         block: &'c Block,
@@ -488,6 +511,21 @@ impl<'c> OperationCtx<'c> {
             block,
             location,
             callvalue_ptr,
+        )
+    }
+
+    pub(crate) fn store_in_gasprice_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        gasprice_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_gasprice_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            gasprice_ptr,
         )
     }
 
@@ -623,7 +661,24 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
-    #[allow(clippy::too_many_arguments)]
+
+    #[allow(unused)]
+    pub(crate) fn get_block_number_syscall(
+        &'c self,
+        block: &'c Block,
+        number: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_block_number_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            number,
+            location,
+        )
+    }
+  
+  #[allow(clippy::too_many_arguments)]
     pub(crate) fn get_balance_syscall(
         &'c self,
         block: &'c Block,
