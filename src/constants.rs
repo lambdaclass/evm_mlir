@@ -13,7 +13,7 @@ pub mod gas_cost {
     pub const MSTORE: i64 = 3;
     pub const MSTORE8: i64 = 3;
     pub const MLOAD: i64 = 3;
-    pub const SLOAD: i64 = 100;
+    pub const SLOAD: i64 = 100; // assuming the key is warm for now
     pub const ADD: i64 = 3;
     pub const AND: i64 = 3;
     pub const EXP: i64 = 10;
