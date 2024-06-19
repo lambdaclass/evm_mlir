@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use builder::EvmBuilder;
 use db::{Database, Db};
+use env::TransactTo;
 use ethereum_types::U256;
 use env::TransactTo;
 use executor::{Executor, OptLevel};
@@ -59,7 +60,7 @@ impl Evm<Db> {
             .db
             .code_by_address(code_address)
             .expect("failed to load bytecode");
-        let program = Program::from_bytecode(bytecode.as_slice()).unwrap();
+        let program = Program::from_bytecode(&bytecode).unwrap(); // TODO: map invalid/unknown opcodes to INVALID operation
 
         let module = context
             .compile(&program, &output_file)

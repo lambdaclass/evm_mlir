@@ -1,16 +1,9 @@
 #![allow(unused)]
-use ethereum_types::{Address, U256};
+use crate::primitives::{Address, Bytes, B256, U256};
 use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, fmt::Error};
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(pub Vec<u8>);
-
-impl Bytecode {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-}
+pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DbAccount {
@@ -20,8 +13,6 @@ pub struct DbAccount {
     pub bytecode_hash: B256,
 }
 
-pub type B256 = U256;
-
 #[derive(Clone, Debug, Default)]
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
@@ -30,11 +21,15 @@ pub struct Db {
 }
 
 impl Db {
-    pub fn with_bytecode(address: Address, bytecode: Bytecode) -> Self {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();
-        hasher.update(bytecode.as_slice());
-        let hash = B256::from_big_endian(&hasher.finalize());
+        hasher.update(&bytecode);
+        let hash = B256::from_slice(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,
             ..Default::default()
@@ -42,32 +37,6 @@ impl Db {
         db.accounts.insert(address, account);
         db.contracts.insert(hash, bytecode);
         db
-    }
-
-    pub fn with_bytecode_and_block_hash(address: Address, bytecode: Bytecode,number: U256,hash:B256) -> Self {
-        let mut db = Db::default();
-        let mut hasher = Keccak256::new();
-        hasher.update(bytecode.as_slice());
-        let hash = B256::from_big_endian(&hasher.finalize());
-        let account = DbAccount {
-            bytecode_hash: hash,
-            ..Default::default()
-        };
-        db.accounts.insert(address, account);
-        db.contracts.insert(hash, bytecode);
-        db.block_hashes.insert(number, hash);
-        db
-    }
-
-    pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
-        self.block_hashes.insert(number, hash);
-        println!("block_hashes: {:?}", self.block_hashes);
-    }
-
-    pub fn block_hash_from_number(&self, number: U256) -> Option<B256> {
-        println!("number: {:?}", number);
-        println!("returning: {:?}", self.block_hashes.get(&number).cloned());
-        self.block_hashes.get(&number).cloned()
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -92,7 +61,6 @@ impl Db {
             .bytecode_hash;
         self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
-
 }
 
 #[derive(Default, Clone, PartialEq, Debug)]
@@ -229,7 +197,7 @@ mod tests {
         let accounts = HashMap::new();
         let mut block_hashes = HashMap::new();
         let number = U256::from(1);
-        let expected_hash = B256::from(2);
+        let expected_hash = B256::from_low_u64_be(2);
         block_hashes.insert(number, expected_hash);
         let mut db = Db {
             accounts,
