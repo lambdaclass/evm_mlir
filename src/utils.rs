@@ -1090,7 +1090,7 @@ pub(crate) fn extend_memory<'c>(
     Ok(())
 }
 
-pub(crate) fn return_memory_pointer<'a>(
+pub(crate) fn get_memory_pointer<'a>(
     op_ctx: &'a OperationCtx<'a>,
     block: &'a Block<'a>,
     location: Location<'a>,
