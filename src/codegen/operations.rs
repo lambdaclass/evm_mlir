@@ -2510,7 +2510,7 @@ fn codegen_not<'c, 'r>(
     let mask = ok_block
         .append_operation(arith::constant(
             context,
-            Attribute::parse(context, &format!("{} : i256", BigUint::from(0xff))).unwrap(),
+            Attribute::parse(context, &format!("{} : i256", BigUint::from(0xff_u8))).unwrap(),
             location,
         ))
         .result(0)?
