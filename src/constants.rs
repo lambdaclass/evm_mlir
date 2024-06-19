@@ -56,6 +56,7 @@ pub mod gas_cost {
     pub const CALLVALUE: i64 = 2;
     pub const JUMPI: i64 = 10;
     pub const LOG: i64 = 375;
+    pub const ORIGIN: i64 = 2;
     pub const GASPRICE: i64 = 2;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
