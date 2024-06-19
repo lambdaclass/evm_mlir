@@ -312,7 +312,6 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_timestamp_ptr(&self, value: &mut U256) {
         let aux = &self.env.block.timestamp;
         value.lo = aux.low_u128();
