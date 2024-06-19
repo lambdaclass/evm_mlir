@@ -195,14 +195,24 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
         value.lo = aux.low_u128();
         value.hi = (aux >> 128).low_u128();
     }
 
-    #[allow(improper_ctypes)]
+    pub extern "C" fn store_in_caller_ptr(&self, value: &mut U256) {
+        //TODO: Here we are returning the tx.caller value, which in fact corresponds to ORIGIN
+        //opcode. For the moment it's ok, but it should be changed when we implement the CALL opcode.
+        let bytes = &self.env.tx.caller.to_fixed_bytes();
+        let high: [u8; 16] = [&[0u8; 12], &bytes[..4]].concat().try_into().unwrap();
+        let low: [u8; 16] = bytes[4..20].try_into().unwrap();
+        //Now, we have to swap endianess, since data will be interpreted as it comes from
+        //little endiann, aligned to 16 bytes
+        value.lo = u128::from_be_bytes(low);
+        value.hi = u128::from_be_bytes(high);
+    }
+
     pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.gas_price;
         value.lo = aux.low_u128();
@@ -251,12 +261,11 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
         self.create_log(offset, size, vec![]);
     }
-    #[allow(improper_ctypes)]
+
     pub extern "C" fn append_log_with_one_topic(&mut self, offset: u32, size: u32, topic: &U256) {
         self.create_log(offset, size, vec![*topic]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_two_topics(
         &mut self,
         offset: u32,
@@ -267,7 +276,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_three_topics(
         &mut self,
         offset: u32,
@@ -279,7 +287,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn append_log_with_four_topics(
         &mut self,
         offset: u32,
@@ -292,7 +299,6 @@ impl<'c> SyscallContext<'c> {
         self.create_log(offset, size, vec![*topic1, *topic2, *topic3, *topic4]);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn get_block_number(&self, number: &mut U256) {
         let block_number = self.env.block.number;
 
@@ -324,6 +330,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const STORE_IN_CALLER_PTR: &str = "evm_mlir__store_in_caller_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
@@ -396,6 +403,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_CALLER_PTR,
+            SyscallContext::store_in_caller_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_GASPRICE_PTR,
@@ -489,6 +500,14 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_CALLER_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
 
         module.body().append_operation(func::func(
             context,
@@ -498,6 +517,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
@@ -697,6 +717,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_GASPRICE_PTR),
             &[syscall_ctx, gasprice_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn store_in_caller_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        caller_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLER_PTR),
+            &[syscall_ctx, caller_ptr],
             &[],
             location,
         ));
