@@ -514,6 +514,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_selfbalance_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        selfbalance_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_selfbalance_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            selfbalance_ptr,
+        )
+    }
+
     pub(crate) fn extend_memory_syscall(
         &'c self,
         block: &'c Block,

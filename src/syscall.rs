@@ -19,7 +19,10 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env};
+use crate::{
+    db::{Database, Db},
+    env::Env,
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -180,6 +183,20 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
+        let address = self.env.tx.caller;
+        match self.db.basic(address).unwrap() {
+            Some(a) => {
+                balance.hi = (a.balance >> 128).low_u128();
+                balance.lo = a.balance.low_u128();
+            }
+            None => {
+                balance.hi = 0;
+                balance.lo = 0;
+            }
+        };
+    }
+
     #[allow(improper_ctypes)]
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
@@ -306,6 +323,7 @@ pub mod symbols {
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const STORE_IN_SELFBALANCE_PTR: &str = "evm_mlir__store_in_selfbalance_ptr";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -378,6 +396,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CHAINID,
             SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_SELFBALANCE_PTR,
+            SyscallContext::store_in_selfbalance_ptr as *const extern "C" fn(&SyscallContext) -> u64
+                as *mut (),
         );
     };
 }
@@ -454,6 +477,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_GASPRICE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_SELFBALANCE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -639,6 +671,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_GASPRICE_PTR),
             &[syscall_ctx, gasprice_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn store_in_selfbalance_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        balance_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_SELFBALANCE_PTR),
+            &[syscall_ctx, balance_ptr],
             &[],
             location,
         ));
