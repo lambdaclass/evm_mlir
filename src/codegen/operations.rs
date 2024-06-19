@@ -1783,7 +1783,7 @@ fn codegen_sload<'c, 'r>(
     let pointer_size = start_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), MAX_STACK_SIZE as i64).into(),
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
             location,
         ))
         .result(0)?
