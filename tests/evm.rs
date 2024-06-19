@@ -58,26 +58,6 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     assert!(result.is_halt());
 }
 
-fn run_program_assert_bytes_result(
-    mut operations: Vec<Operation>,
-    mut env: Env,
-    expected_result: &[u8],
-) {
-    operations.extend([
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((1, 32_u8.into())),
-        Operation::Push0,
-        Operation::Return,
-    ]);
-    let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
-    let mut evm = Evm::new(env, program);
-    let result = evm.transact();
-    assert!(&result.is_success());
-    assert_eq!(result.return_data().unwrap(), expected_result);
-}
-
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
     assert!(n > 0, "n must be greater than 0");
 
@@ -492,7 +472,7 @@ fn address() {
         .concat()
         .try_into()
         .unwrap();
-    run_program_assert_bytes_result(operations, env, &expected_result);
+    run_program_assert_result(operations, env, BigUint::from_bytes_be(&expected_result));
 }
 
 #[test]
