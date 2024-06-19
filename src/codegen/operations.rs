@@ -69,6 +69,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
+        Operation::SelfBalance => codegen_selfbalance(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
@@ -3246,4 +3247,11 @@ fn codegen_chaind<'c, 'r>(
         .into();
     stack_push(context, &ok_block, chainid)?;
     Ok((start_block, ok_block))
+}
+
+fn codegen_selfbalance<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
