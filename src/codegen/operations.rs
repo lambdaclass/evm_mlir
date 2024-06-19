@@ -66,7 +66,9 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
+        Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
+        Operation::Chainid => codegen_chaind(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Sload => codegen_sload(op_ctx, region),
@@ -88,7 +90,79 @@ pub fn generate_code_for_op<'c>(
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
+        Operation::Origin => codegen_origin(op_ctx, region),
     }
+}
+
+fn codegen_origin<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    //Check if there is stack overflow and if there is enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ORIGIN)?;
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_size_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    //This may be refactored to use constant_value_from_i64 util function
+    let pointer_size = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let address_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    //Get the 20-byte address of the sender of the transaction
+    op_ctx.get_origin_syscall(&ok_block, address_ptr, location);
+
+    let address_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, address_value)?;
+
+    Ok((start_block, ok_block))
 }
 
 fn codegen_callvalue<'c, 'r>(
@@ -123,15 +197,7 @@ fn codegen_callvalue<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
-    //This may be refactored to use constant_value_from_i64 util function
-    let pointer_size = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
 
     let callvalue_ptr = ok_block
         .append_operation(llvm::alloca(
@@ -3325,4 +3391,102 @@ fn codegen_log<'c, 'r>(
     }
 
     Ok((start_block, log_block))
+}
+
+fn codegen_gasprice<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GASPRICE)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
+
+    let gasprice_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_gasprice_ptr(&ok_block, location, gasprice_ptr);
+
+    let gasprice = ok_block
+        .append_operation(llvm::load(
+            context,
+            gasprice_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, gasprice)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_chaind<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::CHAINID)?;
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    let chainid = op_ctx.get_chainid_syscall(&ok_block, location)?;
+    let uint256 = IntegerType::new(context, 256);
+    // Convert calldata_size from u32 to u256
+    let chainid = ok_block
+        .append_operation(arith::extui(chainid, uint256.into(), location))
+        .result(0)?
+        .into();
+    stack_push(context, &ok_block, chainid)?;
+    Ok((start_block, ok_block))
 }
