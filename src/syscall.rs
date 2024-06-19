@@ -249,9 +249,7 @@ impl<'c> SyscallContext<'c> {
         let address = self.env.tx.caller;
         let mut combined = [0u8; 32];
 
-        combined[..16].copy_from_slice(&stg_key.hi.to_be_bytes());
-        combined[16..].copy_from_slice(&stg_key.lo.to_be_bytes());
-        let key = EU256::from_big_endian(&combined);
+        let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
 
         let result = self.db.read_storage(address, key);
 
