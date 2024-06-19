@@ -476,6 +476,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn get_origin_syscall(
+        &'c self,
+        block: &'c Block,
+        address_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_origin_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address_ptr,
+            location,
+        )
+    }
+
     pub(crate) fn get_chainid_syscall(
         &'c self,
         block: &'c Block,

@@ -22,6 +22,7 @@ use melior::ExecutionEngine;
 use crate::{
     db::{Database, Db},
     env::Env,
+    primitives::Address
 };
 
 /// Function type for the main entrypoint of the generated code
@@ -32,6 +33,21 @@ pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 pub struct U256 {
     pub lo: u128,
     pub hi: u128,
+}
+
+impl U256 {
+    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+        let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+        let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
+        U256 { hi, lo }
+    }
+
+    pub fn copy_from_address(&mut self, value: &Address) {
+        let mut buffer = [0u8; 32];
+        buffer[12..32].copy_from_slice(&value.0);
+        self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
+        self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -219,6 +235,11 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.len() as u32
     }
 
+    pub extern "C" fn get_origin(&self, address: &mut U256) {
+        let aux = &self.env.tx.caller;
+        address.copy_from_address(aux);
+    }
+
     pub extern "C" fn extend_memory(&mut self, new_size: u32) -> *mut u8 {
         let new_size = new_size as usize;
         if new_size <= self.inner_context.memory.len() {
@@ -320,6 +341,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
@@ -380,6 +402,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CALLDATA_SIZE,
             SyscallContext::get_calldata_size as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_ORIGIN,
+            SyscallContext::get_origin as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
@@ -482,7 +508,6 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_SELFBALANCE_PTR),
@@ -561,6 +586,15 @@ pub(crate) mod mlir {
                 )
                 .into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_ORIGIN),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -824,6 +858,23 @@ pub(crate) mod mlir {
             location,
         ));
     }
+
+    pub(crate) fn get_origin_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address_pointer: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ORIGIN),
+            &[syscall_ctx, address_pointer],
+            &[],
+            location,
+        ));
+    }
+
     /// Returns a pointer to the calldata.
     #[allow(unused)]
     pub(crate) fn get_calldata_ptr_syscall<'c>(

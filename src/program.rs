@@ -36,7 +36,7 @@ pub enum Opcode {
     // unused 0x21-0x2F
     // ADDRESS = 0x30,
     // BALANCE = 0x31,
-    // ORIGIN = 0x32,
+    ORIGIN = 0x32,
     // CALLER = 0x33,
     CALLVALUE = 0x34,
     CALLDATALOAD = 0x35,
@@ -298,6 +298,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
+            x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -358,6 +359,7 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Log(u8),
+    Origin,
 }
 
 impl Operation {
@@ -420,7 +422,8 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Mstore => vec![Opcode::MSTORE as u8],
             Operation::Mstore8 => vec![Opcode::MSTORE8 as u8],
-            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n - 1],
+            Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
+            Operation::Origin => vec![Opcode::ORIGIN as u8],
         }
     }
 }
@@ -727,6 +730,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::ORIGIN => Operation::Origin,
             };
             operations.push(op);
             pc += 1;
@@ -753,6 +757,13 @@ impl Program {
                 _ => 1,
             })
             .sum()
+    }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        self.operations
+            .iter()
+            .flat_map(Operation::to_bytecode)
+            .collect::<Vec<u8>>()
     }
 }
 
