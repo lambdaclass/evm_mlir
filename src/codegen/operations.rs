@@ -3124,8 +3124,12 @@ fn codegen_extcodesize<'c, 'r>(
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256).into();
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    // TODO: add dynamic gas computation
-    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE)?;
+    // TODO: handle cold and warm accesses for dynamic gas computation
+    let gas_flag = consume_gas(
+        context,
+        &start_block,
+        gas_cost::EXTCODESIZE + gas_cost::EXTCODESIZE_WARM,
+    )?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
@@ -3145,6 +3149,7 @@ fn codegen_extcodesize<'c, 'r>(
 
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
     let codesize = op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, location)?;
     let codesize = ok_block
         .append_operation(arith::extui(codesize, uint256, location))
