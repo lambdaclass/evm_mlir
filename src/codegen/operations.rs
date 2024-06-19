@@ -448,16 +448,11 @@ fn codegen_exp<'c, 'r>(
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::EXP)?;
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -465,17 +460,93 @@ fn codegen_exp<'c, 'r>(
         location,
     ));
 
-    let lhs = stack_pop(context, &ok_block)?;
-    let rhs = stack_pop(context, &ok_block)?;
+    let base = stack_pop(context, &ok_block)?;
+    let exponent = stack_pop(context, &ok_block)?;
 
     let result = ok_block
-        .append_operation(ods::math::ipowi(context, lhs, rhs, location).into())
+        .append_operation(ods::math::ipowi(context, base, exponent, location).into())
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, result)?;
+    let result_type = IntegerType::new(context, 256);
+    let leading_zeros = ok_block
+        .append_operation(llvm::intr_ctlz(
+            context,
+            exponent,
+            false,
+            result_type.into(),
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    Ok((start_block, ok_block))
+    let number_of_bits = ok_block
+        .append_operation(arith::subi(
+            constant_value_from_i64(context, &ok_block, 256)?,
+            leading_zeros,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let bits_with_offset = ok_block
+        .append_operation(arith::addi(
+            number_of_bits,
+            constant_value_from_i64(context, &ok_block, 7)?,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let number_of_bytes = ok_block
+        .append_operation(arith::divui(
+            bits_with_offset,
+            constant_value_from_i64(context, &ok_block, 8)?,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let dynamic_gas_cost = ok_block
+        .append_operation(arith::muli(
+            number_of_bytes,
+            constant_value_from_i64(context, &ok_block, 50)?,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let total_gas_cost = ok_block
+        .append_operation(arith::addi(
+            constant_value_from_i64(context, &ok_block, gas_cost::EXP)?,
+            dynamic_gas_cost,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let uint64 = IntegerType::new(context, 64);
+    let total_gas_cost = ok_block
+        .append_operation(arith::trunci(total_gas_cost, uint64.into(), location))
+        .result(0)?
+        .into();
+
+    let gas_flag = consume_gas_as_value(context, &ok_block, total_gas_cost)?;
+    let enough_gas_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &enough_gas_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    stack_push(context, &enough_gas_block, result)?;
+
+    Ok((start_block, enough_gas_block))
 }
 
 fn codegen_iszero<'c, 'r>(
