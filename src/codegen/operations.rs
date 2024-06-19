@@ -2510,12 +2510,11 @@ fn codegen_not<'c, 'r>(
     let mask = ok_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, 0xff).into(),
+            Attribute::parse(context, &format!("{} : i256", BigUint::from(0xff))).unwrap(),
             location,
         ))
         .result(0)?
-        .into();
-
+        .into(); 
     let result = ok_block
         .append_operation(arith::xori(lhs, mask, location))
         .result(0)?
