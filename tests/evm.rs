@@ -918,7 +918,7 @@ fn sload_with_invalid_key() {
     let env = Env::default();
     let result = BigUint::from(0_u8);
 
-    run_program_assert_result(program, env, result);
+    run_program_assert_num_result(program, env, result);
 }
 
 #[test]
