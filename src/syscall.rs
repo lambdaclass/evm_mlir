@@ -19,7 +19,11 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{
+    db::{DatabaseError, Db},
+    env::Env,
+    primitives::Address,
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -278,11 +282,10 @@ impl<'c> SyscallContext<'c> {
         // build the 20-byte address from the hi and lo bytes of the U256 address
         let address = [&address_hi_bytes[12..16], &address_lo_bytes[..]].concat();
         let address: Address = Address::from_slice(&address);
-        let bytecode = self
-            .db
-            .code_by_address(address)
-            .expect("Error while getting code by address");
-        bytecode.as_slice().len() as u64
+        match self.db.code_by_address(address) {
+            Ok(bytecode) => bytecode.as_slice().len() as u64,
+            Err(DatabaseError) => 0,
+        }
     }
 }
 
