@@ -312,12 +312,10 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
-    #[allow(improper_ctypes)]
     pub extern "C" fn get_prevrandao(&self, prevrandao: &mut U256) {
-        if let Some(randao) = self.env.block.prevrandao {
-            prevrandao.hi = (randao >> 128).low_u128();
-            prevrandao.lo = randao.low_u128();
-        }
+        let randao = self.env.block.prevrandao.unwrap_or_default();
+        prevrandao.hi = (randao >> 128).low_u128();
+        prevrandao.lo = randao.low_u128();
     }
 }
 
