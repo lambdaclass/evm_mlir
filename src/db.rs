@@ -1,16 +1,9 @@
 #![allow(unused)]
-use ethereum_types::{Address, U256};
+use crate::primitives::{Address, Bytes, U256};
 use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, fmt::Error};
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(pub Vec<u8>);
-
-impl Bytecode {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-}
+pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DbAccount {
@@ -25,15 +18,19 @@ type B256 = U256;
 #[derive(Clone, Debug, Default)]
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
-    contracts: HashMap<B256, Bytecode>,
+    contracts: HashMap<B256, Bytes>,
     block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {
-    pub fn with_bytecode(address: Address, bytecode: Bytecode) -> Self {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_bytecode(self, address: Address, bytecode: Bytes) -> Self {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();
-        hasher.update(bytecode.as_slice());
+        hasher.update(&bytecode);
         let hash = B256::from_big_endian(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,

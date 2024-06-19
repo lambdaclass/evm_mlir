@@ -57,7 +57,7 @@ impl Evm<Db> {
             .db
             .code_by_address(code_address)
             .expect("failed to load bytecode");
-        let program = Program::from_bytecode(bytecode.as_slice()).unwrap();
+        let program = Program::from_bytecode(&bytecode).unwrap();
 
         let module = context
             .compile(&program, &output_file)
