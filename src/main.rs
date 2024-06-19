@@ -1,15 +1,24 @@
+use std::path::PathBuf;
+
 use evm_mlir::{
-    db::{Bytecode, Db},
-    env::{Env, TransactTo},
-    primitives::Address,
+    context::Context,
+    db::Db,
+    env::Env,
+    executor::{Executor, OptLevel},
     program::Program,
-    Evm,
+    syscall::SyscallContext,
 };
-use num_bigint::BigUint;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).expect("No path provided").as_str();
+    let opt_level = match args.get(2).map(String::as_str) {
+        None | Some("2") => OptLevel::Default,
+        Some("0") => OptLevel::None,
+        Some("1") => OptLevel::Less,
+        Some("3") => OptLevel::Aggressive,
+        _ => panic!("Invalid optimization level"),
+    };
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
@@ -18,20 +27,22 @@ fn main() {
         return;
     }
 
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
+    // This is for intermediate files
+    let output_file = PathBuf::from("output");
 
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.unwrap().to_bytecode()),
-    );
-    env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
-    let mut evm = Evm::new(env, db);
+    let context = Context::new();
+    let module = context
+        .compile(&program.unwrap(), &output_file)
+        .expect("failed to compile program");
 
-    let result = evm.transact();
+    let executor = Executor::new(&module, opt_level);
 
-    assert!(&result.is_success());
-    let number = BigUint::from_bytes_be(result.return_data().unwrap());
-    println!("Execution result: {number}");
+    let env = Env::default();
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
+
+    let initial_gas = 1000;
+
+    let result = executor.execute(&mut context, initial_gas);
+    println!("Execution result: {result}");
 }
