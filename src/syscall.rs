@@ -312,8 +312,7 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
-    #[allow(improper_ctypes)]
-    pub extern "C" fn get_basefee(&self, basefee: &mut U256) {
+    pub extern "C" fn store_in_basefee_ptr(&self, basefee: &mut U256) {
         basefee.hi = (self.env.block.basefee >> 128).low_u128();
         basefee.lo = self.env.block.basefee.low_u128();
     }
@@ -330,7 +329,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
-    pub const GET_BASEFEE: &str = "evm_mlir__get_basefee";
+    pub const STORE_IN_BASEFEE_PTR: &str = "evm_mlir__store_in_basefee_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
@@ -405,8 +404,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
-            symbols::GET_BASEFEE,
-            SyscallContext::get_basefee as *const fn(*mut c_void, *mut U256) as *mut (),
+            symbols::STORE_IN_BASEFEE_PTR,
+            SyscallContext::store_in_basefee_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_GASPRICE_PTR,
@@ -603,7 +602,7 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_BASEFEE),
+            StringAttribute::new(context, symbols::STORE_IN_BASEFEE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -890,7 +889,7 @@ pub(crate) mod mlir {
     }
 
     #[allow(unused)]
-    pub(crate) fn get_basefee_syscall<'c>(
+    pub(crate) fn store_in_basefee_ptr_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         basefee_ptr: Value<'c, 'c>,
@@ -900,7 +899,7 @@ pub(crate) mod mlir {
         block
             .append_operation(func::call(
                 mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BASEFEE),
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BASEFEE_PTR),
                 &[syscall_ctx, basefee_ptr],
                 &[],
                 location,

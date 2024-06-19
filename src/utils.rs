@@ -1397,7 +1397,7 @@ pub(crate) fn get_basefee<'a>(
         .result(0)?
         .into();
 
-    op_ctx.get_basefee_syscall(basefee_ptr, block, location);
+    op_ctx.store_in_basefee_ptr_syscall(basefee_ptr, block, location);
 
     // get the value from the pointer
     let basefee = block
