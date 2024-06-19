@@ -4,8 +4,8 @@
 [![rust](https://github.com/lambdaclass/evm_mlir/actions/workflows/ci.yml/badge.svg)](https://github.com/lambdaclass/emv_mlir/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lambdaclass/evm_mlir)](/LICENSE)
 
-[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Frust_ethereum%2F&logo=telegram&label=chat&color=neon
-[tg-url]: https://t.me/rust_ethereum
+[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fethereum_rust%2F&logo=telegram&label=chat&color=neon
+[tg-url]: https://t.me/ethereum_rust
 
 An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
@@ -40,17 +40,28 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x1B) SHL
 1. (0x1C) SHR
 1. (0x1D) SAR
+1. (0x33) CALLER
+1. (0x32) ORIGIN
+1. (0x34) CALLVALUE
+1. (0x35) CALLDATALOAD
+1. (0x36) CALLDATASIZE
+1. (0x37) CALLDATACOPY
 1. (0x38) CODESIZE
+1. (0x3A) GASPRICE
+1. (0x46) CHAINID
+1. (0x48) BASEFEE
 1. (0x50) POP
 1. (0x51) MLOAD
 1. (0x52) MSTORE
 1. (0x53) MSTORE8
+1. (0x54) SLOAD
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
 1. (0x59) MSIZE
 1. (0x5A) GAS
 1. (0x5B) JUMPDEST
+1. (0x5E) MCOPY
 1. (0x5F) PUSH0
 1. (0x60) PUSH1
 1. (0x61) PUSH2
@@ -116,6 +127,11 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x9D) SWAP14
 1. (0x9E) SWAP15
 1. (0x9F) SWAP16
+1. (0xA0) LOG0
+1. (0xA1) LOG1
+1. (0xA2) LOG2
+1. (0xA3) LOG3
+1. (0xA4) LOG4
 1. (0xF3) RETURN
 1. (0xFD) REVERT
 
@@ -127,14 +143,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x20) KECCAK256
 1. (0x30) ADDRESS
 1. (0x31) BALANCE
-1. (0x32) ORIGIN
-1. (0x33) CALLER
-1. (0x34) CALLVALUE
-1. (0x35) CALLDATALOAD
-1. (0x36) CALLDATASIZE
-1. (0x37) CALLDATACOPY
 1. (0x39) CODECOPY
-1. (0x3A) GASPRICE
 1. (0x3B) EXTCODESIZE
 1. (0x3C) EXTCODECOPY
 1. (0x3D) RETURNDATASIZE
@@ -146,21 +155,12 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x43) NUMBER
 1. (0x44) DIFFICULTY
 1. (0x45) GASLIMIT
-1. (0x46) CHAINID
 1. (0x47) SELFBALANCE
-1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
-1. (0x54) SLOAD
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
-1. (0x5E) MCOPY
-1. (0xA0) LOG0
-1. (0xA1) LOG1
-1. (0xA2) LOG2
-1. (0xA3) LOG3
-1. (0xA4) LOG4
 1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF2) CALLCODE
@@ -215,7 +215,7 @@ If you decide to build from source, here are some indications:
 wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.4/llvm-project-18.1.4.src.tar.xz
 tar xf llvm-project-18.1.4.src.tar.xz
 
-cd llvm-project-18.1.4.src.tar
+cd llvm-project-18.1.4.src
 mkdir build
 cd build
 
@@ -267,6 +267,17 @@ There are some example files under `programs/`, for example:
 ```bash
 cargo run programs/push32.bytecode
 ```
+
+You can also specify the optimization level:
+
+```bash
+cargo run programs/push32.bytecode 3  # ranges from 0 to 3
+```
+
+### Testing
+
+To only run the ethereum foundation tests, run the command `make test-eth`. if you want to run the rest of the tests (those that are not the ethereum foundation tests) just run 
+`make test`
 
 ## Debugging the compiler
 
