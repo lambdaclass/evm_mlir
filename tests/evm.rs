@@ -3,11 +3,12 @@ use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, U256 as EU256},
+    primitives::{Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{Log, U256},
     Env, Evm,
 };
+use melior::dialect::ods::vector::print;
 use num_bigint::BigUint;
 use std::str::FromStr;
 
@@ -165,17 +166,20 @@ fn test_block_hash(){
     let program = Program::from(operations.clone());
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
-        Bytecode(program.to_bytecode()),
+        Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let block_hash_number = ethereum_types::U256::from(block_number);
-    let block_hash = ethereum_types::U256::from(block_hash);
-    let mut db = Db::with_bytecode_and_block_hash(address, bytecode,block_hash_number,block_hash);
+    let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.insert_block_hash(block_hash_number, block_hash);
+    let mut block_hash_as_slice = [0u8;32];
+    block_hash_as_slice[31] = block_hash;
+    let block_hash_number = ethereum_types::H256::from_slice(&block_hash_as_slice);
+    let block_number = ethereum_types::U256::from(block_number);
+
+    db.insert_block_hash(block_number, block_hash_number);
 
     let mut evm = Evm::new(env.clone(), db);
-    let result = evm.transact();
+    let _result = evm.transact();
     run_program_assert_result(operations, env, expected_block_hash);
 }
 

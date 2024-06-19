@@ -25,6 +25,10 @@ impl Db {
         Self::default()
     }
 
+    pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
+        self.block_hashes.insert(number, hash);
+    }
+
     pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();
@@ -119,11 +123,11 @@ impl Database for Db {
         Ok(self.read_storage(address, index))
     }
 
-    fn block_hash(&mut self, number: U256) -> Result<U256, Self::Error> {
+    fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
         // Returns Error if no block with that number
-        println!("number: {:?}", number);
-        println!("block_hashes: {:?}", self.block_hashes);
-        println!("returning: {:?}", self.block_hashes.get(&number).cloned().ok_or(DatabaseError));
+        println!("number received from block_hash: {:?}", number);
+        println!("block_hashes from block_hash: {:?}", self.block_hashes);
+        println!("returning from block_hash: {:?}", self.block_hashes.get(&number).cloned().ok_or(DatabaseError));
         self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
     }
 }

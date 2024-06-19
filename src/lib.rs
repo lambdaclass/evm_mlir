@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use builder::EvmBuilder;
 use db::{Database, Db};
 use env::TransactTo;
-use ethereum_types::U256;
-use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
 use syscall::{ExecutionResult, SyscallContext};

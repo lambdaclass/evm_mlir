@@ -19,7 +19,7 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::{Db,Database}, env::Env,primitives::U256 as EU256, primitives::Address};
+use crate::{db::{Db,Database}, env::Env,primitives::U256 as EU256, primitives::Address,primitives::B256};
 
 
 /// Function type for the main entrypoint of the generated code
@@ -42,6 +42,13 @@ impl U256 {
     pub fn copy_from_address(&mut self, value: &Address) {
         let mut buffer = [0u8; 32];
         buffer[12..32].copy_from_slice(&value.0);
+        self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
+        self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
+
+    pub fn copy_from_B256(&mut self, value:B256){
+        let mut buffer = [0u8; 32];
+        buffer.copy_from_slice(&value.0);
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
@@ -300,10 +307,9 @@ impl<'c> SyscallContext<'c> {
         let number_asu256 = ethereum_types::U256::from_big_endian(&[number.hi.to_be_bytes(), number.lo.to_be_bytes()].concat());
         println!("Block number: {:?}, number: {:?}", number_asu256, number);
         println!("Block hashes: {:?}", self.db.block_hashes);
-        let block_hash = self.db.block_hash_from_number(number_asu256).unwrap_or(ethereum_types::U256::default());
-        hash.hi = (block_hash >> 128).low_u128();
-        hash.lo = block_hash.low_u128();
-        println!("Block hash: {:?}", block_hash);
+        let block_hash = self.db.block_hash(number_asu256).unwrap_or(ethereum_types::H256::default());
+        println!("Block has received from syscall: {:?}", block_hash);
+        hash.copy_from_B256(block_hash);
     }
 
     /// Receives a memory offset and size, and a vector of topics.
