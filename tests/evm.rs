@@ -866,3 +866,11 @@ fn prevrandao_with_stack_overflow() {
     program.push(Operation::Prevrandao);
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn prevrandao_when_randao_is_not_set() {
+    let program = vec![Operation::Prevrandao];
+    let env = Env::default();
+    let expected_result = 0_u8;
+    run_program_assert_result(program, env, expected_result.into());
+}
