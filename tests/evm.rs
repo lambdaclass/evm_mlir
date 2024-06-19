@@ -327,7 +327,13 @@ fn test_calldatacopy() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     env.tx.gas_limit = 1000;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -352,7 +358,13 @@ fn test_calldatacopy_zeros_padding() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4]);
     env.tx.gas_limit = 1000;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -377,7 +389,13 @@ fn test_calldatacopy_memory_offset() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     env.tx.gas_limit = 1000;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
     let result = evm.transact();
 
     //Test that the memory is correctly copied
@@ -402,7 +420,13 @@ fn test_calldatacopy_calldataoffset() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     env.tx.gas_limit = 1000;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
 
     let result = evm.transact();
 
@@ -428,7 +452,13 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     env.tx.gas_limit = 1000;
-    let mut evm = Evm::new(env, program);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
     let result = evm.transact();
 
     //Test that the memory is correctly copied

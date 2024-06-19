@@ -851,7 +851,6 @@ pub(crate) mod mlir {
         ));
     }
 
-
     /// Returns a pointer to the calldata.
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall<'c>(
