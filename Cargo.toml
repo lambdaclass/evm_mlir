@@ -26,6 +26,7 @@ serde = { version = "1.0.203", features = ["derive", "rc"] }
 serde_json = { version = "1.0.117" }
 walkdir = "2.5.0"
 datatest-stable = "0.2.9"
+hex = "0.4.3"
 
 [build-dependencies]
 cc = "1.0.83"

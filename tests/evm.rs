@@ -457,7 +457,12 @@ fn callvalue_stack_overflow() {
 
 #[test]
 fn coinbase_happy_path() {
-    let coinbase: [u8; 20] = [0x00; 20];
+    // taken from evm.codes
+    let coinbase_address = "5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+    let coinbase: [u8; 20] = hex::decode(coinbase_address)
+        .expect("Decoding failed")
+        .try_into()
+        .expect("Incorrect length");
     let operations = vec![Operation::Coinbase];
     let mut env = Env::default();
     env.block.coinbase = coinbase.into();
