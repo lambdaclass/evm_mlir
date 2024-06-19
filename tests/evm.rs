@@ -652,7 +652,7 @@ fn chainid_stack_overflow() {
 }
 
 #[test]
-fn sload_gas_consumtion() {
+fn sload_gas_consumption() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
         Operation::Sload,

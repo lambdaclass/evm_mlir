@@ -17,10 +17,13 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
-use ethereum_types::U256 as EU256;
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{
+    db::Db,
+    env::Env,
+    primitives::{Address, U256 as EU256},
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
