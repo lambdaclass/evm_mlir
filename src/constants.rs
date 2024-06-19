@@ -10,8 +10,6 @@ pub const MAIN_ENTRYPOINT: &str = "main";
 
 /// Contains the gas costs of the EVM instructions
 pub mod gas_cost {
-    use num_bigint::BigUint;
-
     pub const MSTORE: i64 = 3;
     pub const MSTORE8: i64 = 3;
     pub const MLOAD: i64 = 3;
@@ -75,60 +73,5 @@ pub mod gas_cost {
     }
     pub fn log_dynamic_gas_cost(size: u32, topic_count: u32) -> i64 {
         (super::gas_cost::LOG * topic_count as i64) + (8 * size as i64)
-    }
-
-    pub fn sstore_dynamic_gas_cost(
-        new: BigUint,
-        current: BigUint,
-        original: BigUint,
-        is_warm: bool,
-    ) -> i64 {
-        let gas_cost = if new == current {
-            100
-        } else if current == original {
-            if original == BigUint::ZERO {
-                20_000
-            } else {
-                2_900
-            }
-        } else {
-            100
-        };
-        let cold_cost = if is_warm { 0 } else { 2_100 };
-        gas_cost + cold_cost
-    }
-
-    pub fn sstore_dynamic_gas_refund(
-        new: BigUint,
-        current: BigUint,
-        original: BigUint,
-        is_warm: bool,
-    ) -> i64 {
-        let mut gas_refunds: i64 = 0;
-        if new != current {
-            if current == original {
-                if original != BigUint::ZERO && new == BigUint::ZERO {
-                    gas_refunds += 4_800;
-                }
-            } else {
-                if original != BigUint::ZERO {
-                    if current == BigUint::ZERO {
-                        gas_refunds -= 4_800;
-                    } else if new == BigUint::ZERO {
-                        gas_refunds += 4_800;
-                    }
-                }
-                if new == original {
-                    if original == BigUint::ZERO {
-                        gas_refunds += 19_900;
-                    } else if is_warm {
-                        gas_refunds += 2_800;
-                    } else {
-                        gas_refunds += 4_900;
-                    }
-                }
-            }
-        }
-        gas_refunds
     }
 }
