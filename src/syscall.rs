@@ -248,8 +248,8 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
         let address = self.env.tx.caller;
 
-        let key = ((EU256::zero() + stg_key.hi) << 128) + stg_key.lo;
-        let value = ((EU256::zero() + stg_value.hi) << 128) + stg_value.lo;
+        let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
+        let value = ((EU256::from(stg_value.hi)) << 128) + stg_value.lo;
 
         self.db.write_storage(address, key, value);
     }
