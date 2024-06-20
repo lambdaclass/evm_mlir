@@ -3801,11 +3801,15 @@ fn codegen_not<'c, 'r>(
     let mask = ok_block
         .append_operation(arith::constant(
             context,
-            Attribute::parse(context, &format!("{} : i256", BigUint::from_bytes_be(&[0xff; 32]))).unwrap(),
+            Attribute::parse(
+                context,
+                &format!("{} : i256", BigUint::from_bytes_be(&[0xff; 32])),
+            )
+            .unwrap(),
             location,
         ))
         .result(0)?
-        .into(); 
+        .into();
     let result = ok_block
         .append_operation(arith::xori(lhs, mask, location))
         .result(0)?
