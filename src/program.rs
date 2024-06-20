@@ -440,7 +440,6 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
