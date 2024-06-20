@@ -432,6 +432,7 @@ impl Operation {
                 opcode_bytes
             }
             Operation::Sgt => vec![Opcode::SGT as u8],
+            Operation::Not => vec![Opcode::NOT as u8],
             Operation::Dup(n) => vec![Opcode::DUP1 as u8 + n - 1],
             Operation::Swap(n) => vec![Opcode::SWAP1 as u8 + n - 1],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
