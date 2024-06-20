@@ -757,7 +757,7 @@ fn timestamp_happy_path() {
 
     let expected_result = BigUint::from(timestamp);
 
-    run_program_assert_result(operations, env, expected_result);
+    run_program_assert_num_result(operations, env, expected_result);
 }
 
 #[test]
