@@ -26,7 +26,7 @@ pub enum Opcode {
     AND = 0x16,
     OR = 0x17,
     XOR = 0x18,
-    // NOT = 0x19,
+    NOT = 0x19,
     BYTE = 0x1A,
     SHL = 0x1B,
     SHR = 0x1C,
@@ -302,6 +302,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::NOT as u8 => Opcode::NOT,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
@@ -367,6 +368,7 @@ pub enum Operation {
     Revert,
     Mstore,
     Mstore8,
+    Not,
     CallDataCopy,
     Log(u8),
     Origin,
@@ -433,6 +435,7 @@ impl Operation {
                 opcode_bytes
             }
             Operation::Sgt => vec![Opcode::SGT as u8],
+            Operation::Not => vec![Opcode::NOT as u8],
             Operation::Dup(n) => vec![Opcode::DUP1 as u8 + n - 1],
             Operation::Swap(n) => vec![Opcode::SWAP1 as u8 + n - 1],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
@@ -710,6 +713,7 @@ impl Program {
                     pc += 31;
                     Operation::Push((32, (BigUint::from_bytes_be(x))))
                 }
+                Opcode::NOT => Operation::Not,
                 Opcode::DUP1 => Operation::Dup(1),
                 Opcode::DUP2 => Operation::Dup(2),
                 Opcode::DUP3 => Operation::Dup(3),

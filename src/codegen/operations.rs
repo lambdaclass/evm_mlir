@@ -94,6 +94,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Basefee => codegen_basefee(op_ctx, region),
         Operation::Origin => codegen_origin(op_ctx, region),
         Operation::Caller => codegen_caller(op_ctx, region),
+        Operation::Not => codegen_not(op_ctx, region),
     }
 }
 
@@ -3833,6 +3834,53 @@ fn codegen_basefee<'c, 'r>(
 
     let basefee = get_basefee(op_ctx, &ok_block)?;
     stack_push(context, &ok_block, basefee)?;
+
+    Ok((start_block, ok_block))
+}
+
+// from the understanding of the not operator , A xor 1 == Not A
+fn codegen_not<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let lhs = stack_pop(context, &ok_block)?;
+    let mask = ok_block
+        .append_operation(arith::constant(
+            context,
+            Attribute::parse(
+                context,
+                &format!("{} : i256", BigUint::from_bytes_be(&[0xff; 32])),
+            )
+            .unwrap(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let result = ok_block
+        .append_operation(arith::xori(lhs, mask, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
 }
