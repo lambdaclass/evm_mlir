@@ -333,6 +333,10 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
+    pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
+        self.env.block.coinbase.as_ptr()
+    }
+
     pub extern "C" fn store_in_basefee_ptr(&self, basefee: &mut U256) {
         basefee.hi = (self.env.block.basefee >> 128).low_u128();
         basefee.lo = self.env.block.basefee.low_u128();
@@ -351,6 +355,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_COINBASE_PTR: &str = "evm_mlir__get_coinbase_ptr";
     pub const STORE_IN_BASEFEE_PTR: &str = "evm_mlir__store_in_basefee_ptr";
     pub const STORE_IN_CALLER_PTR: &str = "evm_mlir__store_in_caller_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
@@ -430,6 +435,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_COINBASE_PTR,
+            SyscallContext::get_coinbase_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_BASEFEE_PTR,
@@ -639,6 +648,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_ORIGIN),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_COINBASE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -955,6 +973,26 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    /// Returns a pointer to the coinbase address.
+    pub(crate) fn get_coinbase_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_COINBASE_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Returns a pointer to the calldata.

@@ -694,6 +694,19 @@ impl<'c> OperationCtx<'c> {
         );
     }
 
+    pub(crate) fn get_coinbase_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_coinbase_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall(
         &'c self,

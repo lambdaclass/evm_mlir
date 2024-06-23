@@ -42,6 +42,7 @@ pub mod gas_cost {
     pub const CALLDATASIZE: i64 = 2;
     pub const CALLDATACOPY: i64 = 3;
     pub const CODESIZE: i64 = 2;
+    pub const COINBASE: i64 = 2;
     pub const GASPRICE: i64 = 2;
     pub const NUMBER: i64 = 2;
     pub const CHAINID: i64 = 2;

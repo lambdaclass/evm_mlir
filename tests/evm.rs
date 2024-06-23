@@ -749,6 +749,39 @@ fn callvalue_stack_overflow() {
 }
 
 #[test]
+fn coinbase_happy_path() {
+    // taken from evm.codes
+    let coinbase_address = "5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+    let coinbase: [u8; 20] = hex::decode(coinbase_address)
+        .expect("Decoding failed")
+        .try_into()
+        .expect("Incorrect length");
+    let operations = vec![Operation::Coinbase];
+    let mut env = Env::default();
+    env.block.coinbase = coinbase.into();
+
+    let expected_result = BigUint::from_bytes_be(&coinbase);
+
+    run_program_assert_num_result(operations, env, expected_result);
+}
+
+#[test]
+fn coinbase_gas_check() {
+    let operations = vec![Operation::Coinbase];
+    let needed_gas = gas_cost::COINBASE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn coinbase_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Coinbase);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}
+
+#[test]
 fn basefee() {
     let program = vec![Operation::Basefee];
     let mut env = Env::default();
