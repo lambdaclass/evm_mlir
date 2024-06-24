@@ -19,7 +19,7 @@ pub struct DbAccount {
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    pub accounts: HashMap<Address, DbAccount>,
+    accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
     block_hashes: HashMap<U256, B256>,
 }
