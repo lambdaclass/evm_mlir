@@ -677,4 +677,25 @@ impl<'c> OperationCtx<'c> {
             location,
         )
     }
+
+    pub(crate) fn copy_ext_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        address_ptr: Value,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_ext_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address_ptr,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
 }

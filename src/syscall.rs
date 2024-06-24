@@ -311,6 +311,39 @@ impl<'c> SyscallContext<'c> {
         let log = Log { data, topics };
         self.inner_context.logs.push(log);
     }
+
+    pub extern "C" fn copy_ext_code_to_memory(
+        &mut self,
+        address: &U256,
+        code_offset: u32,
+        size: u32,
+        dest_offset: u32,
+    ) {
+        let address_hi_bytes = address.hi.to_be_bytes();
+        let address_lo_bytes = address.lo.to_be_bytes();
+        // build the 20-byte address from the hi and lo bytes of the U256 address
+        let address = [&address_hi_bytes[12..16], &address_lo_bytes[..]].concat();
+        let address: Address = Address::from_slice(&address);
+        let code = match self.db.code_by_address(address) {
+            Ok(bytecode) => bytecode,
+            Err(_) => return,
+        };
+        let code_size = code.len() as u32;
+        // if the offset is out of bounds then nothing is copied
+        if code_offset >= code_size {
+            return;
+        }
+        // adjust the size so it does not go out of bounds
+        let size: u32 = if code_offset + size > code_size {
+            code_size - code_offset
+        } else {
+            size
+        };
+        // copy the program into memory
+        for (i, j) in (code_offset..code_offset + size).enumerate() {
+            self.inner_context.memory[dest_offset as usize + i] = code[j as usize];
+        }
+    }
 }
 
 pub mod symbols {
@@ -328,6 +361,7 @@ pub mod symbols {
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -408,6 +442,12 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CHAINID,
             SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::COPY_EXT_CODE_TO_MEMORY,
+            SyscallContext::copy_ext_code_to_memory
+                as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32)
+                as *mut (),
         );
     };
 }
@@ -585,6 +625,18 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_EXT_CODE_TO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, uint32, uint32, uint32], &[])
+                    .into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -864,6 +916,28 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_NUMBER),
             &[syscall_ctx, number],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives an account address and copies the corresponding bytecode
+    /// to memory.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn copy_ext_code_to_memory_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address_ptr: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        dest_offset: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_EXT_CODE_TO_MEMORY),
+            &[syscall_ctx, address_ptr, offset, size, dest_offset],
             &[],
             location,
         ));

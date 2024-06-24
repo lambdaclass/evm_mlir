@@ -3502,5 +3502,72 @@ fn codegen_extcodecopy<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+
+    // TODO: add dynamic gas cost
+    let flag = check_stack_has_at_least(context, &start_block, 4)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    let address = stack_pop(context, &ok_block)?;
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // where to copy from
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+
+    let end_block = region.append_block(Block::new(&[]));
+
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &end_block,
+        region,
+        required_size,
+        gas_cost::EXTCODECOPY_WARM,
+    )?;
+
+    let address_ptr = allocate_and_store_value(op_ctx, &end_block, address, location)?;
+    op_ctx.copy_ext_code_to_memory_syscall(
+        &end_block,
+        address_ptr,
+        offset,
+        size,
+        dest_offset,
+        location,
+    );
+
+    Ok((start_block, end_block))
 }
