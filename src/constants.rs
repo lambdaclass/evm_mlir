@@ -64,6 +64,7 @@ pub mod gas_cost {
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
     pub const LOG: i64 = 375;
+    pub const ADDRESS: i64 = 2;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;

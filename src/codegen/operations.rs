@@ -90,6 +90,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
+        Operation::Address => codegen_address(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
         Operation::Basefee => codegen_basefee(op_ctx, region),
         Operation::Origin => codegen_origin(op_ctx, region),
@@ -3881,6 +3882,70 @@ fn codegen_not<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_address<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint160 = IntegerType::new(context, 160);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADDRESS)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address_ptr = op_ctx.get_address_ptr_syscall(&ok_block, location)?;
+
+    let address = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint160.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    let address = if cfg!(target_endian = "little") {
+        ok_block
+            .append_operation(llvm::intr_bswap(address, uint160.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        address
+    };
+
+    // address is 160-bits long so we extend it to 256 bits before pushing it to the stack
+    let address = ok_block
+        .append_operation(arith::extui(address, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, address)?;
 
     Ok((start_block, ok_block))
 }

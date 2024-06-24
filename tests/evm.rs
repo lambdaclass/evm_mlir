@@ -988,3 +988,55 @@ fn sload_with_stack_underflow() {
 
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn address() {
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let operations = vec![
+        Operation::Address,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let address_bytes = &address.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &address_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(address);
+
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact();
+    assert!(&result.is_success());
+    let result_data = result.return_data().unwrap();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn address_with_gas_cost() {
+    let address = [0xff; 20];
+    let operations = vec![Operation::Address];
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
+
+    let needed_gas = gas_cost::ADDRESS;
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn address_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Address);
+    let env = Env::default();
+    run_program_assert_halt(program, env);
+}

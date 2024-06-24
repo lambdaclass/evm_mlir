@@ -333,6 +333,10 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
+    pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
+        self.env.tx.get_address().to_fixed_bytes().as_ptr()
+    }
+
     pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
         self.env.block.coinbase.as_ptr()
     }
@@ -354,6 +358,7 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
+    pub const GET_ADDRESS_PTR: &str = "evm_mlir__get_address_ptr";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
     pub const GET_COINBASE_PTR: &str = "evm_mlir__get_coinbase_ptr";
     pub const STORE_IN_BASEFEE_PTR: &str = "evm_mlir__store_in_basefee_ptr";
@@ -431,6 +436,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_ORIGIN,
             SyscallContext::get_origin as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_ADDRESS_PTR,
+            SyscallContext::get_address_ptr as *const fn(*mut c_void) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
@@ -666,6 +675,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_ADDRESS_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
             Region::new(),
             attributes,
             location,
@@ -1011,6 +1029,28 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    /// Returns a pointer to the address of the current executing contract
+    #[allow(unused)]
+    pub(crate) fn get_address_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint256 = IntegerType::new(mlir_ctx, 256);
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_ADDRESS_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     #[allow(unused)]

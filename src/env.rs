@@ -151,3 +151,13 @@ pub enum TransactTo {
     /// Contract creation.
     Create,
 }
+
+impl TxEnv {
+    pub fn get_address(&self) -> Address {
+        match self.transact_to {
+            TransactTo::Call(addr) => addr,
+            // TODO: check if its ok to return zero in this case
+            TransactTo::Create => Address::zero(),
+        }
+    }
+}
