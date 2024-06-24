@@ -841,10 +841,12 @@ dependencies = [
 name = "evm_mlir"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "bytes",
  "cc",
  "datatest-stable",
  "ethereum-types",
+ "hex",
  "llvm-sys",
  "melior",
  "mlir-sys",

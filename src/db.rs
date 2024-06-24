@@ -1,5 +1,9 @@
 #![allow(unused)]
-use crate::primitives::{Address, Bytes, B256, U256};
+use crate::{
+    primitives::{Address, Bytes, B256, U256},
+    state::{Account, EvmState, EvmStorageSlot},
+};
+use core::fmt;
 use sha3::{Digest, Keccak256};
 use std::{
     collections::{HashMap, HashSet},
@@ -19,7 +23,7 @@ pub struct DbAccount {
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    accounts: HashMap<Address, DbAccount>,
+    pub accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
     block_hashes: HashMap<U256, B256>,
 }
@@ -69,9 +73,29 @@ impl Db {
             .bytecode_hash;
         self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
+
+    pub fn into_state(self) -> EvmState {
+        self.accounts
+            .iter()
+            .map(|(address, db_account)| {
+                (
+                    *address,
+                    Account {
+                        info: AccountInfo::from(db_account.clone()),
+                        storage: db_account
+                            .storage
+                            .iter()
+                            .map(|(k, v)| (*k, EvmStorageSlot::from(*v)))
+                            .collect(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect()
+    }
 }
 
-#[derive(Default, Clone, PartialEq, Debug)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,
@@ -82,6 +106,17 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
+}
+
+impl From<DbAccount> for AccountInfo {
+    fn from(db_account: DbAccount) -> Self {
+        Self {
+            balance: db_account.balance,
+            nonce: db_account.nonce,
+            code_hash: db_account.bytecode_hash,
+            code: None,
+        }
+    }
 }
 
 pub trait Database {
@@ -101,20 +136,21 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DatabaseError;
+
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error on database access")
+    }
+}
 
 impl Database for Db {
     type Error = DatabaseError;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
-        Ok(self.accounts.get(&address).map(|db_account| AccountInfo {
-            balance: db_account.balance,
-            nonce: db_account.nonce,
-            code_hash: db_account.bytecode_hash,
-            code: None,
-        }))
+        Ok(self.accounts.get(&address).cloned().map(AccountInfo::from))
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
