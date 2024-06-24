@@ -3507,7 +3507,6 @@ fn codegen_extcodecopy<'c, 'r>(
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32);
 
-    // TODO: add dynamic gas cost
     let flag = check_stack_has_at_least(context, &start_block, 4)?;
 
     let ok_block = region.append_block(Block::new(&[]));
@@ -3547,6 +3546,8 @@ fn codegen_extcodecopy<'c, 'r>(
         .append_operation(arith::addi(dest_offset, size, location))
         .result(0)?
         .into();
+
+    // TODO: compute address access cost (cold and warm accesses)
 
     // consume 3 * (size + 31) / 32 gas
     let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
