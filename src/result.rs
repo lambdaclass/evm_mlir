@@ -50,6 +50,10 @@ impl ExecutionResult {
         matches!(self, Self::Success { .. })
     }
 
+    pub fn is_revert(&self) -> bool {
+        matches!(self, Self::Revert { .. })
+    }
+
     /// Returns true if execution result is a Halt.
     pub fn is_halt(&self) -> bool {
         matches!(self, Self::Halt { .. })

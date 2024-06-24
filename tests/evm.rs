@@ -31,9 +31,9 @@ fn run_program_assert_result(
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
-    assert!(&result.is_success());
-    let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+    let result_data = BigUint::from_bytes_be(result.output().unwrap());
     assert_eq!(result_data, expected_result);
 }
 
@@ -48,7 +48,7 @@ fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
 
@@ -65,7 +65,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env_success, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(result.is_success());
     //Halt run
     let program = Program::from(operations.clone());
@@ -79,7 +79,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env_halt, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
 
@@ -143,10 +143,10 @@ fn fibonacci_example() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let number = BigUint::from_bytes_be(result.return_data().unwrap());
+    assert!(result.is_success());
+    let number = BigUint::from_bytes_be(result.output().unwrap());
     assert_eq!(number, 55_u32.into());
 }
 
@@ -217,13 +217,13 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let mut expected_result = [0_u8; 32];
     expected_result[31] = 1;
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -261,13 +261,13 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let mut expected_result = [0_u8; 32];
     expected_result[30] = 1;
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -303,12 +303,12 @@ fn calldataload_with_offset_greater_than_calldata_size() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let expected_result = [0_u8; 32];
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -338,15 +338,15 @@ fn log0() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
     let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -377,15 +377,15 @@ fn log1() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
     let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -422,15 +422,15 @@ fn log2() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
     let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }, U256 { lo: 2, hi: 0 }],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -469,10 +469,10 @@ fn log3() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
     let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
@@ -481,7 +481,7 @@ fn log3() {
             U256 { lo: 3, hi: 0 },
         ],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -524,10 +524,10 @@ fn log4() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
     let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
@@ -537,7 +537,7 @@ fn log4() {
             U256 { lo: 4, hi: 0 },
         ],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]

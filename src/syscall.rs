@@ -126,7 +126,7 @@ impl<'c> SyscallContext<'c> {
     pub fn get_result(&self) -> EVMResult {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
         let gas_initial = self.env.tx.gas_limit;
-        let gas_used = gas_remaining - gas_initial;
+        let gas_used = gas_remaining.saturating_sub(gas_initial);
         let exit_status = self
             .inner_context
             .exit_status

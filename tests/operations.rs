@@ -5,7 +5,8 @@ use evm_mlir::{
     env::Env,
     executor::Executor,
     program::{Operation, Program},
-    syscall::{ExecutionResult, SyscallContext},
+    result::ExecutionResult,
+    syscall::SyscallContext,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -34,13 +35,13 @@ fn run_program_get_result_with_gas(
 
     let _result = executor.execute(&mut context, initial_gas);
 
-    context.get_result()
+    context.get_result().unwrap().result
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(operations, 1e7 as _);
     assert!(result.is_success());
-    assert_eq!(result.return_data().unwrap(), expected_result);
+    assert_eq!(result.output().unwrap(), expected_result);
 }
 
 fn run_program_assert_stack_top(operations: Vec<Operation>, expected_result: BigUint) {
@@ -67,18 +68,18 @@ fn run_program_assert_stack_top_with_gas(
     }
     let result = run_program_get_result_with_gas(operations, initial_gas);
     assert!(result.is_success());
-    assert_eq!(result.return_data().unwrap(), result_bytes);
+    assert_eq!(result.output().unwrap().as_ref(), result_bytes);
 }
 
 fn run_program_assert_halt(program: Vec<Operation>) {
     let result = run_program_get_result_with_gas(program, 1e7 as _);
-    assert_eq!(result, ExecutionResult::Halt);
+    assert!(result.is_halt());
 }
 
 fn run_program_assert_revert(program: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(program, 1e7 as _);
     assert!(result.is_revert());
-    assert_eq!(result.return_data().unwrap(), expected_result);
+    assert_eq!(result.output().unwrap(), expected_result);
 }
 
 fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
