@@ -845,6 +845,7 @@ dependencies = [
  "cc",
  "datatest-stable",
  "ethereum-types",
+ "hex",
  "llvm-sys",
  "melior",
  "mlir-sys",

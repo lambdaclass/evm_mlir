@@ -45,6 +45,7 @@ install-nextest:
 
 deps-macos:
 	-brew install llvm@18 --quiet
+	-brew install hyperfine --quiet
 	@echo "You need to run source scripts/env-macos.sh to setup the environment."
 
 lint:
