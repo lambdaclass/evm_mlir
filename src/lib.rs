@@ -2,9 +2,11 @@ use std::path::PathBuf;
 
 use builder::EvmBuilder;
 use db::{Database, Db};
+use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
-use syscall::{ExecutionResult, SyscallContext};
+use result::{EVMError, ResultAndState};
+use syscall::SyscallContext;
 
 use crate::context::Context;
 
@@ -22,11 +24,12 @@ pub mod program;
 pub mod syscall;
 pub mod utils;
 pub use env::Env;
+pub mod result;
+pub mod state;
 
 #[derive(Debug)]
 pub struct Evm<DB: Database> {
     pub env: Env,
-    pub program: Program,
     pub db: DB,
 }
 
@@ -36,23 +39,32 @@ impl<DB: Database + Default> Evm<DB> {
         EvmBuilder::default()
     }
 
-    /// Creates a new EVM instance with the given environment and program.
-    // TODO: the program should be loaded from the bytecode of the configured transaction.
-    pub fn new(env: Env, program: Program) -> Self {
-        let db = DB::default();
-
-        Self { env, program, db }
+    /// Creates a new EVM instance with the given environment and database.
+    pub fn new(env: Env, db: DB) -> Self {
+        Self { env, db }
     }
 }
 
 impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&mut self) -> ExecutionResult {
+    pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
+
+        let code_address = match self.env.tx.transact_to {
+            TransactTo::Call(code_address) => code_address,
+            TransactTo::Create => unimplemented!(), // TODO: implement creation
+        };
+        let bytecode = self
+            .db
+            .code_by_address(code_address)
+            .expect("failed to load bytecode");
+
+        let program = Program::from_bytecode(&bytecode).unwrap(); // TODO: map invalid/unknown opcodes to INVALID operation
+
         let module = context
-            .compile(&self.program, &output_file)
+            .compile(&program, &output_file)
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);

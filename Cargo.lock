@@ -688,15 +688,15 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "0.99.17"
+version = "0.99.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
+checksum = "5f33878137e4dafd7fa914ad4e259e18a4e8e532b9617a2d0150262bf53abfce"
 dependencies = [
  "convert_case 0.4.0",
  "proc-macro2",
  "quote",
  "rustc_version 0.4.0",
- "syn 1.0.109",
+ "syn 2.0.66",
 ]
 
 [[package]]
@@ -841,10 +841,12 @@ dependencies = [
 name = "evm_mlir"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "bytes",
  "cc",
  "datatest-stable",
  "ethereum-types",
+ "hex",
  "llvm-sys",
  "melior",
  "mlir-sys",
@@ -852,6 +854,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "sha3",
  "tempfile",
  "thiserror",
  "walkdir",
@@ -1203,6 +1206,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+dependencies = [
+ "cpufeatures",
+]
+
+[[package]]
 name = "keccak-asm"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1299,9 +1311,9 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "melior"
-version = "0.18.3"
+version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f367d26271bf8d1d262ac3f0733f4df532255974825df643fac5eaefe856a024"
+checksum = "3305124ad8c564104cdac5e69b547fbd8a5c9e9f198fbe9028033ed1c8321b12"
 dependencies = [
  "dashmap",
  "melior-macro",
@@ -1311,9 +1323,9 @@ dependencies = [
 
 [[package]]
 name = "melior-macro"
-version = "0.11.3"
+version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41945de86de4e8425ef4da400bacc61290928c6970636b1c0ef3146e757a77c3"
+checksum = "1c4b6cc7044d57b9fcf1cb04025d7cff7e164ac402b5ce559447842a38b4ee34"
 dependencies = [
  "comrak",
  "convert_case 0.6.0",
@@ -1328,9 +1340,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.7.2"
+version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
+checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "minimal-lexical"
@@ -1654,9 +1666,9 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "469052894dcb553421e483e4209ee581a45100d31b4018de03e5a7ad86374a7e"
+checksum = "c82cf8cff14456045f55ec4241383baeff27af886adb72ffb2162f99911de0fd"
 dependencies = [
  "bitflags",
 ]
@@ -2038,6 +2050,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.7",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
+dependencies = [
+ "digest 0.10.7",
+ "keccak",
 ]
 
 [[package]]
