@@ -82,6 +82,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mcopy => codegen_mcopy(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
+        Operation::Call => codegen_call(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
@@ -3949,3 +3950,11 @@ fn codegen_address<'c, 'r>(
 
     Ok((start_block, ok_block))
 }
+
+fn codegen_call<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
+}
+
