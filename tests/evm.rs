@@ -58,9 +58,9 @@ fn run_program_assert_bytes_result(
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
-    assert!(&result.is_success());
-    assert_eq!(result.return_data().unwrap(), expected_result);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().as_ref(), expected_result);
 }
 
 fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
@@ -360,11 +360,11 @@ fn test_calldatacopy() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -391,11 +391,11 @@ fn test_calldatacopy_zeros_padding() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 0, 0, 0, 0, 0];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -422,11 +422,11 @@ fn test_calldatacopy_memory_offset() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![1, 2, 3, 4, 5];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -454,11 +454,11 @@ fn test_calldatacopy_calldataoffset() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -485,11 +485,11 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -962,9 +962,9 @@ fn sload_with_valid_key() {
     evm.db
         .write_storage(caller_address, EU256::from(key), EU256::from(value));
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(&result.is_success());
-    let result = result.return_data().unwrap();
+    let result = result.output().unwrap().as_ref();
 
     assert_eq!(EU256::from(result), EU256::from(value));
 }
@@ -1016,9 +1016,9 @@ fn address() {
 
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(&result.is_success());
-    let result_data = result.return_data().unwrap();
+    let result_data = result.output().unwrap().as_ref();
     assert_eq!(result_data, &expected_result);
 }
 

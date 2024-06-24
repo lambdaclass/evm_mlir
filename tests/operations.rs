@@ -4,8 +4,9 @@ use evm_mlir::{
     db::Db,
     env::Env,
     executor::Executor,
+    primitives::Bytes,
     program::{Operation, Program},
-    result::ExecutionResult,
+    result::{ExecutionResult, Output, SuccessReason},
     syscall::SyscallContext,
 };
 use num_bigint::{BigInt, BigUint};
@@ -29,7 +30,8 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module, Default::default());
 
-    let env = Env::default();
+    let mut env = Env::default();
+    env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
     let mut context = SyscallContext::new(env, &mut db);
 
@@ -1741,9 +1743,11 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_256() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1762,9 +1766,11 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_256() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1783,9 +1789,11 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_65536() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1804,9 +1812,11 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_65536() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
