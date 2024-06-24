@@ -47,7 +47,7 @@ jobs:
         run: ${MLIR_SYS_181_PREFIX}/bin/clang --version
 
       - name: Print libs
-        run: ls ${MLIR_SYS_181_PREFIX}/include
+        run: ls ${MLIR_SYS_181_PREFIX}/include/mlir/Dialect/Affine/IR
 
       - name: Run cargo check
         run: cargo check --workspace --all-features --all-targets
