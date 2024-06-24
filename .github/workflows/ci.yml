@@ -14,15 +14,14 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: 1.79.0
+  MLIR_SYS_181_PREFIX: /usr/lib/llvm-18/
+  LLVM_SYS_181_PREFIX: /usr/lib/llvm-18/
+  TABLEGEN_181_PREFIX: /usr/lib/llvm-18/
 
 jobs:
   compile:
     name: Compile
     runs-on: ubuntu-latest
-    env:
-      MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
-      LLVM_SYS_180_PREFIX: /usr/lib/llvm-18/
-      TABLEGEN_180_PREFIX: /usr/lib/llvm-18/
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -44,16 +43,15 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
 
+      - name: Print LLVM version
+        run: $MLIR_SYS_181_PREFIX/bin/clang --version
+
       - name: Run cargo check
         run: cargo check --workspace --all-features --all-targets
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    env:
-      MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
-      LLVM_SYS_180_PREFIX: /usr/lib/llvm-18/
-      TABLEGEN_180_PREFIX: /usr/lib/llvm-18/
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -73,6 +71,9 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
 
+      - name: Print LLVM version
+        run: $MLIR_SYS_181_PREFIX/bin/clang --version
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
@@ -82,10 +83,6 @@ jobs:
   test:
     name: Test (Ubuntu)
     runs-on: ubuntu-latest
-    env:
-      MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
-      LLVM_SYS_180_PREFIX: /usr/lib/llvm-18/
-      TABLEGEN_180_PREFIX: /usr/lib/llvm-18/
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -104,6 +101,9 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
+      - name: Print LLVM version
+        run: $MLIR_SYS_181_PREFIX/bin/clang --version
+
       - name: Install Link deps
         run: sudo apt-get install libc-dev build-essential
 
@@ -118,10 +118,6 @@ jobs:
   ethereum-tests:
     name: Ethereum Tests (Ubuntu)
     runs-on: ubuntu-latest
-    env:
-      MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
-      LLVM_SYS_180_PREFIX: /usr/lib/llvm-18/
-      TABLEGEN_180_PREFIX: /usr/lib/llvm-18/
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -140,6 +136,9 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
+      - name: Print LLVM version
+        run: $MLIR_SYS_181_PREFIX/bin/clang --version
+
       - name: Install Link deps
         run: sudo apt-get install libc-dev build-essential
 
