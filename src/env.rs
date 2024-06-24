@@ -129,7 +129,8 @@ impl Default for TxEnv {
     fn default() -> Self {
         Self {
             caller: Address::zero(),
-            gas_limit: u64::MAX,
+            // TODO: we are using signed comparison for the gas counter
+            gas_limit: i64::MAX as _,
             gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),

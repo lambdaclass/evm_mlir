@@ -713,7 +713,7 @@ fn codecopy() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
+    dbg!(env.tx.gas_limit);
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.clone().to_bytecode()),
@@ -750,7 +750,6 @@ fn codecopy_with_offset_out_of_bounds() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.clone().to_bytecode()),
