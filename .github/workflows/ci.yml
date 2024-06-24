@@ -14,7 +14,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: 1.79.0
-  MLIR_SYS_181_PREFIX: /usr/lib/llvm-18/
+  # mlir-sys still wasn't updated to the new version
+  MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
   LLVM_SYS_181_PREFIX: /usr/lib/llvm-18/
   TABLEGEN_181_PREFIX: /usr/lib/llvm-18/
 
