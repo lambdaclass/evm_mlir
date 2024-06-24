@@ -678,14 +678,14 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn get_balance_syscall(
+    pub(crate) fn store_in_balance_syscall(
         &'c self,
         block: &'c Block,
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
     ) {
-        syscall::mlir::get_balance_syscall(
+        syscall::mlir::store_in_balance_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,

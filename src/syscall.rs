@@ -315,25 +315,30 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.data.as_ptr()
     }
 
-    pub extern "C" fn get_balance(&mut self, address: &U256, balance: &mut U256) {
-        let address_hi_slice = address.hi.to_be_bytes();
-        let address_lo_slice = address.lo.to_be_bytes();
-        let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
+    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) {
+        // addresses longer than 20 bytes should be invalid
+        if (address.hi >> 32) != 0 {
+            balance.hi = 0;
+            balance.lo = 0;
+        } else {
+            let address_hi_slice = address.hi.to_be_bytes();
+            let address_lo_slice = address.lo.to_be_bytes();
+    
+            let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
 
-        let address = Address::from_slice(&address_slice);
-        dbg!("{}", &self.db);
-        match self.db.basic(address).unwrap() {
-            Some(a) => {
-                balance.hi = (a.balance >> 128).low_u128();
-                balance.lo = a.balance.low_u128();
-                dbg!("SOME");
-            }
-            None => {
-                balance.hi = 0;
-                balance.lo = 0;
-                dbg!("NONE");
-            }
-        };
+            let address = Address::from_slice(&address_slice);
+
+            match self.db.basic(address).unwrap() {
+                Some(a) => {
+                    balance.hi = (a.balance >> 128).low_u128();
+                    balance.lo = a.balance.low_u128();
+                }
+                None => {
+                    balance.hi = 0;
+                    balance.lo = 0;
+                }
+            };
+        }
     }
 }
 
@@ -348,7 +353,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
-    pub const GET_BALANCE: &str = "evm_mlir__get_balance";
+    pub const STORE_IN_BALANCE: &str = "evm_mlir__stor_in_balance";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
@@ -431,8 +436,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
         );
         engine.register_symbol(
-            symbols::GET_BALANCE,
-            SyscallContext::get_balance as *const fn(*mut c_void, *const U256, *mut U256)
+            symbols::STORE_IN_BALANCE,
+            SyscallContext::store_in_balance as *const fn(*mut c_void, *const U256, *mut U256)
                 as *mut (),
         );
     };
@@ -618,7 +623,7 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
-            StringAttribute::new(context, symbols::GET_BALANCE),
+            StringAttribute::new(context, symbols::STORE_IN_BALANCE),
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
             ),
@@ -907,7 +912,7 @@ pub(crate) mod mlir {
     }
 
     #[allow(unused)]
-    pub(crate) fn get_balance_syscall<'c>(
+    pub(crate) fn store_in_balance_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
@@ -918,7 +923,7 @@ pub(crate) mod mlir {
         let ptr_type = pointer(mlir_ctx, 0);
         let value = block.append_operation(func::call(
             mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BALANCE),
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
             &[syscall_ctx, address, balance],
             &[],
             location,

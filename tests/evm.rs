@@ -651,8 +651,46 @@ fn chainid_stack_overflow() {
     run_program_assert_halt(program, env);
 }
 
+// address with more than 20 bytes should be invalid
 #[test]
-fn balance_with_unexisting_account() {
+fn balance_with_invalid_address() {
+    let a = BigUint::from(1_u8) << 255_u8;
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let program = Program::from(vec![
+        Operation::Push((32_u8, a.clone())),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        // take the last 20 bytes of the address, because that's what it's done with it's avalid
+        Address::from_slice(&a.to_bytes_be()[0..20]),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let result = result.return_data().unwrap();
+    let expected_result = BigUint::from(0_u8);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_non_existing_account() {
     let operations = vec![
         Operation::Push((20_u8, BigUint::from(1_u8))),
         Operation::Balance,

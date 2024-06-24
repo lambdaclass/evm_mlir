@@ -1886,7 +1886,6 @@ fn codegen_balance<'c, 'r>(
     let ptr_type = pointer(context, 0);
     let pointer_size = constant_value_from_i64(context, &start_block, 1_i64)?;
     let uint256 = IntegerType::new(context, 256);
-    let h160 = IntegerType::new(context, 160);
 
     // Check there's enough elements in stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
@@ -1919,7 +1918,7 @@ fn codegen_balance<'c, 'r>(
             pointer_size,
             ptr_type,
             location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(h160.into()))),
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
         ))
         .result(0)?
         .into();
@@ -1944,7 +1943,7 @@ fn codegen_balance<'c, 'r>(
         .result(0)?
         .into();
 
-    op_ctx.get_balance_syscall(&ok_block, address_ptr, balance_ptr, location);
+    op_ctx.store_in_balance_syscall(&ok_block, address_ptr, balance_ptr, location);
 
     // get the value from the pointer
     let balance = ok_block
