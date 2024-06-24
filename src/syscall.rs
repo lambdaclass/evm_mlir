@@ -328,21 +328,20 @@ impl<'c> SyscallContext<'c> {
             Ok(bytecode) => bytecode,
             Err(_) => return,
         };
-        let code_size = code.len() as u32;
-        // if the offset is out of bounds then nothing is copied
-        if code_offset >= code_size {
-            return;
-        }
+        let code_size = code.len();
+        let size = size as usize;
+        let code_offset = code_offset as usize;
+        let dest_offset = dest_offset as usize;
         // adjust the size so it does not go out of bounds
-        let size: u32 = if code_offset + size > code_size {
-            code_size - code_offset
+        let size = if code_offset + size > code_size {
+            code_size.saturating_sub(code_offset)
         } else {
             size
         };
+
+        let code_slice = &code[code_offset..code_offset + size];
         // copy the program into memory
-        for (i, j) in (code_offset..code_offset + size).enumerate() {
-            self.inner_context.memory[dest_offset as usize + i] = code[j as usize];
-        }
+        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
 }
 
