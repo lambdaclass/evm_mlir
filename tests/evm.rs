@@ -806,3 +806,82 @@ fn chainid_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn extcodecopy() {
+    // insert the program in the db with address = 100
+    // and then copy the program bytecode in memory
+    // with extcodecopy(address=100, dest_offset, offset, size)
+    let size = 14_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+
+    let result_data = result.return_data().unwrap();
+    let expected_result = program.to_bytecode();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn extcodecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 8th byte (offset = 8) with size = 12
+    // so the result must be [EXTCODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0,0,0,0,0,0]
+    let size = 12_u8;
+    let offset = 8_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy, // 8th byte
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+
+    let result_data = result.return_data().unwrap();
+    let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
+    assert_eq!(result_data, expected_result);
+}

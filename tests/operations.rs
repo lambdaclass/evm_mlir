@@ -2414,3 +2414,31 @@ fn log_with_stack_underflow() {
         run_program_assert_halt(program);
     }
 }
+
+#[test]
+fn extcodecopy_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeCopy];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn extcodecopy_gas_check() {
+    let size = 7_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy,
+    ];
+
+    let static_gas = gas_cost::PUSHN * 3;
+    let dynamic_gas = gas_cost::memory_copy_cost(size.into())
+        + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
+        + gas_cost::EXTCODECOPY_WARM;
+    let expected_gas = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, expected_gas as _);
+}
