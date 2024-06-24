@@ -1073,7 +1073,6 @@ pub(crate) fn setup_calldata_size<'c>(
 ) -> Result<(), CodegenError> {
     let context = op_ctx.mlir_context;
     let calldata_size_syscall = op_ctx.get_calldata_size_syscall(block, location)?;
-    //let uint32 = IntegerType::new(context, 32).into();
     let ptr_type = pointer(context, 0);
 
     let calldata_size_ptr = block
@@ -1085,23 +1084,6 @@ pub(crate) fn setup_calldata_size<'c>(
         ))
         .result(0)?;
 
-    // let zero = block
-    //     .append_operation(arith::constant(
-    //         context,
-    //         IntegerAttribute::new(uint32, 0).into(),
-    //         location,
-    //     ))
-    //     .result(0)?
-    //     .into();
-
-    // block.append_operation(llvm::store(
-    //     context,
-    //     zero,
-    //     calldata_size_ptr.into(),
-    //     location,
-    //     LoadStoreOptions::default(),
-    // ));
-
     block.append_operation(llvm::store(
         context,
         calldata_size_syscall,
@@ -1110,7 +1092,6 @@ pub(crate) fn setup_calldata_size<'c>(
         LoadStoreOptions::default(),
     ));
 
-    //Ok(calldata_size_syscall)
     Ok(())
 }
 
