@@ -1724,8 +1724,91 @@ fn exp_with_overflow_should_wrap() {
     ];
 
     let expected_result = a.modpow(&b, &modulus);
-
     run_program_assert_stack_top(program, expected_result);
+}
+
+#[test]
+fn test_exp_dynamic_gas_with_exponent_lower_than_256() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(255_u16);
+    let program = vec![
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
+        Operation::Exp,
+    ];
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(255);
+    let result = run_program_get_result_with_gas(program, 1000);
+    assert_eq!(
+        result,
+        ExecutionResult::Success {
+            return_data: vec![],
+            gas_remaining: (1000 - dynamic_gas_cost) as u64,
+            logs: vec![]
+        }
+    );
+}
+
+#[test]
+fn test_exp_dynamic_gas_with_exponent_greater_than_256() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(256_u16);
+    let program = vec![
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
+        Operation::Exp,
+    ];
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256);
+    let result = run_program_get_result_with_gas(program, 1000);
+    assert_eq!(
+        result,
+        ExecutionResult::Success {
+            return_data: vec![],
+            gas_remaining: (1000 - dynamic_gas_cost) as u64,
+            logs: vec![]
+        }
+    );
+}
+
+#[test]
+fn test_exp_dynamic_gas_with_exponent_lower_than_65536() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(65535_u16);
+    let program = vec![
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
+        Operation::Exp,
+    ];
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65535);
+    let result = run_program_get_result_with_gas(program, 1000);
+    assert_eq!(
+        result,
+        ExecutionResult::Success {
+            return_data: vec![],
+            gas_remaining: (1000 - dynamic_gas_cost) as u64,
+            logs: vec![]
+        }
+    );
+}
+
+#[test]
+fn test_exp_dynamic_gas_with_exponent_greater_than_65536() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(65536_u32);
+    let program = vec![
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
+        Operation::Exp,
+    ];
+    let dynamic_gas_cost = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(65536);
+    let result = run_program_get_result_with_gas(program, 1000);
+    assert_eq!(
+        result,
+        ExecutionResult::Success {
+            return_data: vec![],
+            gas_remaining: (1000 - dynamic_gas_cost) as u64,
+            logs: vec![]
+        }
+    );
 }
 
 #[test]
@@ -1916,14 +1999,16 @@ fn and_reverts_when_program_run_out_of_gas() {
 
 #[test]
 fn exp_reverts_when_program_runs_out_of_gas() {
+    let a = BigUint::from(3_u8);
+    let b = BigUint::from(256_u16);
     let program = vec![
-        Operation::Push((1_u8, BigUint::from(3_u8))),
-        Operation::Push((1_u8, BigUint::from(256_u16))),
+        Operation::Push((1, b.clone())),
+        Operation::Push((1, a.clone())),
         Operation::Exp,
     ];
 
-    let initial_gas = gas_cost::PUSHN * 2 + gas_cost::EXP;
-    run_program_assert_gas_exact(program, initial_gas as _);
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::exp_dynamic_cost(256);
+    run_program_assert_gas_exact(program, needed_gas as _);
 }
 
 #[test]
@@ -2183,6 +2268,16 @@ fn mload_not_allocated_address() {
     run_program_assert_stack_top(program, 0_u8.into());
 }
 
+#[test]
+fn not_with_stack_underflow() {
+    run_program_assert_halt(vec![Operation::Not]);
+}
+#[test]
+fn push_push_normal_not() {
+    let program = vec![Operation::Push0, Operation::Not];
+    let expected_result = BigUint::from_bytes_be(&[0xff; 32]);
+    run_program_assert_stack_top(program, expected_result);
+}
 #[test]
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
