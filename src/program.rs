@@ -1,6 +1,4 @@
 use num_bigint::BigUint;
-use std::fmt;
-use thiserror::Error;
 
 #[derive(Debug)]
 pub enum Opcode {
@@ -162,26 +160,9 @@ pub enum Opcode {
     // SELFDESTRUCT = 0xFF,
 }
 
-#[derive(Error, Debug)]
-#[error("The opcode `{:02X}` is not valid", self.0)]
-pub struct OpcodeParseError(u8);
-
-#[derive(Error, Debug)]
-pub struct ParseError(Vec<OpcodeParseError>);
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let opcodes: Vec<_> = self.0.iter().map(|x| format!("{:02X}", x.0)).collect();
-        writeln!(f, "The following opcodes could not be parsed: ")?;
-        writeln!(f, "{:#?}", opcodes)?;
-        Ok(())
-    }
-}
-
-impl TryFrom<u8> for Opcode {
-    type Error = OpcodeParseError;
-    fn try_from(opcode: u8) -> Result<Opcode, Self::Error> {
-        let op = match opcode {
+impl From<u8> for Opcode {
+    fn from(opcode: u8) -> Opcode {
+        match opcode {
             x if x == Opcode::STOP as u8 => Opcode::STOP,
             x if x == Opcode::ADD as u8 => Opcode::ADD,
             x if x == Opcode::MUL as u8 => Opcode::MUL,
@@ -307,10 +288,8 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
-            x => return Err(OpcodeParseError(x)),
-        };
-
-        Ok(op)
+            _ => Opcode::INVALID,
+        }
     }
 }
 
@@ -457,25 +436,18 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, ParseError> {
+    pub fn from_bytecode(bytecode: &[u8]) -> Self {
         let mut operations = vec![];
         let mut pc = 0;
-        let mut failed_opcodes = vec![];
 
         while pc < bytecode.len() {
             let Some(opcode) = bytecode.get(pc).copied() else {
                 break;
             };
 
-            let opcode = Opcode::try_from(opcode);
+            let opcode = Opcode::from(opcode);
 
-            if let Err(e) = opcode {
-                failed_opcodes.push(e);
-                pc += 1;
-                continue;
-            }
-
-            let op = match opcode.unwrap() {
+            let op = match opcode {
                 Opcode::STOP => Operation::Stop,
                 Opcode::ADD => Operation::Add,
                 Opcode::MUL => Operation::Mul,
@@ -767,13 +739,9 @@ impl Program {
 
         let code_size = Self::get_codesize(&operations);
 
-        if failed_opcodes.is_empty() {
-            Ok(Program {
-                operations,
-                code_size,
-            })
-        } else {
-            Err(ParseError(failed_opcodes))
+        Program {
+            operations,
+            code_size,
         }
     }
 
