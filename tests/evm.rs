@@ -867,7 +867,7 @@ fn sstore_happy_path() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(&result.is_success());
 
     let stored_value = evm.db.read_storage(caller_address, EU256::from(key));
