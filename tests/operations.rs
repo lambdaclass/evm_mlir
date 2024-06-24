@@ -2423,7 +2423,7 @@ fn extcodecopy_with_stack_underflow() {
 
 #[test]
 fn extcodecopy_gas_check() {
-    let size = 7_u8;
+    let size = 9_u8;
     let offset = 0_u8;
     let dest_offset = 0_u8;
     let address = 100_u8;
@@ -2435,7 +2435,7 @@ fn extcodecopy_gas_check() {
         Operation::ExtcodeCopy,
     ];
 
-    let static_gas = gas_cost::PUSHN * 3;
+    let static_gas = gas_cost::PUSHN * 4;
     let dynamic_gas = gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
         + gas_cost::EXTCODECOPY_WARM;

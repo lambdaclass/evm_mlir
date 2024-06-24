@@ -3548,11 +3548,27 @@ fn codegen_extcodecopy<'c, 'r>(
         .result(0)?
         .into();
 
+    // consume 3 * (size + 31) / 32 gas
+    let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
+    let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+
+    let memory_extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_extension_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
     let end_block = region.append_block(Block::new(&[]));
 
     extend_memory(
         op_ctx,
-        &ok_block,
+        &memory_extension_block,
         &end_block,
         region,
         required_size,
