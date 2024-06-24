@@ -353,7 +353,7 @@ pub mod symbols {
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
-    pub const STORE_IN_BALANCE: &str = "evm_mlir__stor_in_balance";
+    pub const STORE_IN_BALANCE: &str = "evm_mlir__store_in_balance";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
