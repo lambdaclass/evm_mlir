@@ -123,6 +123,17 @@ impl<'c> SyscallContext<'c> {
         &self.inner_context.memory[offset..offset + size]
     }
 
+    pub fn logs(&self) -> Vec<Log> {
+        self.inner_context
+            .logs
+            .iter()
+            .map(|logdata| Log {
+                address: self.env.tx.caller,
+                data: logdata.clone(),
+            })
+            .collect()
+    }
+
     pub fn get_result(&self) -> EVMResult {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
         let gas_initial = self.env.tx.gas_limit;
@@ -139,30 +150,14 @@ impl<'c> SyscallContext<'c> {
                 gas_used,
                 gas_refunded: 0, // TODO: implement gas refunds
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
-                logs: self // todo: refactor usando from
-                    .inner_context
-                    .logs
-                    .iter()
-                    .map(|logdata| Log {
-                        address: self.env.tx.caller,
-                        data: logdata.clone(),
-                    })
-                    .collect(),
+                logs: self.logs(),
             },
             ExitStatusCode::Stop => ExecutionResult::Success {
                 reason: SuccessReason::Stop,
                 gas_used,
                 gas_refunded: 0, // TODO: implement gas refunds
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
-                logs: self
-                    .inner_context
-                    .logs
-                    .iter()
-                    .map(|logdata| Log {
-                        address: self.env.tx.caller,
-                        data: logdata.clone(),
-                    })
-                    .collect(),
+                logs: self.logs(),
             },
             ExitStatusCode::Revert => ExecutionResult::Revert {
                 output: return_values.into(),
