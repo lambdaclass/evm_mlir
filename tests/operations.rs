@@ -2514,7 +2514,7 @@ fn log_with_stack_underflow() {
 fn invalid_gas_check() {
     let program = vec![
         Operation::Invalid,
-        // none of the operations below should not be executed
+        // none of the operations below should be executed
         Operation::Push((1_u8, 10_u8.into())),
         Operation::Push0,
         Operation::Mstore,
