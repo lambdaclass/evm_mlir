@@ -21,7 +21,7 @@ use crate::{
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
-        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
         get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
         get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
         return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
@@ -66,6 +66,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Shl => codegen_shl(op_ctx, region),
         Operation::Sar => codegen_sar(op_ctx, region),
         Operation::Codesize => codegen_codesize(op_ctx, region),
+        Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
@@ -90,9 +91,12 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
+        Operation::Address => codegen_address(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
+        Operation::Basefee => codegen_basefee(op_ctx, region),
         Operation::Origin => codegen_origin(op_ctx, region),
         Operation::Caller => codegen_caller(op_ctx, region),
+        Operation::Not => codegen_not(op_ctx, region),
     }
 }
 
@@ -3642,6 +3646,70 @@ fn codegen_log<'c, 'r>(
     Ok((start_block, log_block))
 }
 
+fn codegen_coinbase<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint160 = IntegerType::new(context, 160);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::COINBASE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let coinbase_ptr = op_ctx.get_coinbase_ptr_syscall(&ok_block, location)?;
+
+    let coinbase = ok_block
+        .append_operation(llvm::load(
+            context,
+            coinbase_ptr,
+            uint160.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    let coinbase = if cfg!(target_endian = "little") {
+        ok_block
+            .append_operation(llvm::intr_bswap(coinbase, uint160.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        coinbase
+    };
+
+    // coinbase is 160-bits long so we extend it to 256 bits before pushing it to the stack
+    let coinbase = ok_block
+        .append_operation(arith::extui(coinbase, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, coinbase)?;
+
+    Ok((start_block, ok_block))
+}
+
 fn codegen_gasprice<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -3807,6 +3875,152 @@ fn codegen_caller<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, caller)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_basefee<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough space in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::BASEFEE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let basefee = get_basefee(op_ctx, &ok_block)?;
+    stack_push(context, &ok_block, basefee)?;
+
+    Ok((start_block, ok_block))
+}
+
+// from the understanding of the not operator , A xor 1 == Not A
+fn codegen_not<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let lhs = stack_pop(context, &ok_block)?;
+    let mask = ok_block
+        .append_operation(arith::constant(
+            context,
+            Attribute::parse(
+                context,
+                &format!("{} : i256", BigUint::from_bytes_be(&[0xff; 32])),
+            )
+            .unwrap(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let result = ok_block
+        .append_operation(arith::xori(lhs, mask, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_address<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint160 = IntegerType::new(context, 160);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::ADDRESS)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address_ptr = op_ctx.get_address_ptr_syscall(&ok_block, location)?;
+
+    let address = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint160.into(),
+            location,
+            LoadStoreOptions::new()
+                .align(IntegerAttribute::new(IntegerType::new(context, 64).into(), 1).into()),
+        ))
+        .result(0)?
+        .into();
+
+    let address = if cfg!(target_endian = "little") {
+        ok_block
+            .append_operation(llvm::intr_bswap(address, uint160.into(), location))
+            .result(0)?
+            .into()
+    } else {
+        address
+    };
+
+    // address is 160-bits long so we extend it to 256 bits before pushing it to the stack
+    let address = ok_block
+        .append_operation(arith::extui(address, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, address)?;
 
     Ok((start_block, ok_block))
 }
