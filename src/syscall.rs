@@ -19,7 +19,11 @@ use std::ffi::c_void;
 
 use melior::ExecutionEngine;
 
-use crate::{db::Db, env::Env, primitives::Address};
+use crate::{
+    db::Db,
+    env::Env,
+    primitives::{Address, U256 as EU256},
+};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -201,6 +205,18 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
+    pub extern "C" fn store_in_caller_ptr(&self, value: &mut U256) {
+        //TODO: Here we are returning the tx.caller value, which in fact corresponds to ORIGIN
+        //opcode. For the moment it's ok, but it should be changed when we implement the CALL opcode.
+        let bytes = &self.env.tx.caller.to_fixed_bytes();
+        let high: [u8; 16] = [&[0u8; 12], &bytes[..4]].concat().try_into().unwrap();
+        let low: [u8; 16] = bytes[4..20].try_into().unwrap();
+        //Now, we have to swap endianess, since data will be interpreted as it comes from
+        //little endiann, aligned to 16 bytes
+        value.lo = u128::from_be_bytes(low);
+        value.hi = u128::from_be_bytes(high);
+    }
+
     pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.gas_price;
         value.lo = aux.low_u128();
@@ -244,6 +260,17 @@ impl<'c> SyscallContext<'c> {
                 std::ptr::null_mut()
             }
         }
+    }
+
+    pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let address = self.env.tx.caller;
+
+        let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
+
+        let result = self.db.read_storage(address, key);
+
+        stg_value.hi = (result >> 128).low_u128();
+        stg_value.lo = result.low_u128();
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
@@ -309,11 +336,21 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
         self.env.tx.get_address().to_fixed_bytes().as_ptr()
     }
+
+    pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
+        self.env.block.coinbase.as_ptr()
+    }
+
+    pub extern "C" fn store_in_basefee_ptr(&self, basefee: &mut U256) {
+        basefee.hi = (self.env.block.basefee >> 128).low_u128();
+        basefee.lo = self.env.block.basefee.low_u128();
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const STORAGE_READ: &str = "evm_mlir__read_storage";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
     pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
     pub const APPEND_LOG_TWO_TOPICS: &str = "evm_mlir__append_log_with_two_topics";
@@ -323,6 +360,9 @@ pub mod symbols {
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
     pub const GET_ADDRESS_PTR: &str = "evm_mlir__get_address_ptr";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const GET_COINBASE_PTR: &str = "evm_mlir__get_coinbase_ptr";
+    pub const STORE_IN_BASEFEE_PTR: &str = "evm_mlir__store_in_basefee_ptr";
+    pub const STORE_IN_CALLER_PTR: &str = "evm_mlir__store_in_caller_ptr";
     pub const GET_ORIGIN: &str = "evm_mlir__get_origin";
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
@@ -341,6 +381,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORAGE_READ,
+            SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::APPEND_LOG,
@@ -399,6 +444,18 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_CALLVALUE_PTR,
             SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_COINBASE_PTR,
+            SyscallContext::get_coinbase_ptr as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_BASEFEE_PTR,
+            SyscallContext::store_in_basefee_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_CALLER_PTR,
+            SyscallContext::store_in_caller_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
             symbols::STORE_IN_GASPRICE_PTR,
@@ -492,6 +549,14 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_CALLER_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
 
         module.body().append_operation(func::func(
             context,
@@ -501,6 +566,7 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
@@ -509,6 +575,18 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORAGE_READ),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::APPEND_LOG),
@@ -586,6 +664,15 @@ pub(crate) mod mlir {
 
         module.body().append_operation(func::func(
             context,
+            StringAttribute::new(context, symbols::GET_COINBASE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
             StringAttribute::new(context, symbols::GET_BLOCK_NUMBER),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
@@ -597,6 +684,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_BASEFEE_PTR),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -714,6 +810,22 @@ pub(crate) mod mlir {
         ));
     }
 
+    pub(crate) fn store_in_caller_ptr<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        caller_ptr: Value<'c, 'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_CALLER_PTR),
+            &[syscall_ctx, caller_ptr],
+            &[],
+            location,
+        ));
+    }
+
     /// Extends the memory segment of the syscall context.
     /// Returns a pointer to the start of the memory segment.
     pub(crate) fn extend_memory_syscall<'c>(
@@ -734,6 +846,24 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    /// Reads the storage given a key
+    pub(crate) fn storage_read_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
     }
 
     /// Receives log data and appends a log to the logs vector
@@ -863,6 +993,26 @@ pub(crate) mod mlir {
         ));
     }
 
+    /// Returns a pointer to the coinbase address.
+    pub(crate) fn get_coinbase_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_COINBASE_PTR),
+                &[syscall_ctx],
+                &[ptr_type],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
     /// Returns a pointer to the calldata.
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall<'c>(
@@ -901,5 +1051,24 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    #[allow(unused)]
+    pub(crate) fn store_in_basefee_ptr_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        basefee_ptr: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) {
+        block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BASEFEE_PTR),
+                &[syscall_ctx, basefee_ptr],
+                &[],
+                location,
+            ))
+            .result(0);
     }
 }

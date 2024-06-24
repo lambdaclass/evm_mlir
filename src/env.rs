@@ -36,8 +36,7 @@ pub struct BlockEnv {
     // Coinbase or miner or address that created and signed the block.
     //
     // This is the receiver address of all the gas spent in the block.
-    //pub coinbase: Address,
-
+    pub coinbase: Address,
     // The timestamp of the block in seconds since the UNIX epoch.
     //pub timestamp: U256,
     // The gas limit of the block.
@@ -45,7 +44,7 @@ pub struct BlockEnv {
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    //pub basefee: U256,
+    pub basefee: U256,
     // The difficulty of the block.
     //
     // Unused after the Paris (AKA the merge) upgrade, and replaced by `prevrandao`.

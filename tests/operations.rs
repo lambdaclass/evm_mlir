@@ -2268,6 +2268,16 @@ fn mload_not_allocated_address() {
 }
 
 #[test]
+fn not_with_stack_underflow() {
+    run_program_assert_halt(vec![Operation::Not]);
+}
+#[test]
+fn push_push_normal_not() {
+    let program = vec![Operation::Push0, Operation::Not];
+    let expected_result = BigUint::from_bytes_be(&[0xff; 32]);
+    run_program_assert_stack_top(program, expected_result);
+}
+#[test]
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(10_u8))), // value
