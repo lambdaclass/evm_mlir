@@ -17,13 +17,13 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
-use melior::ExecutionEngine;
-
 use crate::{
     db::Db,
     env::Env,
     primitives::{Address, U256 as EU256},
+    result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
 };
+use melior::ExecutionEngine;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -74,50 +74,6 @@ impl ExitStatusCode {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum ExecutionResult {
-    Success {
-        return_data: Vec<u8>,
-        gas_remaining: u64,
-        logs: Vec<Log>,
-    },
-    Revert {
-        return_data: Vec<u8>,
-        gas_remaining: u64,
-    },
-    Halt,
-}
-
-impl ExecutionResult {
-    pub fn is_success(&self) -> bool {
-        matches!(self, Self::Success { .. })
-    }
-
-    pub fn is_revert(&self) -> bool {
-        matches!(self, Self::Revert { .. })
-    }
-
-    pub fn is_halt(&self) -> bool {
-        matches!(self, Self::Halt { .. })
-    }
-
-    pub fn return_data(&self) -> Option<&[u8]> {
-        match self {
-            Self::Success { return_data, .. } | Self::Revert { return_data, .. } => {
-                Some(return_data)
-            }
-            Self::Halt => None,
-        }
-    }
-
-    pub fn return_logs(&self) -> Option<&Vec<Log>> {
-        match self {
-            Self::Success { logs, .. } => Some(logs),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct InnerContext {
     /// The memory segment of the EVM.
@@ -127,7 +83,7 @@ pub struct InnerContext {
     return_data: Option<(usize, usize)>,
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
-    logs: Vec<Log>,
+    logs: Vec<LogData>,
 }
 
 /// The context passed to syscalls
@@ -138,10 +94,16 @@ pub struct SyscallContext<'c> {
     pub inner_context: InnerContext,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Log {
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
+pub struct LogData {
     pub topics: Vec<U256>,
     pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
+pub struct Log {
+    pub address: Address,
+    pub data: LogData,
 }
 
 /// Accessors for disponibilizing the execution results
@@ -155,30 +117,59 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub fn return_values(&self) -> &[u8] {
-        // TODO: maybe initialize as (0, 0) instead of None
         let (offset, size) = self.inner_context.return_data.unwrap_or((0, 0));
         &self.inner_context.memory[offset..offset + size]
     }
 
-    pub fn get_result(&self) -> ExecutionResult {
+    pub fn logs(&self) -> Vec<Log> {
+        self.inner_context
+            .logs
+            .iter()
+            .map(|logdata| Log {
+                address: self.env.tx.caller,
+                data: logdata.clone(),
+            })
+            .collect()
+    }
+
+    pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
+        let gas_initial = self.env.tx.gas_limit;
+        let gas_used = gas_initial.saturating_sub(gas_remaining);
         let exit_status = self
             .inner_context
             .exit_status
             .clone()
             .unwrap_or(ExitStatusCode::Default);
-        match exit_status {
-            ExitStatusCode::Return | ExitStatusCode::Stop => ExecutionResult::Success {
-                return_data: self.return_values().to_vec(),
-                gas_remaining,
-                logs: self.inner_context.logs.to_owned(),
+        let return_values = self.return_values().to_vec();
+        let result = match exit_status {
+            ExitStatusCode::Return => ExecutionResult::Success {
+                reason: SuccessReason::Return,
+                gas_used,
+                gas_refunded: 0, // TODO: implement gas refunds
+                output: Output::Call(return_values.into()), // TODO: add case Output::Create
+                logs: self.logs(),
+            },
+            ExitStatusCode::Stop => ExecutionResult::Success {
+                reason: SuccessReason::Stop,
+                gas_used,
+                gas_refunded: 0, // TODO: implement gas refunds
+                output: Output::Call(return_values.into()), // TODO: add case Output::Create
+                logs: self.logs(),
             },
             ExitStatusCode::Revert => ExecutionResult::Revert {
-                return_data: self.return_values().to_vec(),
-                gas_remaining,
+                output: return_values.into(),
+                gas_used,
             },
-            ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt,
-        }
+            ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt {
+                reason: HaltReason::OpcodeNotFound, // TODO: check which Halt error
+                gas_used,
+            },
+        };
+
+        let state = self.db.clone().into_state();
+
+        Ok(ResultAndState { result, state })
     }
 }
 
@@ -329,7 +320,7 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
 
-        let log = Log { data, topics };
+        let log = LogData { data, topics };
         self.inner_context.logs.push(log);
     }
 

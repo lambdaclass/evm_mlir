@@ -38,13 +38,13 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
 
     for _ in 0..runs - 1 {
         black_box(executor.execute(black_box(&mut context), black_box(initial_gas)));
-        assert!(context.get_result().is_success());
+        assert!(context.get_result().unwrap().result.is_success());
     }
     black_box(executor.execute(black_box(&mut context), black_box(initial_gas)));
-    let result = context.get_result();
+    let result = context.get_result().unwrap().result;
     assert!(result.is_success());
 
-    println!("\t0x{}", hex::encode(result.return_data().unwrap()));
+    println!("\t0x{}", hex::encode(result.output().unwrap()));
 }
 
 pub fn run_with_revm(program: &str, runs: usize, number_of_iterations: u32) {

@@ -20,6 +20,7 @@ thiserror = "1.0.57"
 ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
 sha3 = "0.10.8"
+bitflags = "2.5.0"
 
 [dev-dependencies]
 rstest = "0.21.0"
