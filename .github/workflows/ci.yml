@@ -46,6 +46,9 @@ jobs:
       - name: Print LLVM version
         run: ${MLIR_SYS_181_PREFIX}/bin/clang --version
 
+      - name: Print libs
+        run: ls ${MLIR_SYS_181_PREFIX}/include
+
       - name: Run cargo check
         run: cargo check --workspace --all-features --all-targets
 
