@@ -133,7 +133,7 @@ pub struct DatabaseError;
 
 impl fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error on database access") // TODO: check mensaje
+        write!(f, "error on database access")
     }
 }
 
