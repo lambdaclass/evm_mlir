@@ -158,7 +158,7 @@ pub enum Opcode {
     // STATICCALL = 0xFA,
     // unused 0xFB-0xFC
     REVERT = 0xFD,
-    // INVALID = 0xFE,
+    INVALID = 0xFE,
     // SELFDESTRUCT = 0xFF,
 }
 
@@ -374,6 +374,7 @@ pub enum Operation {
     Log(u8),
     Address,
     Origin,
+    Invalid,
 }
 
 impl Operation {
@@ -444,6 +445,7 @@ impl Operation {
             Operation::Return => vec![Opcode::RETURN as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Address => vec![Opcode::ADDRESS as u8],
+            Operation::Invalid => vec![Opcode::INVALID as u8],
         }
     }
 }
@@ -757,6 +759,7 @@ impl Program {
                 Opcode::ADDRESS => Operation::Address,
                 Opcode::RETURN => Operation::Return,
                 Opcode::REVERT => Operation::Revert,
+                Opcode::INVALID => Operation::Invalid,
             };
             operations.push(op);
             pc += 1;

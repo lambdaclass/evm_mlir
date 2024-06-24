@@ -96,6 +96,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Origin => codegen_origin(op_ctx, region),
         Operation::Caller => codegen_caller(op_ctx, region),
         Operation::Not => codegen_not(op_ctx, region),
+        Operation::Invalid => codegen_invalid(op_ctx, region),
     }
 }
 
@@ -3948,4 +3949,11 @@ fn codegen_address<'c, 'r>(
     stack_push(context, &ok_block, address)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_invalid<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
