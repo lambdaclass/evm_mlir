@@ -44,12 +44,6 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
 
-      - name: Print LLVM version
-        run: ${MLIR_SYS_181_PREFIX}/bin/clang --version
-
-      - name: Print libs
-        run: ls ${MLIR_SYS_181_PREFIX}/include/mlir/Dialect/Affine/IR
-
       - name: Run cargo check
         run: cargo check --workspace --all-features --all-targets
 
@@ -74,9 +68,6 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
-
-      - name: Print LLVM version
-        run: ${MLIR_SYS_181_PREFIX}/bin/clang --version
 
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
@@ -105,8 +96,6 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
-      - name: Print LLVM version
-        run: ${MLIR_SYS_181_PREFIX}bin/clang --version
 
       - name: Install Link deps
         run: sudo apt-get install libc-dev build-essential
@@ -140,8 +129,6 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
-      - name: Print LLVM version
-        run: ${MLIR_SYS_181_PREFIX}/bin/clang --version
 
       - name: Install Link deps
         run: sudo apt-get install libc-dev build-essential
