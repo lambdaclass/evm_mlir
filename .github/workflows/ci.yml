@@ -17,7 +17,7 @@ env:
   # mlir-sys still wasn't updated to the new version
   MLIR_SYS_180_PREFIX: /usr/lib/llvm-18/
   LLVM_SYS_181_PREFIX: /usr/lib/llvm-18/
-  TABLEGEN_181_PREFIX: /usr/lib/llvm-18/
+  TABLEGEN_180_PREFIX: /usr/lib/llvm-18/
 
 jobs:
   compile:
@@ -43,8 +43,6 @@ jobs:
           keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
       - name: Install LLVM
         run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
-      - name: Print
-        run: llvm-config
 
       - name: Run cargo check
         run: cargo check --workspace --all-features --all-targets
