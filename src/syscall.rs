@@ -262,14 +262,9 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let dest_offset = dest_offset as usize;
 
-        // if offset is out of bounds then nothing is copied
-        if code_offset >= code_size {
-            return;
-        }
-
         // adjust the size so it does not go out of bounds
         let size: usize = if code_offset + size > code_size {
-            code_size - code_offset
+            code_size.saturating_sub(code_offset)
         } else {
             size
         };
