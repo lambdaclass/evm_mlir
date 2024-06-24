@@ -57,6 +57,7 @@ impl Evm<Db> {
             .db
             .code_by_address(code_address)
             .expect("failed to load bytecode");
+
         let program = Program::from_bytecode(&bytecode).unwrap(); // TODO: map invalid/unknown opcodes to INVALID operation
 
         let module = context
