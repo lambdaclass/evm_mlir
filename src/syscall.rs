@@ -262,13 +262,24 @@ impl<'c> SyscallContext<'c> {
         }
     }
 
-    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
+    pub extern "C" fn write_storage(
+        &mut self,
+        stg_key: &U256,
+        stg_value: &U256,
+        stg_original: &U256,
+    ) {
         let address = self.env.tx.caller;
 
         let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
         let value = ((EU256::from(stg_value.hi)) << 128) + stg_value.lo;
 
-        self.db.write_storage(address, key, value);
+        let (current_value, original_value) = self.db.write_storage(address, key, value);
+
+        stg_value.hi = (current_value >> 128).low_u128();
+        stg_value.lo = current_value.low_u128();
+
+        stg_original.hi = (original_value >> 128).low_u128();
+        stg_original.lo = original_value.low_u128();
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
@@ -383,7 +394,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
+            SyscallContext::write_storage
+                as *const fn(*mut c_void, *const U256, *const U256, *const U256)
                 as *mut (),
         );
         engine.register_symbol(
@@ -844,12 +856,13 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        original_value: Value<'c, 'c>,
         location: Location<'c>,
     ) {
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-            &[syscall_ctx, key, value],
+            &[syscall_ctx, key, value, original_value],
             &[],
             location,
         ));

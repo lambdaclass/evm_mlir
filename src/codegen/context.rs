@@ -594,6 +594,7 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        original_value: Value<'c, 'c>,
         location: Location<'c>,
     ) {
         syscall::mlir::storage_write_syscall(
@@ -602,6 +603,7 @@ impl<'c> OperationCtx<'c> {
             block,
             key,
             value,
+            original_value,
             location,
         )
     }

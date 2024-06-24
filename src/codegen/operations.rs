@@ -2127,7 +2127,6 @@ fn codegen_sstore<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // TODO: add gas consumption and check gas_left > 2300 + gas_needed
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -2185,7 +2184,30 @@ fn codegen_sstore<'c, 'r>(
     ));
     assert!(res.verify());
 
-    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location);
+    // TODO: refactor using allocate_and_store_value util
+    let original_value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        value,
+        original_value_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, original_value_ptr, location);
+
+    // TODO: calculate dynamic gas and check gas_left > 2300 + gas_needed
 
     Ok((start_block, ok_block))
 }
