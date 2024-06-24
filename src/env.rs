@@ -31,12 +31,12 @@ pub struct CfgEnv {
 
 #[derive(Clone, Debug, Default)]
 pub struct BlockEnv {
-    // The number of ancestor blocks of this block (block height).
+    /// The number of ancestor blocks of this block (block height).
     pub number: U256,
-    // Coinbase or miner or address that created and signed the block.
-    //
-    // This is the receiver address of all the gas spent in the block.
-    //pub coinbase: Address,
+    /// Coinbase or miner or address that created and signed the block.
+    ///
+    /// This is the receiver address of all the gas spent in the block.
+    pub coinbase: Address,
     /// The timestamp of the block in seconds since the UNIX epoch.
     pub timestamp: U256,
     // The gas limit of the block.
@@ -150,4 +150,14 @@ pub enum TransactTo {
     Call(Address),
     /// Contract creation.
     Create,
+}
+
+impl TxEnv {
+    pub fn get_address(&self) -> Address {
+        match self.transact_to {
+            TransactTo::Call(addr) => addr,
+            // TODO: check if its ok to return zero in this case
+            TransactTo::Create => Address::zero(),
+        }
+    }
 }

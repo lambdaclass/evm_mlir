@@ -42,6 +42,7 @@ pub mod gas_cost {
     pub const CALLDATASIZE: i64 = 2;
     pub const CALLDATACOPY: i64 = 3;
     pub const CODESIZE: i64 = 2;
+    pub const COINBASE: i64 = 2;
     pub const GASPRICE: i64 = 2;
     pub const NUMBER: i64 = 2;
     pub const CHAINID: i64 = 2;
@@ -64,6 +65,7 @@ pub mod gas_cost {
     pub const SWAPN: i64 = 3;
     pub const TIMESTAMP: i64 = 2;
     pub const LOG: i64 = 375;
+    pub const ADDRESS: i64 = 2;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;

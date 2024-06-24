@@ -4,8 +4,10 @@ use evm_mlir::{
     db::Db,
     env::Env,
     executor::Executor,
+    primitives::Bytes,
     program::{Operation, Program},
-    syscall::{ExecutionResult, SyscallContext},
+    result::{ExecutionResult, Output, SuccessReason},
+    syscall::SyscallContext,
 };
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
@@ -28,19 +30,20 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module, Default::default());
 
-    let env = Env::default();
+    let mut env = Env::default();
+    env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
     let mut context = SyscallContext::new(env, &mut db);
 
     let _result = executor.execute(&mut context, initial_gas);
 
-    context.get_result()
+    context.get_result().unwrap().result
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(operations, 1e7 as _);
     assert!(result.is_success());
-    assert_eq!(result.return_data().unwrap(), expected_result);
+    assert_eq!(result.output().unwrap(), expected_result);
 }
 
 fn run_program_assert_stack_top(operations: Vec<Operation>, expected_result: BigUint) {
@@ -67,18 +70,18 @@ fn run_program_assert_stack_top_with_gas(
     }
     let result = run_program_get_result_with_gas(operations, initial_gas);
     assert!(result.is_success());
-    assert_eq!(result.return_data().unwrap(), result_bytes);
+    assert_eq!(result.output().unwrap().as_ref(), result_bytes);
 }
 
 fn run_program_assert_halt(program: Vec<Operation>) {
     let result = run_program_get_result_with_gas(program, 1e7 as _);
-    assert_eq!(result, ExecutionResult::Halt);
+    assert!(result.is_halt());
 }
 
 fn run_program_assert_revert(program: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(program, 1e7 as _);
     assert!(result.is_revert());
-    assert_eq!(result.return_data().unwrap(), expected_result);
+    assert_eq!(result.output().unwrap(), expected_result);
 }
 
 fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
@@ -1740,9 +1743,11 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_256() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1761,9 +1766,11 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_256() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1782,9 +1789,11 @@ fn test_exp_dynamic_gas_with_exponent_lower_than_65536() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -1803,9 +1812,11 @@ fn test_exp_dynamic_gas_with_exponent_greater_than_65536() {
     assert_eq!(
         result,
         ExecutionResult::Success {
-            return_data: vec![],
-            gas_remaining: (1000 - dynamic_gas_cost) as u64,
-            logs: vec![]
+            logs: vec![],
+            reason: SuccessReason::Stop,
+            gas_used: dynamic_gas_cost as u64,
+            gas_refunded: 0,
+            output: Output::Call(Bytes::new()),
         }
     );
 }
@@ -2267,6 +2278,16 @@ fn mload_not_allocated_address() {
     run_program_assert_stack_top(program, 0_u8.into());
 }
 
+#[test]
+fn not_with_stack_underflow() {
+    run_program_assert_halt(vec![Operation::Not]);
+}
+#[test]
+fn push_push_normal_not() {
+    let program = vec![Operation::Push0, Operation::Not];
+    let expected_result = BigUint::from_bytes_be(&[0xff; 32]);
+    run_program_assert_stack_top(program, expected_result);
+}
 #[test]
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
