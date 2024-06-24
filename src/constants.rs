@@ -32,6 +32,7 @@ pub mod gas_cost {
     pub const AND: i64 = 3;
     pub const OR: i64 = 3;
     pub const XOR: i64 = 3;
+    pub const NOT: i64 = 3;
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
