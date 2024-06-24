@@ -20,7 +20,6 @@ tempfile = "3.10.1"
 thiserror = "1.0.57"
 ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
-sha3 = "0.10.8"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

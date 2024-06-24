@@ -210,16 +210,6 @@ impl<'c> SyscallContext<'c> {
         *hash_ptr = U256::from_be_bytes(result.into());
     }
 
-    pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
-        let offset = offset as usize;
-        let size = size as usize;
-        let data = &self.inner_context.memory[offset..offset + size];
-        let mut hasher = Keccak256::new();
-        hasher.update(data);
-        let result = hasher.finalize();
-        *hash_ptr = U256::from_be_bytes(result.into());
-    }
-
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
         value.lo = aux.low_u128();
