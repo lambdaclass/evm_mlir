@@ -1,24 +1,18 @@
 use crate::{
     db::DatabaseError,
     primitives::{Address, Bytes, U256},
-    state::EvmState,
+    state::Account,
     syscall::Log,
 };
 use core::fmt;
-use std::{boxed::Box, string::String, vec::Vec};
-
-/// Result of EVM execution.
-pub type EVMResult = EVMResultGeneric<ResultAndState>;
-
-/// Generic result of EVM execution. Used to represent error and generic output.
-pub type EVMResultGeneric<T> = core::result::Result<T, EVMError>;
+use std::{boxed::Box, collections::HashMap, string::String, vec::Vec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResultAndState {
     /// Status of execution
     pub result: ExecutionResult,
     /// State that got updated
-    pub state: EvmState,
+    pub state: HashMap<Address, Account>,
 }
 
 /// Result of a transaction execution.

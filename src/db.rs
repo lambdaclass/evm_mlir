@@ -1,12 +1,12 @@
 #![allow(unused)]
 use crate::{
     primitives::{Address, Bytes, B256, U256},
-    state::{Account, EvmState, EvmStorageSlot},
+    state::{Account, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
-use std::{collections::HashMap, fmt::Error};
-
+use std::{collections::HashMap, fmt::Error, ops::Add};
+use thiserror::Error;
 pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -66,7 +66,7 @@ impl Db {
         self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
 
-    pub fn into_state(self) -> EvmState {
+    pub fn into_state(self) -> HashMap<Address, Account> {
         self.accounts
             .iter()
             .map(|(address, db_account)| {
@@ -128,14 +128,9 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error("error on database access")]
 pub struct DatabaseError;
-
-impl fmt::Display for DatabaseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error on database access")
-    }
-}
 
 impl Database for Db {
     type Error = DatabaseError;

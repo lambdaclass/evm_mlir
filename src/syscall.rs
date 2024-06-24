@@ -17,14 +17,13 @@
 //! [`mlir::write_result_syscall`] for an example).
 use std::ffi::c_void;
 
-use melior::ExecutionEngine;
-
 use crate::{
     db::Db,
     env::Env,
     primitives::{Address, U256 as EU256},
-    result::{EVMResult, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
+    result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
 };
+use melior::ExecutionEngine;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -133,7 +132,7 @@ impl<'c> SyscallContext<'c> {
             .collect()
     }
 
-    pub fn get_result(&self) -> EVMResult {
+    pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
