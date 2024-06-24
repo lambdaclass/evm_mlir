@@ -24,7 +24,8 @@ use crate::{
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
         get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
         get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
-        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        return_empty_result, return_result_from_stack, return_result_with_offset_and_size,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -3955,5 +3956,48 @@ fn codegen_invalid<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let start_block = region.append_block(Block::new(&[]));
+    let ok_block = region.append_block(Block::new(&[]));
+    let empty_block = region.append_block(Block::new(&[]));
+    let uint32 = IntegerType::new(context, 32);
+
+    let zero = start_block
+        .append_operation(arith::constant(
+            context,
+            integer_constant_from_i64(context, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    // consume all the gas
+    let remaining_gas = get_remaining_gas(context, &start_block)?;
+    consume_gas_as_value(context, &start_block, remaining_gas)?;
+
+    let offset = start_block
+        .append_operation(arith::trunci(zero, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = start_block
+        .append_operation(arith::trunci(zero, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    start_block.append_operation(cf::br(&ok_block, &[], location));
+
+    return_result_with_offset_and_size(
+        op_ctx,
+        &ok_block,
+        offset,
+        size,
+        ExitStatusCode::Revert,
+        location,
+    )?;
+
+    Ok((start_block, empty_block))
 }

@@ -2509,3 +2509,26 @@ fn log_with_stack_underflow() {
         run_program_assert_halt(program);
     }
 }
+
+#[test]
+fn invalid_gas_check() {
+    let program = vec![
+        Operation::Invalid,
+        // none of the operations below should not be executed
+        Operation::Push((1_u8, 10_u8.into())),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let needed_gas = 999;
+    let expected_remaining_gas = 0;
+    let result = run_program_get_result_with_gas(program.clone(), needed_gas as _);
+    let expected_result = ExecutionResult::Revert {
+        return_data: vec![],
+        gas_remaining: expected_remaining_gas,
+    };
+    assert_eq!(result, expected_result);
+}
