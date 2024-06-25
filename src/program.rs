@@ -43,7 +43,7 @@ pub enum Opcode {
     CALLDATASIZE = 0x36,
     CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
-    // CODECOPY = 0x39,
+    CODECOPY = 0x39,
     GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
     // EXTCODECOPY = 0x3C,
@@ -302,6 +302,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::CODECOPY as u8 => Opcode::CODECOPY,
             x if x == Opcode::NOT as u8 => Opcode::NOT,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
@@ -372,6 +373,7 @@ pub enum Operation {
     Not,
     CallDataCopy,
     Log(u8),
+    Codecopy,
     Address,
     Origin,
 }
@@ -443,6 +445,7 @@ impl Operation {
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Return => vec![Opcode::RETURN as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
+            Operation::Codecopy => vec![Opcode::CODECOPY as u8],
             Operation::Address => vec![Opcode::ADDRESS as u8],
         }
     }
@@ -754,6 +757,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::CODECOPY => Operation::Codecopy,
                 Opcode::ADDRESS => Operation::Address,
                 Opcode::RETURN => Operation::Return,
                 Opcode::REVERT => Operation::Revert,

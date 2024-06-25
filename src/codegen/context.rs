@@ -723,6 +723,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,

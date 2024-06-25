@@ -1,3 +1,7 @@
+//! Tests for simple EVM operations
+//!
+//! These don't receive any input, and the CODE* opcodes
+//! may not work properly.
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
@@ -2484,6 +2488,31 @@ fn mcopy_with_stack_underflow() {
     let program = vec![Operation::Mcopy];
 
     run_program_assert_halt(program);
+}
+
+#[test]
+fn codecopy_with_stack_underflow() {
+    let program = vec![Operation::Codecopy];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn codecopy_with_gas_cost() {
+    let size = 7_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+    ];
+
+    let static_gas = gas_cost::CODECOPY + gas_cost::PUSHN * 3;
+    let dynamic_gas = gas_cost::memory_copy_cost(size.into())
+        + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32);
+    let expected_gas = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, expected_gas as _);
 }
 
 #[rstest]

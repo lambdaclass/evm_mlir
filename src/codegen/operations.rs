@@ -90,6 +90,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::CalldataLoad => codegen_calldataload(op_ctx, region),
         Operation::CallDataSize => codegen_calldatasize(op_ctx, region),
+        Operation::Codecopy => codegen_codecopy(op_ctx, region),
         Operation::Address => codegen_address(op_ctx, region),
         Operation::Callvalue => codegen_callvalue(op_ctx, region),
         Operation::Basefee => codegen_basefee(op_ctx, region),
@@ -3948,4 +3949,84 @@ fn codegen_address<'c, 'r>(
     stack_push(context, &ok_block, address)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_codecopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // where to copy from
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+
+    // consume 3 * (size + 31) / 32 gas
+    let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
+    let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+
+    let memory_extension_block = region.append_block(Block::new(&[]));
+    let copy_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_extension_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    extend_memory(
+        op_ctx,
+        &memory_extension_block,
+        &copy_block,
+        region,
+        required_size,
+        gas_cost::CODECOPY,
+    )?;
+
+    op_ctx.copy_code_to_memory_syscall(&copy_block, offset, size, dest_offset, location);
+
+    Ok((start_block, copy_block))
 }

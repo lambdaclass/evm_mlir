@@ -48,6 +48,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x36) CALLDATASIZE
 1. (0x37) CALLDATACOPY
 1. (0x38) CODESIZE
+1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
 1. (0x41) COINBASE
 1. (0x46) CHAINID
@@ -144,6 +145,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
 1. (0x20) KECCAK256
 1. (0x31) BALANCE
+1. (0x33) CALLER
 1. (0x39) CODECOPY
 1. (0x3B) EXTCODESIZE
 1. (0x3C) EXTCODECOPY
