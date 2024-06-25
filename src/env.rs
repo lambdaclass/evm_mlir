@@ -18,7 +18,7 @@ pub struct Env {
 pub struct CfgEnv {
     // Chain ID of the EVM, it will be compared to the transaction's Chain ID.
     // Chain ID is introduced EIP-155
-    //pub chain_id: u64,
+    pub chain_id: u64,
     // Bytecode that is created with CREATE/CREATE2 is by default analysed and jumptable is created.
     // This is very beneficial for testing and speeds up execution of that bytecode if called multiple times.
     //
@@ -31,15 +31,14 @@ pub struct CfgEnv {
 
 #[derive(Clone, Debug, Default)]
 pub struct BlockEnv {
-    // The number of ancestor blocks of this block (block height).
+    /// The number of ancestor blocks of this block (block height).
     pub number: U256,
-    // Coinbase or miner or address that created and signed the block.
-    //
-    // This is the receiver address of all the gas spent in the block.
-    //pub coinbase: Address,
-
-    // The timestamp of the block in seconds since the UNIX epoch.
-    //pub timestamp: U256,
+    /// Coinbase or miner or address that created and signed the block.
+    ///
+    /// This is the receiver address of all the gas spent in the block.
+    pub coinbase: Address,
+    /// The timestamp of the block in seconds since the UNIX epoch.
+    pub timestamp: U256,
     // The gas limit of the block.
     //pub gas_limit: U256,
     // The base fee per blob, added in [EIP-4844]
@@ -48,7 +47,7 @@ pub struct BlockEnv {
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    //pub basefee: U256,
+    pub basefee: U256,
     // The difficulty of the block.
     //
     // Unused after the Paris (AKA the merge) upgrade, and replaced by `prevrandao`.
@@ -79,7 +78,7 @@ pub struct TxEnv {
     /// The gas limit of the transaction.
     pub gas_limit: u64,
     /// The gas price of the transaction.
-    // pub gas_price: U256,
+    pub gas_price: U256,
     /// The destination of the transaction.
     pub transact_to: TransactTo,
     /// The value sent to `transact_to`.
@@ -132,8 +131,9 @@ impl Default for TxEnv {
     fn default() -> Self {
         Self {
             caller: Address::zero(),
-            gas_limit: u64::MAX,
-            // gas_price: U256::zero(),
+            // TODO: we are using signed comparison for the gas counter
+            gas_limit: i64::MAX as _,
+            gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
             value: U256::zero(),
@@ -154,4 +154,14 @@ pub enum TransactTo {
     Call(Address),
     /// Contract creation.
     Create,
+}
+
+impl TxEnv {
+    pub fn get_address(&self) -> Address {
+        match self.transact_to {
+            TransactTo::Call(addr) => addr,
+            // TODO: check if its ok to return zero in this case
+            TransactTo::Create => Address::zero(),
+        }
+    }
 }

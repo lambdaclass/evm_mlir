@@ -1158,6 +1158,36 @@ pub(crate) fn extend_memory<'c>(
     Ok(())
 }
 
+pub(crate) fn get_memory_pointer<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    location: Location<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let memory_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            MEMORY_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let memory_ptr = block
+        .append_operation(llvm::load(
+            context,
+            memory_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?;
+
+    Ok(memory_ptr.into())
+}
+
 pub(crate) fn return_empty_result(
     op_ctx: &OperationCtx,
     block: &Block,
@@ -1343,6 +1373,45 @@ pub(crate) fn allocate_and_store_value<'a>(
     ));
 
     Ok(value_ptr)
+}
+
+/// Returns the basefee
+pub(crate) fn get_basefee<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let basefee_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_basefee_ptr_syscall(basefee_ptr, block, location);
+
+    // get the value from the pointer
+    let basefee = block
+        .append_operation(llvm::load(
+            context,
+            basefee_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(basefee)
 }
 
 pub mod llvm_mlir {

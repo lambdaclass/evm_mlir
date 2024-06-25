@@ -1,9 +1,13 @@
 #![allow(unused)]
-use ethereum_types::{Address, U256};
-use std::{collections::HashMap, fmt::Error};
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Bytecode(Vec<u8>);
+use crate::{
+    primitives::{Address, Bytes, B256, U256},
+    state::{Account, EvmStorageSlot},
+};
+use core::fmt;
+use sha3::{Digest, Keccak256};
+use std::{collections::HashMap, fmt::Error, ops::Add};
+use thiserror::Error;
+pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DbAccount {
@@ -12,8 +16,6 @@ pub struct DbAccount {
     pub storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
 }
-
-type B256 = U256;
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
@@ -25,6 +27,28 @@ pub struct Db {
 impl Db {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+        if let Some(a) = self.accounts.get_mut(&address) {
+            a.nonce = nonce;
+            a.balance = balance;
+        }
+    }
+
+    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
+        let mut hasher = Keccak256::new();
+        hasher.update(&bytecode);
+        let hash = B256::from_slice(&hasher.finalize());
+        let account = DbAccount {
+            bytecode_hash: hash,
+            ..Default::default()
+        };
+
+        self.accounts.insert(address, account);
+        self.contracts.insert(hash, bytecode);
+
+        self
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -39,9 +63,39 @@ impl Db {
             .cloned()
             .unwrap_or_default()
     }
+
+    pub fn code_by_address(&self, address: Address) -> Result<Bytecode, DatabaseError> {
+        // Returns the bytecode of an address
+        let hash = self
+            .accounts
+            .get(&address)
+            .ok_or(DatabaseError)?
+            .bytecode_hash;
+        self.contracts.get(&hash).cloned().ok_or(DatabaseError)
+    }
+
+    pub fn into_state(self) -> HashMap<Address, Account> {
+        self.accounts
+            .iter()
+            .map(|(address, db_account)| {
+                (
+                    *address,
+                    Account {
+                        info: AccountInfo::from(db_account.clone()),
+                        storage: db_account
+                            .storage
+                            .iter()
+                            .map(|(k, v)| (*k, EvmStorageSlot::from(*v)))
+                            .collect(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect()
+    }
 }
 
-#[derive(Default, Clone, PartialEq, Debug)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,
@@ -52,6 +106,17 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
+}
+
+impl From<DbAccount> for AccountInfo {
+    fn from(db_account: DbAccount) -> Self {
+        Self {
+            balance: db_account.balance,
+            nonce: db_account.nonce,
+            code_hash: db_account.bytecode_hash,
+            code: None,
+        }
+    }
 }
 
 pub trait Database {
@@ -71,7 +136,8 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error("error on database access")]
 pub struct DatabaseError;
 
 impl Database for Db {
@@ -79,12 +145,7 @@ impl Database for Db {
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
-        Ok(self.accounts.get(&address).map(|db_account| AccountInfo {
-            balance: db_account.balance,
-            nonce: db_account.nonce,
-            code_hash: db_account.bytecode_hash,
-            code: None,
-        }))
+        Ok(self.accounts.get(&address).cloned().map(AccountInfo::from))
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
@@ -172,7 +233,7 @@ mod tests {
         let accounts = HashMap::new();
         let mut block_hashes = HashMap::new();
         let number = U256::from(1);
-        let expected_hash = B256::from(2);
+        let expected_hash = B256::from_low_u64_be(2);
         block_hashes.insert(number, expected_hash);
         let mut db = Db {
             accounts,
