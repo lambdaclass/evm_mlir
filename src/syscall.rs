@@ -1024,8 +1024,6 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
-
-
     /// Returns the block number.
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall<'c>(
