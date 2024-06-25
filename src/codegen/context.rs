@@ -463,6 +463,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn keccak256_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::keccak256_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            hash_ptr,
+            location,
+        )
+    }
+
     pub(crate) fn get_calldata_size_syscall(
         &'c self,
         block: &'c Block,
@@ -735,6 +754,21 @@ impl<'c> OperationCtx<'c> {
             block,
             number,
             location,
+        )
+    }
+
+    pub(crate) fn store_in_timestamp_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        timestamp_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_timestamp_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            timestamp_ptr,
         )
     }
 

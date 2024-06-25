@@ -31,14 +31,14 @@ pub struct CfgEnv {
 
 #[derive(Clone, Debug, Default)]
 pub struct BlockEnv {
-    // The number of ancestor blocks of this block (block height).
+    /// The number of ancestor blocks of this block (block height).
     pub number: U256,
-    // Coinbase or miner or address that created and signed the block.
-    //
-    // This is the receiver address of all the gas spent in the block.
+    /// Coinbase or miner or address that created and signed the block.
+    ///
+    /// This is the receiver address of all the gas spent in the block.
     pub coinbase: Address,
-    // The timestamp of the block in seconds since the UNIX epoch.
-    //pub timestamp: U256,
+    /// The timestamp of the block in seconds since the UNIX epoch.
+    pub timestamp: U256,
     // The gas limit of the block.
     //pub gas_limit: U256,
     // The base fee per gas, added in the London upgrade with [EIP-1559].

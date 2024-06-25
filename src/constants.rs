@@ -33,6 +33,7 @@ pub mod gas_cost {
     pub const AND: i64 = 3;
     pub const OR: i64 = 3;
     pub const XOR: i64 = 3;
+    pub const NOT: i64 = 3;
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
@@ -66,6 +67,8 @@ pub mod gas_cost {
     pub const PUSHN: i64 = 3;
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
+    pub const TIMESTAMP: i64 = 2;
+    pub const KECCAK256: i64 = 30;
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
     pub const ADDRESS: i64 = 2;
