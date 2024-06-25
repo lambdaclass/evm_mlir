@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use evm_mlir::{
     constants::gas_cost,
-    db::{Bytecode, Db, DbAccount},
+    db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, B256, U256 as EU256},
+    primitives::{Address, Bytes, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
     Env, Evm,
@@ -1221,42 +1220,41 @@ fn balance_static_gas_check() {
 }
 
 #[test]
-fn selfbalance_with_unexisting_account() {
-    // This example should never happen in real execution, since the caller address is always set
-    // But its good to have the program's output correctly defined anyways
-    let mut operations = vec![Operation::Chainid];
-    append_return_result_operations(&mut operations);
-    let (mut env, db) = default_env_and_db_setup(operations);
-    env.tx.gas_limit = 999_999;
-
-    let expected_result = BigUint::from(0_u8);
-    run_program_assert_num_result(env, db, expected_result);
-}
-
-#[test]
 fn selfbalance_with_existing_account() {
-    let caller_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
-    let caller_balance: u64 = 12345;
+    let contract_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let contract_balance: u64 = 12345;
     let mut operations = vec![Operation::SelfBalance];
     append_return_result_operations(&mut operations);
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
-    let mut accounts = HashMap::new();
-    // Caller account
-    let db_account = DbAccount {
-        nonce: 0,
-        balance: caller_balance.into(),
-        storage: HashMap::new(),
-        bytecode_hash: B256::zero(),
-    };
-    accounts.insert(caller_address, db_account);
-    let db = Db::new()
-        .with_bytecode(Address::zero(), bytecode)
-        .with_accounts(accounts);
+    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    db.update_account(contract_address, 0, contract_balance.into());
     let mut env = Env::default();
-    env.tx.caller = caller_address;
+    env.tx.transact_to = TransactTo::Call(contract_address);
     env.tx.gas_limit = 999_999;
-    let expected_result = BigUint::from(caller_balance);
+    let expected_result = BigUint::from(contract_balance);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn selfbalance_and_balance_with_address_check() {
+    let contract_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let contract_balance: u64 = 12345;
+    let mut operations = vec![
+        Operation::Address,
+        Operation::Balance,
+        Operation::SelfBalance,
+        Operation::Eq,
+    ];
+    append_return_result_operations(&mut operations);
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    db.update_account(contract_address, 0, contract_balance.into());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(contract_address);
+    env.tx.gas_limit = 999_999;
+    let expected_result = BigUint::from(1_u8); //True
     run_program_assert_num_result(env, db, expected_result);
 }
 

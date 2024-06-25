@@ -18,8 +18,8 @@
 use std::ffi::c_void;
 
 use crate::{
-    db::{Database, Db},
-    env::Env,
+    db::{AccountInfo, Database, Db},
+    env::{Env, TransactTo},
     primitives::{Address, U256 as EU256},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
 };
@@ -194,17 +194,12 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
-        let address = self.env.tx.caller;
-        match self.db.basic(address).unwrap() {
-            Some(a) => {
-                balance.hi = (a.balance >> 128).low_u128();
-                balance.lo = a.balance.low_u128();
-            }
-            None => {
-                balance.hi = 0;
-                balance.lo = 0;
-            }
+        let account = match self.env.tx.transact_to {
+            TransactTo::Call(address) => self.db.basic(address).unwrap().unwrap_or_default(),
+            TransactTo::Create => AccountInfo::default(), //This branch should never happen
         };
+        balance.hi = (account.balance >> 128).low_u128();
+        balance.lo = account.balance.low_u128();
     }
 
     pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {

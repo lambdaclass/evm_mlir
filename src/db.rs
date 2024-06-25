@@ -36,7 +36,7 @@ impl Db {
         }
     }
 
-    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
+    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
         let hash = B256::from_slice(&hasher.finalize());
@@ -45,30 +45,13 @@ impl Db {
             ..Default::default()
         };
 
-        let mut contracts = self.contracts.clone();
-        let mut accounts = self.accounts.clone();
-        let block_hashes = self.block_hashes;
-
-        accounts.insert(address, account);
-        contracts.insert(hash, bytecode);
+        self.accounts.insert(address, account);
+        self.contracts.insert(hash, bytecode);
 
         Self {
-            accounts,
-            contracts,
-            block_hashes,
-        }
-    }
-
-    pub fn with_accounts(self, new_accounts: HashMap<Address, DbAccount>) -> Self {
-        let contracts = self.contracts;
-        let block_hashes = self.block_hashes;
-        let mut accounts = self.accounts.clone();
-        accounts.extend(new_accounts);
-
-        Self {
-            accounts,
-            contracts,
-            block_hashes,
+            accounts: self.accounts,
+            contracts: self.contracts,
+            block_hashes: self.block_hashes,
         }
     }
 
