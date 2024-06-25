@@ -21,10 +21,11 @@ use crate::{
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
-        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
-        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
-        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        constant_value_from_i64, consume_gas, consume_gas_as_value,
+        expand_memory_from_offset_and_size, extend_memory, get_basefee, get_block_number,
+        get_memory_pointer, get_nth_from_stack, get_remaining_gas, get_stack_pointer,
+        inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -3952,9 +3953,93 @@ fn codegen_address<'c, 'r>(
 }
 
 fn codegen_call<'c, 'r>(
-    _op_ctx: &mut OperationCtx<'c>,
-    _region: &'r Region<'c>,
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    todo!()
-}
+    /*
+    1. Get arguments from stack
+    2. Validations
+        - There is enough gas to perform the op -> Then it will be divided by 64
+        - value < account.balance (probably this will be checked on the syscall side)
+        - Offset and size are correct (both of them)
+    3. Call the syscall
+    4. Update the gas value
+    5. Push the result on the stack
+    */
 
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_at_least(context, &start_block, 7)?;
+    let gas_flag = consume_gas(context, &start_block, 0)?; //TODO: Change this
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gas = stack_pop(context, &ok_block)?;
+    let address = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+    let args_offset = stack_pop(context, &ok_block)?;
+    let args_size = stack_pop(context, &ok_block)?;
+    let ret_offset = stack_pop(context, &ok_block)?;
+    let ret_size = stack_pop(context, &ok_block)?;
+
+    //TODO: Gas cost calculation has to be added to this expansions
+    let args_block = region.append_block(Block::new(&[]));
+    let ret_block = region.append_block(Block::new(&[]));
+    expand_memory_from_offset_and_size(
+        op_ctx,
+        &ok_block,
+        &args_block,
+        region,
+        args_offset,
+        args_size,
+    )?;
+    expand_memory_from_offset_and_size(
+        op_ctx,
+        &args_block,
+        &ret_block,
+        region,
+        ret_offset,
+        ret_size,
+    )?;
+
+    //TODO: Here we should check there is enough gas and divide it by 64
+
+    let call_result = op_ctx.call_syscall(
+        &ret_block,
+        location,
+        gas,
+        address,
+        value,
+        args_offset,
+        args_size,
+        ret_offset,
+        ret_size,
+    )?;
+
+    let call_result = ret_block
+        .append_operation(arith::extui(call_result, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ret_block, call_result)?;
+
+    Ok((start_block, ret_block))
+}

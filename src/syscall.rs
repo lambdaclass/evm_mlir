@@ -15,14 +15,17 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{ffi::c_void, path::PathBuf};
 
 use melior::ExecutionEngine;
 
 use crate::{
-    db::Db,
-    env::Env,
-    primitives::{Address, U256 as EU256},
+    context::Context,
+    db::{Db},
+    env::{Env, TransactTo},
+    executor::{Executor, OptLevel},
+    primitives::{Address, Bytes, U256 as EU256},
+    program::Program,
 };
 
 /// Function type for the main entrypoint of the generated code
@@ -47,6 +50,20 @@ impl U256 {
         buffer[12..32].copy_from_slice(&value.0);
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
+
+    pub fn to_address(&self) -> Address {
+        let hi_bytes = self.hi.to_be_bytes();
+        let lo_bytes = self.lo.to_be_bytes();
+        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
+        Address::from_slice(&address)
+    }
+
+    pub fn to_primitive_u256(&self) -> EU256 {
+        let hi_bytes = self.hi.to_be_bytes();
+        let lo_bytes = self.lo.to_be_bytes();
+        let bytes = [&hi_bytes[..], &lo_bytes[..]].concat();
+        EU256::from_big_endian(&bytes)
     }
 }
 
@@ -197,6 +214,90 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.return_data = Some((offset as usize, bytes_len as usize));
         self.inner_context.gas_remaining = Some(remaining_gas);
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
+    }
+
+    pub extern "C" fn call(
+        &mut self,
+        gas: u64,
+        call_to_address: &U256,
+        value_to_transfer: &U256,
+        args_offset: u32,
+        args_size: u32,
+        ret_offset: u32,
+        ret_size: u32,
+        remaining_gas: &mut u64,
+    ) -> u32 {
+        /*
+        Idea:
+        Modify Env struct:
+         - transact_to -> Actual caller
+         - caller -> Actual TransacTo
+         - value
+         - gas_limit -> From the remaining gas when this syscall is called, dividied by 64
+        */
+        const REVERT_SUCCESS_CODE: u32 = 0;
+        const SUCCESS_RETURN_CODE: u32 = 1;
+        //TODO: Check that the args offsets and sizes are correct
+        let address = call_to_address.to_address();
+        let value = value_to_transfer.to_primitive_u256();
+        dbg!(address);
+        dbg!(value);
+
+        let mut env = self.env.clone();
+        env.tx.transact_to = TransactTo::Call(address);
+        //TODO: Check if this is ok
+        env.tx.caller = match self.env.tx.transact_to {
+            TransactTo::Call(a) => a,
+            TransactTo::Create => Address::zero(),
+        };
+        //TODO: Here we have to check if the account balance is enough to send this ammount
+        env.tx.value = value;
+        //TODO: Amount of gas to send should be validated from MLIR side
+        env.tx.gas_limit = gas;
+
+        //Copy the calldata from memory
+        let off = args_offset as usize;
+        let size = args_size as usize;
+        env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+
+        let bytecode = self
+            .db
+            .code_by_address(address)
+            .expect("failed to load bytecode");
+        let program = Program::from_bytecode(&bytecode).unwrap();
+
+        //TODO: REMOVE THIS
+        let output_file = PathBuf::from("output2");
+
+        let context = Context::new();
+        let module = context
+            .compile(&program, &output_file)
+            .expect("failed to compile program");
+
+        let executor = Executor::new(&module, OptLevel::Aggressive);
+        let mut context = SyscallContext::new(env.clone(), &mut self.db);
+
+        executor.execute(&mut context, env.tx.gas_limit);
+
+        //TODO: What to do with logs?
+        match context.get_result() {
+            ExecutionResult::Success {
+                return_data,
+                gas_remaining,
+                ..
+            } => {
+                let off = ret_offset as usize;
+                let size = ret_size as usize;
+                self.inner_context.memory[off..off + size].copy_from_slice(&return_data);
+                *remaining_gas = gas_remaining;
+                SUCCESS_RETURN_CODE
+            }
+            ExecutionResult::Revert { gas_remaining, .. } => {
+                *remaining_gas = gas_remaining;
+                REVERT_SUCCESS_CODE
+            }
+            _ => REVERT_SUCCESS_CODE,
+        }
     }
 
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
@@ -367,6 +468,7 @@ pub mod symbols {
     pub const GET_CHAINID: &str = "evm_mlir__get_chainid";
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
+    pub const CALL: &str = "evm_mlir__call";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -419,6 +521,21 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                     *const U256,
                     *const U256,
                     *const U256,
+                ) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::CALL,
+            SyscallContext::call
+                as *const fn(
+                    *mut c_void,
+                    u64,
+                    *const U256,
+                    *const U256,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    *mut u64,
                 ) as *mut (),
         );
         engine.register_symbol(
@@ -693,6 +810,25 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORE_IN_BASEFEE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::CALL),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[
+                        ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
+                        ptr_type,
+                    ],
+                    &[uint32],
+                )
+                .into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -1070,5 +1206,43 @@ pub(crate) mod mlir {
                 location,
             ))
             .result(0);
+    }
+
+    pub(crate) fn call_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+        remaining_gas_ptr: Value<'c, 'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::CALL),
+                &[
+                    syscall_ctx,
+                    gas,
+                    address,
+                    value,
+                    args_offset,
+                    args_size,
+                    ret_offset,
+                    ret_size,
+                    remaining_gas_ptr,
+                ],
+                &[uint32],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 }

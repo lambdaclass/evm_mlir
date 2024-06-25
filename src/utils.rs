@@ -1,7 +1,6 @@
 use melior::{
     dialect::{
-        arith,
-        arith::CmpiPredicate,
+        arith::{self, CmpiPredicate},
         cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
@@ -1155,6 +1154,84 @@ pub(crate) fn extend_memory<'c>(
         location,
     ));
 
+    Ok(())
+}
+
+pub(crate) fn expand_memory_from_offset_and_size<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    return_block: &'c Block,
+    region: &'c Region<'c>,
+    offset: Value<'c, 'c>,
+    size: Value<'c, 'c>,
+) -> Result<(), CodegenError> {
+    // truncate offsets and size to 32 bits
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+    let ptr_type = pointer(context, 0);
+
+    let offset = block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    let size = block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)
+        .unwrap()
+        .into();
+
+    //required size = des_offset + size
+    let required_memory_size = block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    //TODO: Modify gas consumption
+    extend_memory(
+        op_ctx,
+        &block,
+        &return_block,
+        region,
+        required_memory_size,
+        0,
+    )?;
+    let memory_ptr = get_memory_pointer(op_ctx, &return_block, location)?;
+    let memory_dest = return_block
+        .append_operation(llvm::get_element_ptr_dynamic(
+            context,
+            memory_ptr,
+            &[offset],
+            uint8.into(),
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let zero_value = return_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(IntegerType::new(context, 8).into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    return_block.append_operation(
+        ods::llvm::intr_memset(
+            context,
+            memory_dest,
+            zero_value,
+            size,
+            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
+            location,
+        )
+        .into(),
+    );
     Ok(())
 }
 

@@ -21,7 +21,10 @@ use crate::{
     errors::CodegenError,
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
-    utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
+    utils::{
+        constant_value_from_i64, consume_gas, get_remaining_gas, integer_constant_from_u8,
+        llvm_mlir,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -746,5 +749,96 @@ impl<'c> OperationCtx<'c> {
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+    ) -> Result<Value, CodegenError> {
+        let context = self.mlir_context;
+        let uint64 = IntegerType::new(context, 64);
+        let ptr_type = pointer(context, 0);
+
+        //TODO: How to manage syscall gas send
+        let remaining_gas = get_remaining_gas(context, block)?;
+        //gas_to_send = min(remaining_gas / 64, gas)
+
+        let gas_denominator = constant_value_from_i64(context, block, 64_i64)?;
+        let max_gas_to_send: Value = block
+            .append_operation(arith::divui(remaining_gas, gas_denominator, location))
+            .result(0)?
+            .into();
+        let gas_to_send: Value = block
+            .append_operation(arith::minui(max_gas_to_send, gas, location))
+            .result(0)?
+            .into();
+
+
+
+        let gas_flag = consume_gas(context, block, gas_to_send);
+
+        //Call consume_gas(gas_to_send) -> If there is no gas, then it will revert
+        //Store the gas_to_send value inside the gas_return_ptr
+        //Call the syscall
+        //Load the remaining gas from gas_return_ptr
+        //Add the remaining gas to the gas_ptr
+
+        // Alloc pointer to return gas value
+        let pointer_size = constant_value_from_i64(context, &block, 1_i64)?;
+        let gas_return_ptr = block
+            .append_operation(llvm::alloca(
+                context,
+                pointer_size,
+                ptr_type,
+                location,
+                AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint64.into()))),
+            ))
+            .result(0)?
+            .into();
+
+        let res = block.append_operation(llvm::store(
+            context,
+            remaining_gas,
+            gas_return_ptr,
+            location,
+            LoadStoreOptions::default(),
+        ));
+
+        assert!(res.verify());
+
+        let result = syscall::mlir::call_syscall(
+            context,
+            self.syscall_ctx,
+            block,
+            location,
+            gas,
+            address,
+            value,
+            args_offset,
+            args_size,
+            ret_offset,
+            ret_size,
+            gas_return_ptr,
+        )?;
+
+        //TODO: Load the gas from the gas_return_ptr and then add it to the remaining gas
+
+        let uint256 = IntegerType::new(context, 256);
+
+        let result = block
+            .append_operation(arith::extui(result, uint256.into(), location))
+            .result(0)?
+            .into();
+
+        Ok(result)
     }
 }

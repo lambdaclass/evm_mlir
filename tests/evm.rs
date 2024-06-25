@@ -1040,3 +1040,45 @@ fn address_stack_overflow() {
     let env = Env::default();
     run_program_assert_halt(program, env);
 }
+
+#[test]
+fn call_returns_simple_addition() {
+    let (a, b) = (BigUint::from(3), BigUint::from(5));
+    let expected_result = a + b;
+    let mut callee_ops = vec![
+        Operation::Push((1_u8, a)),
+        Operation::Push((1_u8, b)),
+        Operation::Add,
+    ];
+
+    /*
+    gas: amount of gas to send to the sub context to execute. The gas that is not used by the sub context is returned to this one.
+    address: the account which context to execute.
+    value: value in wei to send to the account.
+    argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
+    argsSize: byte size to copy (size of the calldata).
+    retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
+    retSize: byte size to copy (size of the return data).
+    */
+
+    let gas = 100;
+    let address = Address::from_low_u64_be(8080);
+    let value = 1;
+    let args_offset = 0;
+    let args_size = 0;
+    let ret_offset = 0;
+    let ret_size = 32;
+
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+    ];
+
+    run_program_assert_halt(program, env);
+}
