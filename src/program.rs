@@ -34,8 +34,8 @@ pub enum Opcode {
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
     // unused 0x21-0x2F
+    BALANCE = 0x31,
     ADDRESS = 0x30,
-    // BALANCE = 0x31,
     ORIGIN = 0x32,
     CALLER = 0x33,
     CALLVALUE = 0x34,
@@ -43,7 +43,7 @@ pub enum Opcode {
     CALLDATASIZE = 0x36,
     CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
-    // CODECOPY = 0x39,
+    CODECOPY = 0x39,
     GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
     // EXTCODECOPY = 0x3C,
@@ -207,6 +207,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::SHL as u8 => Opcode::SHL,
             x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
+            x if x == Opcode::BALANCE as u8 => Opcode::BALANCE,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLER as u8 => Opcode::CALLER,
             x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
@@ -302,11 +303,10 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::CODECOPY as u8 => Opcode::CODECOPY,
             x if x == Opcode::NOT as u8 => Opcode::NOT,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
-            x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
-            x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -341,6 +341,7 @@ pub enum Operation {
     Shr,
     Shl,
     Sar,
+    Balance,
     Caller,
     Callvalue,
     CalldataLoad,
@@ -372,6 +373,7 @@ pub enum Operation {
     Not,
     CallDataCopy,
     Log(u8),
+    Codecopy,
     Address,
     Origin,
 }
@@ -403,6 +405,7 @@ impl Operation {
             Operation::Shr => vec![Opcode::SHR as u8],
             Operation::Shl => vec![Opcode::SHL as u8],
             Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Balance => vec![Opcode::BALANCE as u8],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
             Operation::Caller => vec![Opcode::CALLER as u8],
             Operation::Callvalue => vec![Opcode::CALLVALUE as u8],
@@ -443,6 +446,7 @@ impl Operation {
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Return => vec![Opcode::RETURN as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
+            Operation::Codecopy => vec![Opcode::CODECOPY as u8],
             Operation::Address => vec![Opcode::ADDRESS as u8],
         }
     }
@@ -499,6 +503,7 @@ impl Program {
                 Opcode::SHR => Operation::Shr,
                 Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
+                Opcode::BALANCE => Operation::Balance,
                 Opcode::ORIGIN => Operation::Origin,
                 Opcode::CALLER => Operation::Caller,
                 Opcode::CALLVALUE => Operation::Callvalue,
@@ -754,6 +759,7 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::CODECOPY => Operation::Codecopy,
                 Opcode::ADDRESS => Operation::Address,
                 Opcode::RETURN => Operation::Return,
                 Opcode::REVERT => Operation::Revert,

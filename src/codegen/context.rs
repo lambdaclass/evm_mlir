@@ -723,6 +723,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,
@@ -746,5 +765,22 @@ impl<'c> OperationCtx<'c> {
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    pub(crate) fn store_in_balance_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
+            location,
+        )
     }
 }
