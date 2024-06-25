@@ -561,6 +561,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_blobbasefee_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        blob_base_fee_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_blobbasefee_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            blob_base_fee_ptr,
+        )
+    }
+
     pub(crate) fn store_in_gasprice_ptr(
         &'c self,
         block: &'c Block,

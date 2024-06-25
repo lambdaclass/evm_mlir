@@ -41,6 +41,9 @@ pub struct BlockEnv {
     pub timestamp: U256,
     // The gas limit of the block.
     //pub gas_limit: U256,
+    // The base fee per blob, added in [EIP-4844]
+    pub blob_base_fee: U256,
+    //
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559

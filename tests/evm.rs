@@ -1277,6 +1277,33 @@ fn selfbalance_gas_check() {
 }
 
 #[test]
+fn blobbasefee_happy_path() {
+    let blob_base_fee: u32 = 1500;
+    let mut operations = vec![Operation::BlobBaseFee];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.block.blob_base_fee = EU256::from(blob_base_fee);
+    let expected_result = BigUint::from(blob_base_fee);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn blobbasefee_gas_check() {
+    let operations = vec![Operation::BlobBaseFee];
+    let needed_gas = gas_cost::BLOBBASEFEE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn blobbasefee_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::BlobBaseFee);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
 fn gaslimit_happy_path() {
     let gaslimit: u64 = 300;
     let mut operations = vec![Operation::Gaslimit];
