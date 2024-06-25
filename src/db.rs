@@ -48,11 +48,7 @@ impl Db {
         self.accounts.insert(address, account);
         self.contracts.insert(hash, bytecode);
 
-        Self {
-            accounts: self.accounts,
-            contracts: self.contracts,
-            block_hashes: self.block_hashes,
-        }
+        self
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
