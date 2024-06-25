@@ -158,7 +158,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x44) DIFFICULTY
 1. (0x45) GASLIMIT
 1. (0x47) SELFBALANCE
-1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
 1. (0x55) SSTORE
