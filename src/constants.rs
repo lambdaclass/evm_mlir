@@ -1,6 +1,7 @@
 pub const MAX_STACK_SIZE: usize = 1024;
 pub const GAS_COUNTER_GLOBAL: &str = "evm_mlir__gas_counter";
 pub const STACK_BASEPTR_GLOBAL: &str = "evm_mlir__stack_baseptr";
+pub const CODE_PTR_GLOBAL: &str = "evm_mlir__code_ptr";
 pub const STACK_PTR_GLOBAL: &str = "evm_mlir__stack_ptr";
 pub const MEMORY_PTR_GLOBAL: &str = "evm_mlir__memory_ptr";
 pub const MEMORY_SIZE_GLOBAL: &str = "evm_mlir__memory_size";
@@ -32,9 +33,11 @@ pub mod gas_cost {
     pub const AND: i64 = 3;
     pub const OR: i64 = 3;
     pub const XOR: i64 = 3;
+    pub const NOT: i64 = 3;
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
+    pub const BALANCE: i64 = 100;
     pub const ORIGIN: i64 = 2;
     pub const CALLER: i64 = 2;
     pub const CALLVALUE: i64 = 2;
@@ -42,6 +45,7 @@ pub mod gas_cost {
     pub const CALLDATASIZE: i64 = 2;
     pub const CALLDATACOPY: i64 = 3;
     pub const CODESIZE: i64 = 2;
+    pub const COINBASE: i64 = 2;
     pub const GASPRICE: i64 = 2;
     pub const NUMBER: i64 = 2;
     pub const CHAINID: i64 = 2;
@@ -63,7 +67,9 @@ pub mod gas_cost {
     pub const DUPN: i64 = 3;
     pub const SWAPN: i64 = 3;
     pub const KECCAK256: i64 = 30;
+    pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
+    pub const ADDRESS: i64 = 2;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;

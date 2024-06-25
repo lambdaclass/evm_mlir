@@ -26,7 +26,7 @@ pub enum Opcode {
     AND = 0x16,
     OR = 0x17,
     XOR = 0x18,
-    // NOT = 0x19,
+    NOT = 0x19,
     BYTE = 0x1A,
     SHL = 0x1B,
     SHR = 0x1C,
@@ -34,8 +34,8 @@ pub enum Opcode {
     // unused 0x1E-0x1F
     KECCAK256 = 0x20,
     // unused 0x21-0x2F
-    // ADDRESS = 0x30,
-    // BALANCE = 0x31,
+    BALANCE = 0x31,
+    ADDRESS = 0x30,
     ORIGIN = 0x32,
     CALLER = 0x33,
     CALLVALUE = 0x34,
@@ -43,7 +43,7 @@ pub enum Opcode {
     CALLDATASIZE = 0x36,
     CALLDATACOPY = 0x37,
     CODESIZE = 0x38,
-    // CODECOPY = 0x39,
+    CODECOPY = 0x39,
     GASPRICE = 0x3A,
     // EXTCODESIZE = 0x3B,
     // EXTCODECOPY = 0x3C,
@@ -51,7 +51,7 @@ pub enum Opcode {
     // RETURNDATACOPY = 0x3E,
     // EXTCODEHASH = 0x3F,
     // BLOCKHASH = 0x40,
-    // COINBASE = 0x41,
+    COINBASE = 0x41,
     // TIMESTAMP = 0x42,
     NUMBER = 0x43,
     // DIFFICULTY = 0x44,
@@ -207,6 +207,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::SHL as u8 => Opcode::SHL,
             x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
+            x if x == Opcode::BALANCE as u8 => Opcode::BALANCE,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLER as u8 => Opcode::CALLER,
             x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
@@ -214,6 +215,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::CALLDATASIZE as u8 => Opcode::CALLDATASIZE,
             x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
             x if x == Opcode::CODESIZE as u8 => Opcode::CODESIZE,
+            x if x == Opcode::COINBASE as u8 => Opcode::COINBASE,
             x if x == Opcode::GASPRICE as u8 => Opcode::GASPRICE,
             x if x == Opcode::NUMBER as u8 => Opcode::NUMBER,
             x if x == Opcode::CHAINID as u8 => Opcode::CHAINID,
@@ -301,9 +303,10 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG3 as u8 => Opcode::LOG3,
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::CODECOPY as u8 => Opcode::CODECOPY,
+            x if x == Opcode::NOT as u8 => Opcode::NOT,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
-            x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
-            x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
+            x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -338,11 +341,13 @@ pub enum Operation {
     Shr,
     Shl,
     Sar,
+    Balance,
     Caller,
     Callvalue,
     CalldataLoad,
     CallDataSize,
     Codesize,
+    Coinbase,
     Gasprice,
     Number,
     Chainid,
@@ -366,8 +371,11 @@ pub enum Operation {
     Mstore,
     Mstore8,
     Keccak256,
+    Not,
     CallDataCopy,
     Log(u8),
+    Codecopy,
+    Address,
     Origin,
 }
 
@@ -398,6 +406,7 @@ impl Operation {
             Operation::Shr => vec![Opcode::SHR as u8],
             Operation::Shl => vec![Opcode::SHL as u8],
             Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Balance => vec![Opcode::BALANCE as u8],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
             Operation::Caller => vec![Opcode::CALLER as u8],
             Operation::Callvalue => vec![Opcode::CALLVALUE as u8],
@@ -405,6 +414,7 @@ impl Operation {
             Operation::CallDataSize => vec![Opcode::CALLDATASIZE as u8],
             Operation::CallDataCopy => vec![Opcode::CALLDATACOPY as u8],
             Operation::Codesize => vec![Opcode::CODESIZE as u8],
+            Operation::Coinbase => vec![Opcode::COINBASE as u8],
             Operation::Gasprice => vec![Opcode::GASPRICE as u8],
             Operation::Number => vec![Opcode::NUMBER as u8],
             Operation::Chainid => vec![Opcode::CHAINID as u8],
@@ -431,12 +441,15 @@ impl Operation {
                 opcode_bytes
             }
             Operation::Sgt => vec![Opcode::SGT as u8],
+            Operation::Not => vec![Opcode::NOT as u8],
             Operation::Dup(n) => vec![Opcode::DUP1 as u8 + n - 1],
             Operation::Swap(n) => vec![Opcode::SWAP1 as u8 + n - 1],
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Return => vec![Opcode::RETURN as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Keccak256 => vec![Opcode::KECCAK256 as u8],
+            Operation::Codecopy => vec![Opcode::CODECOPY as u8],
+            Operation::Address => vec![Opcode::ADDRESS as u8],
         }
     }
 }
@@ -492,6 +505,7 @@ impl Program {
                 Opcode::SHR => Operation::Shr,
                 Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
+                Opcode::BALANCE => Operation::Balance,
                 Opcode::ORIGIN => Operation::Origin,
                 Opcode::CALLER => Operation::Caller,
                 Opcode::CALLVALUE => Operation::Callvalue,
@@ -499,6 +513,7 @@ impl Program {
                 Opcode::CALLDATASIZE => Operation::CallDataSize,
                 Opcode::CALLDATACOPY => Operation::CallDataCopy,
                 Opcode::CODESIZE => Operation::Codesize,
+                Opcode::COINBASE => Operation::Coinbase,
                 Opcode::GASPRICE => Operation::Gasprice,
                 Opcode::NUMBER => Operation::Number,
                 Opcode::CHAINID => Operation::Chainid,
@@ -708,6 +723,7 @@ impl Program {
                     pc += 31;
                     Operation::Push((32, (BigUint::from_bytes_be(x))))
                 }
+                Opcode::NOT => Operation::Not,
                 Opcode::DUP1 => Operation::Dup(1),
                 Opcode::DUP2 => Operation::Dup(2),
                 Opcode::DUP3 => Operation::Dup(3),
@@ -746,6 +762,8 @@ impl Program {
                 Opcode::LOG2 => Operation::Log(2),
                 Opcode::LOG3 => Operation::Log(3),
                 Opcode::LOG4 => Operation::Log(4),
+                Opcode::CODECOPY => Operation::Codecopy,
+                Opcode::ADDRESS => Operation::Address,
                 Opcode::RETURN => Operation::Return,
                 Opcode::REVERT => Operation::Revert,
             };

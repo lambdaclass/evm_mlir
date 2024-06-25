@@ -36,8 +36,7 @@ pub struct BlockEnv {
     // Coinbase or miner or address that created and signed the block.
     //
     // This is the receiver address of all the gas spent in the block.
-    //pub coinbase: Address,
-
+    pub coinbase: Address,
     // The timestamp of the block in seconds since the UNIX epoch.
     //pub timestamp: U256,
     // The gas limit of the block.
@@ -129,7 +128,8 @@ impl Default for TxEnv {
     fn default() -> Self {
         Self {
             caller: Address::zero(),
-            gas_limit: u64::MAX,
+            // TODO: we are using signed comparison for the gas counter
+            gas_limit: i64::MAX as _,
             gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
@@ -151,4 +151,14 @@ pub enum TransactTo {
     Call(Address),
     /// Contract creation.
     Create,
+}
+
+impl TxEnv {
+    pub fn get_address(&self) -> Address {
+        match self.transact_to {
+            TransactTo::Call(addr) => addr,
+            // TODO: check if its ok to return zero in this case
+            TransactTo::Create => Address::zero(),
+        }
+    }
 }
