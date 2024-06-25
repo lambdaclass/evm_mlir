@@ -34,8 +34,8 @@ pub enum Opcode {
     // unused 0x1E-0x1F
     // KECCAK256 = 0x20,
     // unused 0x21-0x2F
+    BALANCE = 0x31,
     ADDRESS = 0x30,
-    // BALANCE = 0x31,
     ORIGIN = 0x32,
     CALLER = 0x33,
     CALLVALUE = 0x34,
@@ -207,6 +207,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::SHL as u8 => Opcode::SHL,
             x if x == Opcode::SHR as u8 => Opcode::SHR,
             x if x == Opcode::SAR as u8 => Opcode::SAR,
+            x if x == Opcode::BALANCE as u8 => Opcode::BALANCE,
             x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
             x if x == Opcode::CALLER as u8 => Opcode::CALLER,
             x if x == Opcode::CALLVALUE as u8 => Opcode::CALLVALUE,
@@ -306,8 +307,6 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::NOT as u8 => Opcode::NOT,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::ADDRESS as u8 => Opcode::ADDRESS,
-            x if x == Opcode::ORIGIN as u8 => Opcode::ORIGIN,
-            x if x == Opcode::CALLDATACOPY as u8 => Opcode::CALLDATACOPY,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -342,6 +341,7 @@ pub enum Operation {
     Shr,
     Shl,
     Sar,
+    Balance,
     Caller,
     Callvalue,
     CalldataLoad,
@@ -405,6 +405,7 @@ impl Operation {
             Operation::Shr => vec![Opcode::SHR as u8],
             Operation::Shl => vec![Opcode::SHL as u8],
             Operation::Sar => vec![Opcode::SAR as u8],
+            Operation::Balance => vec![Opcode::BALANCE as u8],
             Operation::Origin => vec![Opcode::ORIGIN as u8],
             Operation::Caller => vec![Opcode::CALLER as u8],
             Operation::Callvalue => vec![Opcode::CALLVALUE as u8],
@@ -502,6 +503,7 @@ impl Program {
                 Opcode::SHR => Operation::Shr,
                 Opcode::SHL => Operation::Shl,
                 Opcode::SAR => Operation::Sar,
+                Opcode::BALANCE => Operation::Balance,
                 Opcode::ORIGIN => Operation::Origin,
                 Opcode::CALLER => Operation::Caller,
                 Opcode::CALLVALUE => Operation::Callvalue,
