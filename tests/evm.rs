@@ -747,11 +747,11 @@ fn codecopy() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     assert!(&result.is_success());
 
-    let result_data = result.return_data().unwrap();
+    let result_data = result.output().unwrap();
     let expected_result = program.to_bytecode();
     assert_eq!(result_data, &expected_result);
 }
@@ -783,13 +783,13 @@ fn codecopy_with_offset_out_of_bounds() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     assert!(&result.is_success());
 
-    let result_data = result.return_data().unwrap();
+    let result_data = result.output().unwrap();
     let expected_result = [&program.to_bytecode()[6..], &[0_u8; 6]].concat();
-    assert_eq!(result_data, expected_result);
+    assert_eq!(result_data, &expected_result);
 }
 
 #[test]
