@@ -43,6 +43,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x35) CALLDATALOAD
 1. (0x36) CALLDATASIZE
 1. (0x38) CODESIZE
+1. (0x4A) BLOBBASEFEE
 1. (0x50) POP
 1. (0x51) MLOAD
 1. (0x52) MSTORE
@@ -156,7 +157,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x47) SELFBALANCE
 1. (0x48) BASEFEE
 1. (0x49) BLOBHASH
-1. (0x4A) BLOBBASEFEE
 1. (0x54) SLOAD
 1. (0x55) SSTORE
 1. (0x5C) TLOAD
