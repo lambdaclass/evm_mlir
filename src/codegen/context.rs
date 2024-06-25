@@ -463,6 +463,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn keccak256_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::keccak256_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            hash_ptr,
+            location,
+        )
+    }
+
     pub(crate) fn get_calldata_size_syscall(
         &'c self,
         block: &'c Block,
@@ -738,6 +757,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,
@@ -761,5 +799,22 @@ impl<'c> OperationCtx<'c> {
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    pub(crate) fn store_in_balance_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
+            location,
+        )
     }
 }

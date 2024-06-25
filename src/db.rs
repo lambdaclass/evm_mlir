@@ -29,6 +29,13 @@ impl Db {
         Self::default()
     }
 
+    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+        if let Some(a) = self.accounts.get_mut(&address) {
+            a.nonce = nonce;
+            a.balance = balance;
+        }
+    }
+
     pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
         let mut db = Db::default();
         let mut hasher = Keccak256::new();

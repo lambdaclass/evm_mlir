@@ -70,7 +70,10 @@ impl Evm<Db> {
         let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
 
+        // TODO: improve this once we stabilize the API a bit
+        context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, self.env.tx.gas_limit);
+
         context.get_result()
     }
 }

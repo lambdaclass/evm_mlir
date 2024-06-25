@@ -723,6 +723,76 @@ fn log4() {
 }
 
 #[test]
+fn codecopy() {
+    let size = 12_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = program.to_bytecode();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn codecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 6th byte (offset = 6)
+    // so the result must be [CODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0, ..., 0]
+    let size = 12_u8;
+    let offset = 6_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy, // 6th byte
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = [&program.to_bytecode()[6..], &[0_u8; 6]].concat();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
 fn callvalue_happy_path() {
     let callvalue: u32 = 1500;
     let operations = vec![Operation::Callvalue];
@@ -1067,4 +1137,110 @@ fn address_stack_overflow() {
     program.push(Operation::Address);
     let env = Env::default();
     run_program_assert_halt(program, env);
+}
+
+// address with more than 20 bytes should be invalid
+#[test]
+fn balance_with_invalid_address() {
+    let a = BigUint::from(1_u8) << 255_u8;
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let program = Program::from(vec![
+        Operation::Push((32_u8, a.clone())),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        // take the last 20 bytes of the address, because that's what it's done with it's avalid
+        Address::from_slice(&a.to_bytes_be()[0..20]),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(0_u8);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_non_existing_account() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let env = Env::default();
+
+    run_program_assert_num_result(operations, env, BigUint::from(0_u8));
+}
+
+#[test]
+fn balance_with_existing_account() {
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let big_a = BigUint::from_bytes_be(address.as_bytes());
+    let program = Program::from(vec![
+        Operation::Push((20_u8, big_a)),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap(),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(123456_u32);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_stack_underflow() {
+    let program = vec![Operation::Balance];
+    let env = Env::default();
+
+    run_program_assert_halt(program, env);
+}
+
+#[test]
+fn balance_static_gas_check() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let env = Env::default();
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
 }

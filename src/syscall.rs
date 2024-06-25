@@ -18,12 +18,13 @@
 use std::ffi::c_void;
 
 use crate::{
-    db::Db,
+    db::{Database, Db},
     env::Env,
     primitives::{Address, U256 as EU256},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
 };
 use melior::ExecutionEngine;
+use sha3::{Digest, Keccak256};
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -81,6 +82,8 @@ pub struct InnerContext {
     memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
+    // The program bytecode
+    pub program: Vec<u8>,
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
@@ -190,6 +193,16 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
+        let offset = offset as usize;
+        let size = size as usize;
+        let data = &self.inner_context.memory[offset..offset + size];
+        let mut hasher = Keccak256::new();
+        hasher.update(data);
+        let result = hasher.finalize();
+        *hash_ptr = U256::from_be_bytes(result.into());
+    }
+
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
         let aux = &self.env.tx.value;
         value.lo = aux.low_u128();
@@ -251,6 +264,30 @@ impl<'c> SyscallContext<'c> {
                 std::ptr::null_mut()
             }
         }
+    }
+
+    pub extern "C" fn copy_code_to_memory(
+        &mut self,
+        code_offset: u32,
+        size: u32,
+        dest_offset: u32,
+    ) {
+        let code_size = self.inner_context.program.len();
+        // cast everything to `usize`
+        let code_offset = code_offset as usize;
+        let size = size as usize;
+        let dest_offset = dest_offset as usize;
+
+        // adjust the size so it does not go out of bounds
+        let size: usize = if code_offset + size > code_size {
+            code_size.saturating_sub(code_offset)
+        } else {
+            size
+        };
+
+        let code_slice = &self.inner_context.program[code_offset..code_offset + size];
+        // copy the program into memory
+        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
@@ -342,11 +379,38 @@ impl<'c> SyscallContext<'c> {
         basefee.hi = (self.env.block.basefee >> 128).low_u128();
         basefee.lo = self.env.block.basefee.low_u128();
     }
+
+    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) {
+        // addresses longer than 20 bytes should be invalid
+        if (address.hi >> 32) != 0 {
+            balance.hi = 0;
+            balance.lo = 0;
+        } else {
+            let address_hi_slice = address.hi.to_be_bytes();
+            let address_lo_slice = address.lo.to_be_bytes();
+
+            let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
+
+            let address = Address::from_slice(&address_slice);
+
+            match self.db.basic(address).unwrap() {
+                Some(a) => {
+                    balance.hi = (a.balance >> 128).low_u128();
+                    balance.lo = a.balance.low_u128();
+                }
+                None => {
+                    balance.hi = 0;
+                    balance.lo = 0;
+                }
+            };
+        }
+    }
 }
 
 pub mod symbols {
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
+    pub const KECCAK256_HASHER: &str = "evm_mlir__keccak256_hasher";
     pub const STORAGE_READ: &str = "evm_mlir__read_storage";
     pub const APPEND_LOG: &str = "evm_mlir__append_log";
     pub const APPEND_LOG_ONE_TOPIC: &str = "evm_mlir__append_log_with_one_topic";
@@ -355,8 +419,10 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
+    pub const COPY_CODE_TO_MEMORY: &str = "evm_mlir__copy_code_to_memory";
     pub const GET_ADDRESS_PTR: &str = "evm_mlir__get_address_ptr";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
+    pub const STORE_IN_BALANCE: &str = "evm_mlir__store_in_balance";
     pub const GET_COINBASE_PTR: &str = "evm_mlir__get_coinbase_ptr";
     pub const STORE_IN_TIMESTAMP_PTR: &str = "evm_mlir__store_in_timestamp_ptr";
     pub const STORE_IN_BASEFEE_PTR: &str = "evm_mlir__store_in_basefee_ptr";
@@ -375,6 +441,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::WRITE_RESULT,
             SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::KECCAK256_HASHER,
+            SyscallContext::keccak256_hasher as *const fn(*mut c_void, u32, u32, *const U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::EXTEND_MEMORY,
@@ -432,6 +503,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
         );
         engine.register_symbol(
+            symbols::COPY_CODE_TO_MEMORY,
+            SyscallContext::copy_code_to_memory as *const fn(*mut c_void, u32, u32, u32) as *mut (),
+        );
+        engine.register_symbol(
             symbols::GET_ORIGIN,
             SyscallContext::get_origin as *const fn(*mut c_void, *mut U256) as *mut (),
         );
@@ -470,6 +545,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CHAINID,
             SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::STORE_IN_BALANCE,
+            SyscallContext::store_in_balance as *const fn(*mut c_void, *const U256, *mut U256)
+                as *mut (),
         );
     };
 }
@@ -510,6 +590,17 @@ pub(crate) mod mlir {
             StringAttribute::new(context, symbols::WRITE_RESULT),
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, uint64, uint8], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::KECCAK256_HASHER),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
             ),
             Region::new(),
             attributes,
@@ -573,6 +664,17 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::EXTEND_MEMORY),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, uint32], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_CODE_TO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -708,6 +810,17 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::STORE_IN_BALANCE),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
     }
 
     /// Stores the return values in the syscall context
@@ -726,6 +839,24 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::WRITE_RESULT),
             &[syscall_ctx, offset, size, gas, reason],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn keccak256_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::KECCAK256_HASHER),
+            &[syscall_ctx, offset, size, hash_ptr],
             &[],
             location,
         ));
@@ -1042,6 +1173,24 @@ pub(crate) mod mlir {
         ));
     }
 
+    pub(crate) fn copy_code_to_memory_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_CODE_TO_MEMORY),
+            &[syscall_ctx, offset, size, dest_offset],
+            &[],
+            location,
+        ));
+    }
+
     /// Returns a pointer to the address of the current executing contract
     #[allow(unused)]
     pub(crate) fn get_address_ptr_syscall<'c>(
@@ -1098,5 +1247,24 @@ pub(crate) mod mlir {
                 location,
             ))
             .result(0);
+    }
+
+    #[allow(unused)]
+    pub(crate) fn store_in_balance_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        let ptr_type = pointer(mlir_ctx, 0);
+        let value = block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
+            &[syscall_ctx, address, balance],
+            &[],
+            location,
+        ));
     }
 }
