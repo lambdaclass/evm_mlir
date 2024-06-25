@@ -7,7 +7,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    syscall::{Log, U256},
+    syscall::{LogData, U256},
     Env, Evm,
 };
 use num_bigint::BigUint;
@@ -22,47 +22,63 @@ fn append_return_result_operations(operations: &mut Vec<Operation>) {
     ]);
 }
 
-fn run_program_assert_result(env: Env, db: Db, expected_result: BigUint) {
-    let mut evm = Evm::new(env, db);
-    let result = evm.transact();
-    assert!(&result.is_success());
-    let result_data = BigUint::from_bytes_be(result.return_data().unwrap());
-    assert_eq!(result_data, expected_result);
-}
-
-fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
-    let program = Program::from(operations);
+fn default_env_and_db_setup(operations: Vec<Operation>) -> (Env, Db) {
+    let mut env = Env::default();
     env.tx.gas_limit = 999_999;
+    let program = Program::from(operations);
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
-    let mut evm = Evm::new(env, db);
+    (env, db)
+}
 
-    let result = evm.transact();
+fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+    let result_data = BigUint::from_bytes_be(result.output().unwrap());
+    assert_eq!(result_data, expected_result);
+}
+
+fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().as_ref(), expected_result);
+}
+
+fn run_program_assert_halt(env: Env, db: Db) {
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
 
 fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
+    let address = match env.tx.transact_to {
+        TransactTo::Call(a) => a,
+        TransactTo::Create => Address::zero(),
+    };
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas;
-    let db = Db::new().with_bytecode(Address::zero(), program.to_bytecode().into());
+    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
-    let result = evm.transact();
+
+    let result = evm.transact().unwrap().result;
     assert!(result.is_success());
 
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit = needed_gas - 1;
-    let db = Db::new().with_bytecode(Address::zero(), program.to_bytecode().into());
+    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
 
@@ -126,10 +142,10 @@ fn fibonacci_example() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let number = BigUint::from_bytes_be(result.return_data().unwrap());
+    assert!(result.is_success());
+    let number = BigUint::from_bytes_be(result.output().unwrap());
     assert_eq!(number, 55_u32.into());
 }
 
@@ -150,7 +166,7 @@ fn test_opcode_origin() {
         .concat()
         .try_into()
         .unwrap();
-    run_program_assert_result(env, db, BigUint::from_bytes_be(&expected_result));
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
@@ -165,8 +181,8 @@ fn test_opcode_origin_gas_check() {
 fn test_opcode_origin_with_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Origin);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -204,13 +220,13 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let mut expected_result = [0_u8; 32];
     expected_result[31] = 1;
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -248,13 +264,13 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let mut expected_result = [0_u8; 32];
     expected_result[30] = 1;
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -290,12 +306,12 @@ fn calldataload_with_offset_greater_than_calldata_size() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let calldata_slice = result.return_data().unwrap();
+    assert!(result.is_success());
+    let calldata_slice = result.output().unwrap();
     let expected_result = [0_u8; 32];
-    assert_eq!(calldata_slice, expected_result);
+    assert_eq!(calldata_slice.as_ref(), expected_result);
 }
 
 #[test]
@@ -321,11 +337,11 @@ fn test_calldatacopy() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -352,11 +368,11 @@ fn test_calldatacopy_zeros_padding() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 0, 0, 0, 0, 0];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -383,11 +399,11 @@ fn test_calldatacopy_memory_offset() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![1, 2, 3, 4, 5];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -415,11 +431,11 @@ fn test_calldatacopy_calldataoffset() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -446,11 +462,11 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    let return_data = result.return_data().unwrap();
+    let return_data = result.output().unwrap().as_ref();
     assert_eq!(return_data, correct_memory);
 }
 
@@ -481,15 +497,15 @@ fn log0() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -520,15 +536,15 @@ fn log1() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -565,15 +581,15 @@ fn log2() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![U256 { lo: 1, hi: 0 }, U256 { lo: 2, hi: 0 }],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -612,11 +628,11 @@ fn log3() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
             U256 { lo: 1, hi: 0 },
@@ -624,7 +640,7 @@ fn log3() {
             U256 { lo: 3, hi: 0 },
         ],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
 }
 
 #[test]
@@ -667,11 +683,11 @@ fn log4() {
     let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact();
+    let result = evm.transact().unwrap().result;
 
-    assert!(&result.is_success());
-    let logs = result.return_logs().unwrap();
-    let expected_logs: Vec<Log> = vec![Log {
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let expected_logs: Vec<LogData> = vec![LogData {
         data: [0xff_u8; 32].into(),
         topics: vec![
             U256 { lo: 1, hi: 0 },
@@ -680,7 +696,77 @@ fn log4() {
             U256 { lo: 4, hi: 0 },
         ],
     }];
-    assert_eq!(logs.to_owned(), expected_logs);
+    assert_eq!(logs, expected_logs);
+}
+
+#[test]
+fn codecopy() {
+    let size = 12_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = program.to_bytecode();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn codecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 6th byte (offset = 6)
+    // so the result must be [CODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0, ..., 0]
+    let size = 12_u8;
+    let offset = 6_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy, // 6th byte
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = [&program.to_bytecode()[6..], &[0_u8; 6]].concat();
+    assert_eq!(result_data, &expected_result);
 }
 
 #[test]
@@ -695,7 +781,7 @@ fn callvalue_happy_path() {
     let bytecode = Bytecode::from(program.to_bytecode());
     let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let expected_result = BigUint::from(callvalue);
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -710,23 +796,77 @@ fn callvalue_gas_check() {
 fn callvalue_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Callvalue);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn coinbase_happy_path() {
+    // taken from evm.codes
+    let coinbase_address = "5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+    let coinbase: [u8; 20] = hex::decode(coinbase_address)
+        .expect("Decoding failed")
+        .try_into()
+        .expect("Incorrect length");
+    let mut operations = vec![Operation::Coinbase];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.block.coinbase = coinbase.into();
+    let expected_result: [u8; 32] = [&[0u8; 12], &coinbase[..]].concat().try_into().unwrap();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn coinbase_gas_check() {
+    let operations = vec![Operation::Coinbase];
+    let needed_gas = gas_cost::COINBASE;
     let env = Env::default();
-    run_program_assert_halt(program, env);
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn coinbase_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Coinbase);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn basefee() {
+    let basefee = 10_u8;
+    let mut operations = vec![Operation::Basefee];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.block.basefee = EU256::from(basefee);
+    let expected_result = BigUint::from(basefee);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn basefee_gas_check() {
+    let program = vec![Operation::Basefee];
+    let needed_gas = gas_cost::BASEFEE;
+    let env = Env::default();
+    run_program_assert_gas_exact(program, env, needed_gas as _);
+}
+
+#[test]
+fn basefee_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Basefee);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn block_number_check() {
     let mut operations = vec![Operation::Number];
     append_return_result_operations(&mut operations);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.block.number = ethereum_types::U256::from(2147483639);
-    let program = Program::from(operations);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let expected_result = BigUint::from(2147483639_u32);
-
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -741,10 +881,9 @@ fn block_number_check_gas() {
 #[test]
 fn block_number_with_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
-    let env = Env::default();
-
     program.push(Operation::Number);
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -752,15 +891,10 @@ fn gasprice_happy_path() {
     let gas_price: u32 = 33192;
     let mut operations = vec![Operation::Gasprice];
     append_return_result_operations(&mut operations);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.gas_price = EU256::from(gas_price);
-    let program = Program::from(operations);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let expected_result = BigUint::from(gas_price);
-
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -775,8 +909,8 @@ fn gasprice_gas_check() {
 fn gasprice_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Gasprice);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -784,15 +918,10 @@ fn chainid_happy_path() {
     let chainid: u64 = 1333;
     let mut operations = vec![Operation::Chainid];
     append_return_result_operations(&mut operations);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.cfg.chain_id = chainid;
-    let program = Program::from(operations);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let expected_result = BigUint::from(chainid);
-
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -807,8 +936,261 @@ fn chainid_gas_check() {
 fn chainid_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Chainid);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn caller_happy_path() {
+    let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let mut operations = vec![Operation::Caller];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.tx.caller = caller;
+    let caller_bytes = &caller.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn caller_gas_check() {
+    let operations = vec![Operation::Caller];
+    let needed_gas = gas_cost::CALLER;
     let env = Env::default();
-    run_program_assert_halt(program, env);
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn caller_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Caller);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn sload_gas_consumption() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+    let result = gas_cost::PUSHN + gas_cost::SLOAD;
+    let env = Env::default();
+
+    run_program_assert_gas_exact(program, env, result as _);
+}
+
+#[test]
+fn sload_with_valid_key() {
+    let key = 80_u8;
+    let value = 11_u8;
+    let program = Program::from(vec![
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sload,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let caller_address = Address::from_low_u64_be(41);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(address);
+    env.tx.caller = caller_address;
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    evm.db
+        .write_storage(caller_address, EU256::from(key), EU256::from(value));
+
+    let result = evm.transact().unwrap().result;
+    assert!(&result.is_success());
+    let result = result.output().unwrap().as_ref();
+
+    assert_eq!(EU256::from(result), EU256::from(value));
+}
+
+#[test]
+fn sload_with_invalid_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(5_u8))),
+        Operation::Sload,
+    ];
+    let (env, db) = default_env_and_db_setup(program);
+    let result = BigUint::from(0_u8);
+    run_program_assert_num_result(env, db, result);
+}
+
+#[test]
+fn sload_with_stack_underflow() {
+    let program = vec![Operation::Sload];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn address() {
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let operations = vec![
+        Operation::Address,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let address_bytes = &address.to_fixed_bytes();
+    //We extend the result to be 32 bytes long.
+    let expected_result: [u8; 32] = [&[0u8; 12], &address_bytes[0..20]]
+        .concat()
+        .try_into()
+        .unwrap();
+
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(address);
+
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(&result.is_success());
+    let result_data = result.output().unwrap().as_ref();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn address_with_gas_cost() {
+    let operations = vec![Operation::Address];
+    let address = Address::from_low_u64_be(1234);
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(address);
+    let needed_gas = gas_cost::ADDRESS;
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn address_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Address);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+// address with more than 20 bytes should be invalid
+#[test]
+fn balance_with_invalid_address() {
+    let a = BigUint::from(1_u8) << 255_u8;
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let program = Program::from(vec![
+        Operation::Push((32_u8, a.clone())),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        // take the last 20 bytes of the address, because that's what it's done with it's avalid
+        Address::from_slice(&a.to_bytes_be()[0..20]),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(0_u8);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_non_existing_account() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = BigUint::from(0_u8);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn balance_with_existing_account() {
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let big_a = BigUint::from_bytes_be(address.as_bytes());
+    let program = Program::from(vec![
+        Operation::Push((20_u8, big_a)),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap(),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(123456_u32);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_stack_underflow() {
+    let program = vec![Operation::Balance];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn balance_static_gas_check() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let env = Env::default();
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
 
 #[test]
@@ -817,13 +1199,11 @@ fn selfbalance_with_unexisting_account() {
     // But its good to have the program's output correctly defined anyways
     let mut operations = vec![Operation::Chainid];
     append_return_result_operations(&mut operations);
-    let mut env = Env::default();
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.gas_limit = 999_999;
-    let program = Program::from(operations);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
+
     let expected_result = BigUint::from(0_u8);
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -850,15 +1230,15 @@ fn selfbalance_with_existing_account() {
     env.tx.caller = caller_address;
     env.tx.gas_limit = 999_999;
     let expected_result = BigUint::from(caller_balance);
-    run_program_assert_result(env, db, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
 fn selfbalance_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::SelfBalance);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]

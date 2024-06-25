@@ -527,6 +527,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_caller_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        caller_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_caller_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            caller_ptr,
+        )
+    }
+
     pub(crate) fn store_in_gasprice_ptr(
         &'c self,
         block: &'c Block,
@@ -568,6 +583,23 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             new_size,
+            location,
+        )
+    }
+
+    pub(crate) fn storage_read_syscall(
+        &'c self,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::storage_read_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            key,
+            value,
             location,
         )
     }
@@ -677,6 +709,19 @@ impl<'c> OperationCtx<'c> {
         );
     }
 
+    pub(crate) fn get_coinbase_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_coinbase_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall(
         &'c self,
@@ -689,6 +734,67 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             number,
+            location,
+        )
+    }
+
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
+    #[allow(unused)]
+    pub(crate) fn store_in_basefee_ptr_syscall(
+        &'c self,
+        basefee_ptr: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_basefee_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            basefee_ptr,
+            block,
+            location,
+        )
+    }
+
+    #[allow(unused)]
+    pub(crate) fn get_address_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    pub(crate) fn store_in_balance_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
             location,
         )
     }

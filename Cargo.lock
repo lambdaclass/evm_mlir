@@ -841,10 +841,12 @@ dependencies = [
 name = "evm_mlir"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "bytes",
  "cc",
  "datatest-stable",
  "ethereum-types",
+ "hex",
  "llvm-sys",
  "melior",
  "mlir-sys",
@@ -1279,9 +1281,9 @@ checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
 
 [[package]]
 name = "llvm-sys"
-version = "180.0.0"
+version = "181.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "778fa5fa02e32728e718f11eec147e6f134137399ab02fd2c13d32476337affa"
+checksum = "1e770c3c1ba28b4be3b4f4a7bc621fdb3f10b325f042e7d51dd9298db231df6f"
 dependencies = [
  "anyhow",
  "cc",
