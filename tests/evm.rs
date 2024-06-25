@@ -946,7 +946,6 @@ fn chainid_happy_path() {
     append_return_result_operations(&mut operations);
     let (mut env, db) = default_env_and_db_setup(operations);
     env.cfg.chain_id = chainid;
-    env.tx.gas_limit = 999_999;
     let expected_result = BigUint::from(chainid);
     run_program_assert_num_result(env, db, expected_result);
 }
@@ -974,7 +973,6 @@ fn caller_happy_path() {
     append_return_result_operations(&mut operations);
     let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.caller = caller;
-    env.tx.gas_limit = 999_999;
     let caller_bytes = &caller.to_fixed_bytes();
     //We extend the result to be 32 bytes long.
     let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
