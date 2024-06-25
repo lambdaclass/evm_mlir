@@ -5,7 +5,8 @@ use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
-use syscall::{ExecutionResult, SyscallContext};
+use result::{EVMError, ResultAndState};
+use syscall::SyscallContext;
 
 use crate::context::Context;
 
@@ -23,6 +24,8 @@ pub mod program;
 pub mod syscall;
 pub mod utils;
 pub use env::Env;
+pub mod result;
+pub mod state;
 
 #[derive(Debug)]
 pub struct Evm<DB: Database> {
@@ -44,7 +47,7 @@ impl<DB: Database + Default> Evm<DB> {
 
 impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&mut self) -> ExecutionResult {
+    pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
@@ -57,6 +60,7 @@ impl Evm<Db> {
             .db
             .code_by_address(code_address)
             .expect("failed to load bytecode");
+
         let program = Program::from_bytecode(&bytecode).unwrap(); // TODO: map invalid/unknown opcodes to INVALID operation
 
         let module = context
@@ -66,7 +70,10 @@ impl Evm<Db> {
         let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
 
+        // TODO: improve this once we stabilize the API a bit
+        context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, self.env.tx.gas_limit);
+
         context.get_result()
     }
 }
