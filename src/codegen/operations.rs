@@ -239,19 +239,15 @@ fn codegen_keccak256<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-
+    let uint32 = IntegerType::new(context, 32);
+    let uint64 = IntegerType::new(context, 64);
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    let gas_flag = consume_gas(context, &start_block, gas_cost::KECCAK256)?;
-    let ok_condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        ok_condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -261,8 +257,6 @@ fn codegen_keccak256<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
     let size = stack_pop(context, &ok_block)?;
-
-    let uint32 = IntegerType::new(context, 32);
 
     //Truncate offset to 32 bits
     let offset = ok_block
@@ -283,9 +277,40 @@ fn codegen_keccak256<'c, 'r>(
 
     let memory_access_block = region.append_block(Block::new(&[]));
 
+    // dynamic_gas_cost = 3 * (size + 31) / 32 gas
+    // but the documentation says it must consume 6 * (size + 31) / 32 gas so we multiply it by 2
+    let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
+
+    let constant_2 = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64.into(), 2).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let dynamic_gas_cost = ok_block
+        .append_operation(arith::muli(dynamic_gas_cost, constant_2, location))
+        .result(0)?
+        .into();
+
+    let gas_flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+    let memory_extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &memory_extension_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
     extend_memory(
         op_ctx,
-        &ok_block,
+        &memory_extension_block,
         &memory_access_block,
         region,
         required_size,

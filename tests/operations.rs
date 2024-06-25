@@ -157,6 +157,22 @@ fn test_keccak_with_underflow() {
 }
 
 #[test]
+fn test_keccak_gas_cost() {
+    let offset = 0_u8;
+    let size = 4_u8;
+    let program = vec![
+        Operation::Push((1, size.into())),
+        Operation::Push((1, offset.into())),
+        Operation::Keccak256,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32) + 2 * gas_cost::memory_copy_cost(32);
+    let static_gas = gas_cost::KECCAK256 + 2 * gas_cost::PUSHN;
+    let gas_needed = static_gas + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
+}
+
+#[test]
 fn test_calldatasize_with_gas() {
     let program = vec![Operation::CallDataSize];
     run_program_assert_stack_top(program, BigUint::ZERO);
