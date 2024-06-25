@@ -3966,7 +3966,7 @@ fn codegen_invalid<'c, 'r>(
     let zero = start_block
         .append_operation(arith::constant(
             context,
-            integer_constant_from_i64(context, 0).into(),
+            IntegerAttribute::new(uint32.into(), 0).into(),
             location,
         ))
         .result(0)?
@@ -3976,17 +3976,8 @@ fn codegen_invalid<'c, 'r>(
     let remaining_gas = get_remaining_gas(context, &start_block)?;
     consume_gas_as_value(context, &start_block, remaining_gas)?;
 
-    let offset = start_block
-        .append_operation(arith::trunci(zero, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let size = start_block
-        .append_operation(arith::trunci(zero, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
+    let offset = zero;
+    let size = zero;
 
     start_block.append_operation(cf::br(&ok_block, &[], location));
 
