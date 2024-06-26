@@ -1353,7 +1353,10 @@ fn call_returns_simple_addition() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(caller_address);
-    let db = db.with_bytecode(caller_address, bytecode);
+    env.tx.caller = caller_address;
+    let caller_balance = 100_u8;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.update_account(caller_address, 0, caller_balance.into());
 
     let expected_result = a + b;
 
@@ -1418,9 +1421,81 @@ fn call_returns_addition_from_arguments() {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(caller_address);
-    let db = db.with_bytecode(caller_address, bytecode);
+    env.tx.caller = caller_address;
+    let caller_balance = 100_u8;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.update_account(caller_address, 0, caller_balance.into());
 
     let expected_result = a + b;
 
     run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn call_without_enough_balance() {
+    let db = Db::new();
+
+    // Calee
+    let mut callee_ops = vec![Operation::Push0];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 100_u8;
+    let value = 1_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        // Return both syscall result and caller balance
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((20_u8, BigUint::from_bytes_be(caller_address.as_bytes()))),
+        Operation::Balance,
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, 64_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.update_account(caller_address, 0, caller_balance.into());
+
+    let expected_contract_call_result = 0_u8.into(); //Call failed
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let res_bytes: &[u8] = &result.output().unwrap().to_vec();
+
+    let contract_call_result = BigUint::from_bytes_be(&res_bytes[..32]);
+    let caller_balance_result = BigUint::from_bytes_be(&res_bytes[32..]);
+
+    assert_eq!(contract_call_result, expected_contract_call_result);
+    assert_eq!(caller_balance_result, caller_balance.into());
 }

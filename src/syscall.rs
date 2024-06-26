@@ -227,6 +227,19 @@ impl<'c> SyscallContext<'c> {
         let address = call_to_address.to_address();
         let value = value_to_transfer.to_primitive_u256();
 
+        let caller_balance = self
+            .db
+            .basic(self.env.tx.caller)
+            .unwrap()
+            .unwrap_or_default()
+            .balance;
+
+        if caller_balance < value {
+            //There isn't enough balance to send
+            *consumed_gas = 0;
+            return REVERT_RETURN_CODE;
+        }
+
         let mut env = self.env.clone();
         env.tx.transact_to = TransactTo::Call(address);
         //TODO: Check if this is ok
