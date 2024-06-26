@@ -1168,21 +1168,8 @@ pub(crate) fn expand_memory_from_offset_and_size<'c>(
     // truncate offsets and size to 32 bits
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
     let ptr_type = pointer(context, 0);
-
-    let offset = block
-        .append_operation(arith::trunci(offset, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
-
-    let size = block
-        .append_operation(arith::trunci(size, uint32.into(), location))
-        .result(0)
-        .unwrap()
-        .into();
 
     //required size = des_offset + size
     let required_memory_size = block

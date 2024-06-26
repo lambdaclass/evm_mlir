@@ -22,8 +22,8 @@ use crate::{
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
     utils::{
-        constant_value_from_i64, consume_gas, get_remaining_gas, integer_constant_from_u8,
-        llvm_mlir,
+        allocate_and_store_value, constant_value_from_i64, get_remaining_gas,
+        integer_constant_from_u8, llvm_mlir,
     },
 };
 
@@ -466,6 +466,25 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn keccak256_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::keccak256_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            hash_ptr,
+            location,
+        )
+    }
+
     pub(crate) fn get_calldata_size_syscall(
         &'c self,
         block: &'c Block,
@@ -545,6 +564,21 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_blobbasefee_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        blob_base_fee_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_blobbasefee_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            blob_base_fee_ptr,
+        )
+    }
+
     pub(crate) fn store_in_gasprice_ptr(
         &'c self,
         block: &'c Block,
@@ -557,6 +591,21 @@ impl<'c> OperationCtx<'c> {
             block,
             location,
             gasprice_ptr,
+        )
+    }
+
+    pub(crate) fn store_in_selfbalance_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        selfbalance_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_selfbalance_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            selfbalance_ptr,
         )
     }
 
@@ -726,6 +775,40 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_timestamp_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        timestamp_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_timestamp_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            timestamp_ptr,
+        )
+    }
+
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,
@@ -751,7 +834,23 @@ impl<'c> OperationCtx<'c> {
         syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
     }
 
-    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn store_in_balance_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
+            location,
+        )
+    }
+
     pub(crate) fn call_syscall(
         &'c self,
         block: &'c Block,
@@ -768,13 +867,18 @@ impl<'c> OperationCtx<'c> {
         let uint64 = IntegerType::new(context, 64);
         let ptr_type = pointer(context, 0);
 
-        //TODO: How to manage syscall gas send
-        let remaining_gas = get_remaining_gas(context, block)?;
-        //gas_to_send = min(remaining_gas / 64, gas)
-
-        let gas_denominator = constant_value_from_i64(context, block, 64_i64)?;
+        // The maximum gas value to send is available_gas / 64
+        let available_gas = get_remaining_gas(context, block)?;
+        let gas_denominator = block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint64.into(), 64).into(),
+                location,
+            ))
+            .result(0)?
+            .into();
         let max_gas_to_send: Value = block
-            .append_operation(arith::divui(remaining_gas, gas_denominator, location))
+            .append_operation(arith::divui(available_gas, gas_denominator, location))
             .result(0)?
             .into();
         let gas_to_send: Value = block
@@ -782,22 +886,16 @@ impl<'c> OperationCtx<'c> {
             .result(0)?
             .into();
 
-
-
-        let gas_flag = consume_gas(context, block, gas_to_send);
-
-        //Call consume_gas(gas_to_send) -> If there is no gas, then it will revert
-        //Store the gas_to_send value inside the gas_return_ptr
-        //Call the syscall
-        //Load the remaining gas from gas_return_ptr
-        //Add the remaining gas to the gas_ptr
+        // Alloc and store value argument
+        let value_ptr = allocate_and_store_value(&self, block, value, location)?;
+        let address_ptr = allocate_and_store_value(&self, block, address, location)?;
 
         // Alloc pointer to return gas value
-        let pointer_size = constant_value_from_i64(context, &block, 1_i64)?;
+        let gas_pointer_size = constant_value_from_i64(context, &block, 1_i64)?;
         let gas_return_ptr = block
             .append_operation(llvm::alloca(
                 context,
-                pointer_size,
+                gas_pointer_size,
                 ptr_type,
                 location,
                 AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint64.into()))),
@@ -805,24 +903,14 @@ impl<'c> OperationCtx<'c> {
             .result(0)?
             .into();
 
-        let res = block.append_operation(llvm::store(
-            context,
-            remaining_gas,
-            gas_return_ptr,
-            location,
-            LoadStoreOptions::default(),
-        ));
-
-        assert!(res.verify());
-
         let result = syscall::mlir::call_syscall(
             context,
             self.syscall_ctx,
             block,
             location,
-            gas,
-            address,
-            value,
+            gas_to_send,
+            address_ptr,
+            value_ptr,
             args_offset,
             args_size,
             ret_offset,
@@ -830,8 +918,44 @@ impl<'c> OperationCtx<'c> {
             gas_return_ptr,
         )?;
 
-        //TODO: Load the gas from the gas_return_ptr and then add it to the remaining gas
+        // Update the available gas with the remaining gas after the call
+        let consumed_gas = block
+            .append_operation(llvm::load(
+                context,
+                gas_return_ptr,
+                uint64.into(),
+                location,
+                LoadStoreOptions::default(),
+            ))
+            .result(0)?
+            .into();
 
+        let available_gas = block
+            .append_operation(arith::subi(available_gas, consumed_gas, location))
+            .result(0)?
+            .into();
+
+        let global_gas_counter_ptr = block
+            .append_operation(llvm_mlir::addressof(
+                context,
+                GAS_COUNTER_GLOBAL,
+                ptr_type,
+                location,
+            ))
+            .result(0)?;
+
+        // Update new gas counter
+        let res = block.append_operation(llvm::store(
+            context,
+            available_gas,
+            global_gas_counter_ptr.into(),
+            location,
+            LoadStoreOptions::default(),
+        ));
+
+        assert!(res.verify());
+
+        // Extend the 32 bits result to 256 bits
         let uint256 = IntegerType::new(context, 256);
 
         let result = block
