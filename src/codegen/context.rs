@@ -851,6 +851,7 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn call_syscall(
         &'c self,
         block: &'c Block,
@@ -887,11 +888,11 @@ impl<'c> OperationCtx<'c> {
             .into();
 
         // Alloc and store value argument
-        let value_ptr = allocate_and_store_value(&self, block, value, location)?;
-        let address_ptr = allocate_and_store_value(&self, block, address, location)?;
+        let value_ptr = allocate_and_store_value(self, block, value, location)?;
+        let address_ptr = allocate_and_store_value(self, block, address, location)?;
 
         // Alloc pointer to return gas value
-        let gas_pointer_size = constant_value_from_i64(context, &block, 1_i64)?;
+        let gas_pointer_size = constant_value_from_i64(context, block, 1_i64)?;
         let gas_return_ptr = block
             .append_operation(llvm::alloca(
                 context,

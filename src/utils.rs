@@ -1178,15 +1178,8 @@ pub(crate) fn expand_memory_from_offset_and_size<'c>(
         .into();
 
     //TODO: Modify gas consumption
-    extend_memory(
-        op_ctx,
-        &block,
-        &return_block,
-        region,
-        required_memory_size,
-        0,
-    )?;
-    let memory_ptr = get_memory_pointer(op_ctx, &return_block, location)?;
+    extend_memory(op_ctx, block, return_block, region, required_memory_size, 0)?;
+    let memory_ptr = get_memory_pointer(op_ctx, return_block, location)?;
     let memory_dest = return_block
         .append_operation(llvm::get_element_ptr_dynamic(
             context,

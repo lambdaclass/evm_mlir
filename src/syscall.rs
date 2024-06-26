@@ -261,7 +261,7 @@ impl<'c> SyscallContext<'c> {
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
-        let mut context = SyscallContext::new(env.clone(), &mut self.db);
+        let mut context = SyscallContext::new(env.clone(), self.db);
 
         executor.execute(&mut context, env.tx.gas_limit);
 
@@ -1456,6 +1456,7 @@ pub(crate) mod mlir {
             .result(0);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn call_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
