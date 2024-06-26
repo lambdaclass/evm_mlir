@@ -246,7 +246,6 @@ impl<'c> SyscallContext<'c> {
             TransactTo::Call(a) => a,
             TransactTo::Create => Address::zero(),
         };
-        //TODO: Here we have to check if the account balance is enough to send this ammount
         env.tx.value = value;
         env.tx.gas_limit = gas;
 
