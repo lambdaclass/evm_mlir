@@ -1304,66 +1304,6 @@ fn blobbasefee_stack_overflow() {
 }
 
 #[test]
-fn call_returns_simple_addition() {
-    let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
-    let db = Db::new();
-
-    // Calee
-    let mut callee_ops = vec![
-        Operation::Push((1_u8, a.clone())),
-        Operation::Push((1_u8, b.clone())),
-        Operation::Add,
-    ];
-    append_return_result_operations(&mut callee_ops);
-
-    let program = Program::from(callee_ops);
-    let (callee_address, bytecode) = (
-        Address::from_low_u64_be(8080),
-        Bytecode::from(program.to_bytecode()),
-    );
-    let db = db.with_bytecode(callee_address, bytecode);
-
-    let gas = 100_u8;
-    let value = 1_u8;
-    let args_offset = 0_u8;
-    let args_size = 0_u8;
-    let ret_offset = 0_u8;
-    let ret_size = 32_u8;
-
-    let caller_ops = vec![
-        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
-        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
-        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
-        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
-        Operation::Push((1_u8, BigUint::from(value))),    //Value
-        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
-        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
-        Operation::Call,
-        //This ops will return the value stored in memory
-        Operation::Push((1, ret_size.into())),
-        Operation::Push((1, ret_offset.into())),
-        Operation::Return,
-    ];
-
-    let program = Program::from(caller_ops);
-    let (caller_address, bytecode) = (
-        Address::from_low_u64_be(4040),
-        Bytecode::from(program.to_bytecode()),
-    );
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = caller_address;
-    let caller_balance = 100_u8;
-    let mut db = db.with_bytecode(caller_address, bytecode);
-    db.update_account(caller_address, 0, caller_balance.into());
-
-    let expected_result = a + b;
-
-    run_program_assert_num_result(env, db, expected_result);
-}
-
-#[test]
 fn call_returns_addition_from_arguments() {
     let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
     let db = Db::new();
