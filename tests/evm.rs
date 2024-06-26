@@ -1377,7 +1377,7 @@ fn call_returns_addition_from_arguments() {
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
 
-    let res_bytes: &[u8] = &result.output().unwrap().to_vec();
+    let res_bytes: &[u8] = result.output().unwrap();
 
     let expected_contract_data_result = a + b;
     let expected_caller_balance_result = (caller_balance - value).into(); //TODO: Change
@@ -1452,7 +1452,7 @@ fn call_without_enough_balance() {
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
 
-    let res_bytes: &[u8] = &result.output().unwrap().to_vec();
+    let res_bytes: &[u8] = result.output().unwrap();
 
     let contract_call_result = BigUint::from_bytes_be(&res_bytes[..32]);
     let caller_balance_result = BigUint::from_bytes_be(&res_bytes[32..]);
