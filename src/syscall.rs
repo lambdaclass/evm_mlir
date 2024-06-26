@@ -227,14 +227,13 @@ impl<'c> SyscallContext<'c> {
         let address = call_to_address.to_address();
         let value = value_to_transfer.to_primitive_u256();
 
-        let caller_balance = self
+        let caller_account = self
             .db
             .basic(self.env.tx.caller)
             .unwrap()
-            .unwrap_or_default()
-            .balance;
+            .unwrap_or_default();
 
-        if caller_balance < value {
+        if caller_account.balance < value {
             //There isn't enough balance to send
             *consumed_gas = 0;
             return REVERT_RETURN_CODE;
@@ -282,6 +281,11 @@ impl<'c> SyscallContext<'c> {
             ExecutionResult::Success {
                 gas_used, output, ..
             } => {
+                self.db.update_account(
+                    self.env.tx.caller,
+                    caller_account.nonce,
+                    caller_account.balance - value,
+                );
                 let return_data = output.data().to_vec();
                 let off = ret_offset as usize;
                 let size = ret_size as usize;
@@ -289,6 +293,7 @@ impl<'c> SyscallContext<'c> {
                 *consumed_gas = gas_used;
                 SUCCESS_RETURN_CODE
             }
+            //TODO: If we revert, should we still send the value to the called contract?
             //TODO: Is there anything to copy if the call reverted?
             ExecutionResult::Revert { gas_used, .. } => {
                 *consumed_gas = gas_used;

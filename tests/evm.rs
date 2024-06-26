@@ -1392,6 +1392,7 @@ fn call_returns_addition_from_arguments() {
     let ret_offset = 0_u8;
     let ret_size = 32_u8;
 
+    let caller_address = Address::from_low_u64_be(4040);
     let caller_ops = vec![
         Operation::Push((32_u8, b.clone())),                 //Operand B
         Operation::Push0,                                    //
@@ -1407,17 +1408,23 @@ fn call_returns_addition_from_arguments() {
         Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
         Operation::Push((1_u8, BigUint::from(gas))),         //Gas
         Operation::Call,
-        //This ops will return the value stored in memory
-        Operation::Push((1, ret_size.into())),
-        Operation::Push((1, ret_offset.into())),
+        //This ops will return the value stored in memory, the call status and the caller balance
+        //call status
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Mstore,
+        //caller balance
+        Operation::Push((20_u8, BigUint::from_bytes_be(caller_address.as_bytes()))),
+        Operation::Balance,
+        Operation::Push((1_u8, 64_u8.into())),
+        Operation::Mstore,
+        //Return
+        Operation::Push((1_u8, 96_u8.into())),
+        Operation::Push0,
         Operation::Return,
     ];
 
     let program = Program::from(caller_ops);
-    let (caller_address, bytecode) = (
-        Address::from_low_u64_be(4040),
-        Bytecode::from(program.to_bytecode()),
-    );
+    let bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(caller_address);
@@ -1426,9 +1433,23 @@ fn call_returns_addition_from_arguments() {
     let mut db = db.with_bytecode(caller_address, bytecode);
     db.update_account(caller_address, 0, caller_balance.into());
 
-    let expected_result = a + b;
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
 
-    run_program_assert_num_result(env, db, expected_result);
+    let res_bytes: &[u8] = &result.output().unwrap().to_vec();
+
+    let expected_contract_data_result = a + b;
+    let expected_caller_balance_result = (caller_balance - value).into(); //TODO: Change
+    let expected_contract_status_result = 1_u8.into(); //Call failed
+
+    let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
+    let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..64]);
+    let caller_balance_result = BigUint::from_bytes_be(&res_bytes[64..]);
+
+    assert_eq!(contract_status_result, expected_contract_status_result);
+    assert_eq!(contract_data_result, expected_contract_data_result);
+    assert_eq!(caller_balance_result, expected_caller_balance_result);
 }
 
 #[test]
