@@ -1,3 +1,7 @@
+//! Tests for simple EVM operations
+//!
+//! These don't receive any input, and the CODE* opcodes
+//! may not work properly.
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
@@ -9,6 +13,7 @@ use evm_mlir::{
     result::{ExecutionResult, Output, SuccessReason},
     syscall::SyscallContext,
 };
+use hex_literal::hex;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
 use tempfile::NamedTempFile;
@@ -103,6 +108,75 @@ pub fn biguint_256_from_bigint(value: BigInt) -> BigUint {
         buffer[start..finish].copy_from_slice(&bytes);
         BigUint::from_bytes_be(&buffer)
     }
+}
+
+#[test]
+fn test_keccak256() {
+    let program = vec![
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
+
+#[test]
+fn test_keccak_with_mstore() {
+    let program = vec![
+        Operation::Push((
+            32,
+            BigUint::from_bytes_be(&hex!(
+                "FFFFFFFF00000000000000000000000000000000000000000000000000000000"
+            )),
+        )),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Mstore,
+        Operation::Push((1, BigUint::from(4_u8))),
+        Operation::Push((1, BigUint::from(0_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
+
+#[test]
+fn test_keccak256_with_size() {
+    let program = vec![
+        Operation::Push((1, BigUint::from(0x04_u8))),
+        Operation::Push((1, BigUint::from(0x00_u8))),
+        Operation::Keccak256,
+    ];
+    let expected = hex!("e8e77626586f73b955364c7b4bbf0bb7f7685ebd40e852b164633a4acbd3244c");
+    run_program_assert_stack_top(program, BigUint::from_bytes_be(&expected));
+}
+
+#[test]
+fn test_keccak_with_overflow() {
+    let program = vec![Operation::Push((1_u8, BigUint::from(88_u8))); 1025];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn test_keccak_with_underflow() {
+    let program = vec![Operation::Keccak256];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn test_keccak_gas_cost() {
+    let offset = 0_u8;
+    let size = 4_u8;
+    let program = vec![
+        Operation::Push((1, size.into())),
+        Operation::Push((1, offset.into())),
+        Operation::Keccak256,
+    ];
+    let dynamic_gas = gas_cost::memory_expansion_cost(0, 32) + 2 * gas_cost::memory_copy_cost(32);
+    let static_gas = gas_cost::KECCAK256 + 2 * gas_cost::PUSHN;
+    let gas_needed = static_gas + dynamic_gas;
+
+    run_program_assert_gas_exact(program, gas_needed as _);
 }
 
 #[test]
@@ -2279,15 +2353,24 @@ fn mload_not_allocated_address() {
 }
 
 #[test]
-fn not_with_stack_underflow() {
-    run_program_assert_halt(vec![Operation::Not]);
-}
-#[test]
-fn push_push_normal_not() {
+fn not_happy_path() {
     let program = vec![Operation::Push0, Operation::Not];
     let expected_result = BigUint::from_bytes_be(&[0xff; 32]);
     run_program_assert_stack_top(program, expected_result);
 }
+
+#[test]
+fn not_with_stack_underflow() {
+    run_program_assert_halt(vec![Operation::Not]);
+}
+
+#[test]
+fn not_gas_check() {
+    let program = vec![Operation::Push0, Operation::Not];
+    let needed_gas = gas_cost::PUSH0 + gas_cost::NOT;
+    run_program_assert_gas_exact(program, needed_gas as _);
+}
+
 #[test]
 fn mstore_gas_cost_with_memory_extension() {
     let program = vec![
@@ -2484,6 +2567,31 @@ fn mcopy_with_stack_underflow() {
     let program = vec![Operation::Mcopy];
 
     run_program_assert_halt(program);
+}
+
+#[test]
+fn codecopy_with_stack_underflow() {
+    let program = vec![Operation::Codecopy];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn codecopy_with_gas_cost() {
+    let size = 7_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+    ];
+
+    let static_gas = gas_cost::CODECOPY + gas_cost::PUSHN * 3;
+    let dynamic_gas = gas_cost::memory_copy_cost(size.into())
+        + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32);
+    let expected_gas = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, expected_gas as _);
 }
 
 #[rstest]

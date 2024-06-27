@@ -11,18 +11,19 @@ license = "LICENSE"
 keywords = ["ethereum", "evm"]
 
 [dependencies]
-llvm-sys = "180.0.0"
-melior = { version = "0.18.1", features = ["ods-dialects"] }
+llvm-sys = "181.0.0"
+melior = { version = "0.18.4", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"
 num-bigint = "0.4.5"
+sha3 = "0.10.8"
 tempfile = "3.10.1"
 thiserror = "1.0.57"
 ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
-sha3 = "0.10.8"
 bitflags = "2.5.0"
 
 [dev-dependencies]
+hex-literal = "0.4.1"
 rstest = "0.21.0"
 serde = { version = "1.0.203", features = ["derive", "rc"] }
 serde_json = { version = "1.0.117" }
