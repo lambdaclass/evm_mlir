@@ -947,7 +947,7 @@ impl<'c> OperationCtx<'c> {
         start_block.append_operation(cf::cond_br(
             context,
             condition,
-            &finish_block,
+            finish_block,
             &self.revert_block,
             &[],
             &[],

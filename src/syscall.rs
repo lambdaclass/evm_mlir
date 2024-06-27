@@ -333,7 +333,7 @@ impl<'c> SyscallContext<'c> {
             ExecutionResult::Success {
                 gas_used, output, ..
             } => {
-                self.write_to_memory(ret_offset as _, ret_size as _, &output.data().to_vec());
+                self.write_to_memory(ret_offset as _, ret_size as _, output.data());
                 *consumed_gas -= gas_to_send - gas_used;
                 SUCCESS_RETURN_CODE
             }
@@ -341,7 +341,7 @@ impl<'c> SyscallContext<'c> {
             ExecutionResult::Revert {
                 gas_used, output, ..
             } => {
-                self.write_to_memory(ret_offset as _, ret_size as _, &output.to_vec());
+                self.write_to_memory(ret_offset as _, ret_size as _, &output);
                 *consumed_gas -= gas_to_send - gas_used;
                 REVERT_RETURN_CODE
             }
@@ -353,7 +353,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     fn write_to_memory(&mut self, offset: usize, size: usize, data: &[u8]) {
-        self.inner_context.memory[offset..offset + size].copy_from_slice(&data);
+        self.inner_context.memory[offset..offset + size].copy_from_slice(data);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
