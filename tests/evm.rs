@@ -1539,7 +1539,6 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
         Operation::Call,
     ];
 
-    //TODO: See why if we send less than needed the execution halts instead of revert
     let caller_memory_expansion_cost = 6 * 2; // Memory expansion of size 64
     let caller_call_cost = 100; //EVM Codes gas calculator (memory already expanded)
     let caller_gas_cost =
