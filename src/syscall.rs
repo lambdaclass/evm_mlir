@@ -305,8 +305,8 @@ impl<'c> SyscallContext<'c> {
         let size = args_size as usize;
         env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
 
-        //TODO: Check what to do if the bytecode is zero. Most probably the call will not be
-        //performed. What happens with the value, then? -> Remember to refund GAS
+        //NOTE: We could optimize this by not making the call if the bytecode is zero.
+        //We would have to refund the stipend here
         let bytecode = self
             .db
             .code_by_address(callee_address)
@@ -333,16 +333,15 @@ impl<'c> SyscallContext<'c> {
             ExecutionResult::Success {
                 gas_used, output, ..
             } => {
-                let return_data = output.data().to_vec();
-                let off = ret_offset as usize;
-                let size = ret_size as usize;
-                self.inner_context.memory[off..off + size].copy_from_slice(&return_data);
+                self.write_to_memory(ret_offset as _, ret_size as _, &output.data().to_vec());
                 *consumed_gas -= gas_to_send - gas_used;
                 SUCCESS_RETURN_CODE
             }
             //TODO: If we revert, should we still send the value to the called contract?
-            //TODO: Is there anything to copy if the call reverted?
-            ExecutionResult::Revert { gas_used, .. } => {
+            ExecutionResult::Revert {
+                gas_used, output, ..
+            } => {
+                self.write_to_memory(ret_offset as _, ret_size as _, &output.to_vec());
                 *consumed_gas -= gas_to_send - gas_used;
                 REVERT_RETURN_CODE
             }
@@ -351,6 +350,10 @@ impl<'c> SyscallContext<'c> {
                 HALT_RETURN_CODE
             }
         }
+    }
+
+    fn write_to_memory(&mut self, offset: usize, size: usize, data: &[u8]) {
+        self.inner_context.memory[offset..offset + size].copy_from_slice(&data);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
