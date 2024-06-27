@@ -61,7 +61,7 @@ impl<'c> OperationCtx<'c> {
         // Append setup code to be run at the start
         generate_stack_setup_code(context, module, setup_block)?;
         generate_memory_setup_code(context, module, setup_block)?;
-        generate_calldata_setup_code(context, module, setup_block)?;
+        generate_calldata_setup_code(context, syscall_ctx, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
         syscall::mlir::declare_syscalls(context, module);
@@ -335,6 +335,7 @@ fn generate_memory_setup_code<'c>(
 
 fn generate_calldata_setup_code<'c>(
     context: &'c MeliorContext,
+    syscall_ctx: Value<'c, 'c>,
     module: &'c Module,
     block: &'c Block<'c>,
 ) -> Result<(), CodegenError> {
@@ -342,6 +343,7 @@ fn generate_calldata_setup_code<'c>(
     let ptr_type = pointer(context, 0);
     let uint32 = IntegerType::new(context, 32).into();
 
+    // Declare globals
     let body = module.body();
     let res = body.append_operation(llvm_mlir::global(
         context,
@@ -358,15 +360,29 @@ fn generate_calldata_setup_code<'c>(
     ));
     assert!(res.verify());
 
-    let zero = block
-        .append_operation(arith::constant(
+    // Setup CALLDATA_PTR_GLOBAL
+    let calldata_ptr_value =
+        syscall::mlir::get_calldata_ptr_syscall(context, syscall_ctx, block, location)?;
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
             context,
-            IntegerAttribute::new(uint32, 0).into(),
+            CALLDATA_PTR_GLOBAL,
+            ptr_type,
             location,
         ))
-        .result(0)?
-        .into();
+        .result(0)?;
 
+    block.append_operation(llvm::store(
+        context,
+        calldata_ptr_value,
+        calldata_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    // Setup CALLDATA_SIZE_GLOBAL
+    let calldata_size_value =
+        syscall::mlir::get_calldata_size_syscall(context, syscall_ctx, block, location)?;
     let calldata_size_ptr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -376,14 +392,13 @@ fn generate_calldata_setup_code<'c>(
         ))
         .result(0)?;
 
-    let res = block.append_operation(llvm::store(
+    block.append_operation(llvm::store(
         context,
-        zero,
+        calldata_size_value,
         calldata_size_ptr.into(),
         location,
         LoadStoreOptions::default(),
     ));
-    assert!(res.verify());
 
     Ok(())
 }
