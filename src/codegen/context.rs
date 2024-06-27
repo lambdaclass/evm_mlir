@@ -866,6 +866,7 @@ impl<'c> OperationCtx<'c> {
         ret_size: Value<'c, 'c>,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
+        let uint32 = IntegerType::new(context, 32);
         let uint64 = IntegerType::new(context, 64);
         let ptr_type = pointer(context, 0);
 
@@ -887,7 +888,7 @@ impl<'c> OperationCtx<'c> {
             .result(0)?
             .into();
 
-        let result = syscall::mlir::call_syscall(
+        let return_value = syscall::mlir::call_syscall(
             context,
             self.syscall_ctx,
             start_block,
@@ -914,12 +915,38 @@ impl<'c> OperationCtx<'c> {
             ))
             .result(0)?
             .into();
-
         let gas_flag = consume_gas_as_value(context, start_block, consumed_gas)?;
+
+        // Compare the result value to see if its an error
+        // return_value == return_error_code -> HALT
+        //TODO: Use a constant for this return error code
+        let return_error_code = start_block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint32.into(), 2).into(),
+                location,
+            ))
+            .result(0)?
+            .into();
+        let return_ok_flag = start_block
+            .append_operation(arith::cmpi(
+                context,
+                arith::CmpiPredicate::Ne,
+                return_value,
+                return_error_code,
+                location,
+            ))
+            .result(0)?
+            .into();
+
+        let condition = start_block
+            .append_operation(arith::andi(gas_flag, return_ok_flag, location))
+            .result(0)?
+            .into();
 
         start_block.append_operation(cf::cond_br(
             context,
-            gas_flag,
+            condition,
             &finish_block,
             &self.revert_block,
             &[],
@@ -931,7 +958,7 @@ impl<'c> OperationCtx<'c> {
         let uint256 = IntegerType::new(context, 256);
 
         let result = finish_block
-            .append_operation(arith::extui(result, uint256.into(), location))
+            .append_operation(arith::extui(return_value, uint256.into(), location))
             .result(0)?
             .into();
 

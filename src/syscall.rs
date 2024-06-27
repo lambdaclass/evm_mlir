@@ -223,8 +223,12 @@ impl<'c> SyscallContext<'c> {
         consumed_gas: &mut u64,
     ) -> u32 {
         //TODO: Add call depth check
-        const REVERT_RETURN_CODE: u32 = 0;
+        //Return values
         const SUCCESS_RETURN_CODE: u32 = 1;
+        const REVERT_RETURN_CODE: u32 = 0;
+        const HALT_RETURN_CODE: u32 = 2;
+
+        //Gas costs constants
         const WARM_MEMORY_ACCESS_COST: u64 = 100;
         const NOT_ZERO_VALUE_COST: u64 = 9000;
         const EMPTY_CALLE_COST: u64 = 25000;
@@ -254,6 +258,7 @@ impl<'c> SyscallContext<'c> {
             .unwrap() //We are sure it exists
             .unwrap_or_default();
 
+        let mut stipend = 0;
         if !value.is_zero() {
             if caller_account.balance < value {
                 //There isn't enough balance to send
@@ -266,10 +271,7 @@ impl<'c> SyscallContext<'c> {
             if available_gas < *consumed_gas {
                 return REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
             }
-            let remaining_gas = available_gas - *consumed_gas;
-            gas_to_send = std::cmp::min(remaining_gas / GAS_CAP_DIVISION_FACTOR, gas_to_send);
-            *consumed_gas += gas_to_send;
-            gas_to_send += STIPEND_GAS_ADDITION;
+            stipend = STIPEND_GAS_ADDITION;
 
             //TODO: Maybe we should increment the nonce too
             let caller_balance = caller_account.balance;
@@ -282,6 +284,11 @@ impl<'c> SyscallContext<'c> {
             self.db
                 .update_account(callee_address, callee_nonce, callee_balance + value);
         }
+
+        let remaining_gas = available_gas - *consumed_gas;
+        gas_to_send = std::cmp::min(remaining_gas / GAS_CAP_DIVISION_FACTOR, gas_to_send);
+        *consumed_gas += gas_to_send;
+        gas_to_send += stipend;
 
         let mut env = self.env.clone();
         env.tx.transact_to = TransactTo::Call(callee_address);
@@ -326,27 +333,22 @@ impl<'c> SyscallContext<'c> {
             ExecutionResult::Success {
                 gas_used, output, ..
             } => {
-                self.db.update_account(
-                    self.env.tx.caller,
-                    caller_account.nonce,
-                    caller_account.balance - value,
-                );
                 let return_data = output.data().to_vec();
                 let off = ret_offset as usize;
                 let size = ret_size as usize;
                 self.inner_context.memory[off..off + size].copy_from_slice(&return_data);
-                *consumed_gas = gas_used;
+                *consumed_gas -= gas_to_send - gas_used;
                 SUCCESS_RETURN_CODE
             }
             //TODO: If we revert, should we still send the value to the called contract?
             //TODO: Is there anything to copy if the call reverted?
             ExecutionResult::Revert { gas_used, .. } => {
-                *consumed_gas = gas_used;
+                *consumed_gas -= gas_to_send - gas_used;
                 REVERT_RETURN_CODE
             }
             ExecutionResult::Halt { gas_used, .. } => {
-                *consumed_gas -= gas_used;
-                REVERT_RETURN_CODE
+                *consumed_gas -= gas_to_send - gas_used;
+                HALT_RETURN_CODE
             }
         }
     }
