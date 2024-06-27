@@ -36,9 +36,7 @@ use crate::{
     module::MLIRModule,
     program::Program,
     syscall::ExitStatusCode,
-    utils::{
-        declare_calldata_globals, return_empty_result, setup_calldata_ptr, setup_calldata_size,
-    },
+    utils::return_empty_result,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -231,10 +229,6 @@ fn compile_program(
     let setup_block = main_region.append_block(Block::new(&[]));
 
     let mut op_ctx = OperationCtx::new(context, module, &main_region, &setup_block, program)?;
-
-    declare_calldata_globals(module, context);
-    setup_calldata_ptr(&op_ctx, &setup_block, location)?;
-    setup_calldata_size(&op_ctx, &setup_block, location)?;
 
     let mut last_block = setup_block;
 

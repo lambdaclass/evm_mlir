@@ -22,9 +22,9 @@ use crate::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_block_number, get_memory_pointer, get_nth_from_stack, get_remaining_gas,
-        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
-        return_calldata_ptr, return_calldata_size, return_empty_result, return_result_from_stack,
+        get_block_number, get_calldata_ptr, get_calldata_size, get_memory_pointer,
+        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
         stack_pop, stack_push, swap_stack_elements,
     },
 };
@@ -3314,9 +3314,7 @@ fn codegen_calldataload<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
 
-    // TODO: add a calldata_ptr and size setup
-
-    let calldata_ptr = return_calldata_ptr(op_ctx, &ok_block, location)?;
+    let calldata_ptr = get_calldata_ptr(op_ctx, &ok_block, location)?;
 
     // max_slice_width = 32
     let max_slice_width = ok_block
@@ -3328,7 +3326,7 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    let calldata_size_u32 = return_calldata_size(op_ctx, &ok_block, location)?;
+    let calldata_size_u32 = get_calldata_size(op_ctx, &ok_block, location)?;
 
     // convert calldata_size from u32 to u256
     let calldata_size = ok_block

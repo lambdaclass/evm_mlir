@@ -10,7 +10,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Module as MeliorModule, Region, Value, ValueLike,
+        Block, Location, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -1020,59 +1020,7 @@ pub(crate) fn compute_memory_cost<'c>(
     Ok(memory_cost)
 }
 
-pub(crate) fn declare_calldata_globals(module: &MeliorModule, context: &MeliorContext) {
-    let location = Location::unknown(context);
-    let ptr_type = pointer(context, 0);
-    let uint32 = IntegerType::new(context, 32).into();
-
-    let body = module.body();
-    let res = body.append_operation(llvm_mlir::global(
-        context,
-        CALLDATA_PTR_GLOBAL,
-        ptr_type,
-        location,
-    ));
-    assert!(res.verify());
-    let res = body.append_operation(llvm_mlir::global(
-        context,
-        CALLDATA_SIZE_GLOBAL,
-        uint32,
-        location,
-    ));
-    assert!(res.verify());
-}
-
-pub(crate) fn setup_calldata_ptr<'c>(
-    op_ctx: &'c OperationCtx,
-    block: &'c Block,
-    location: Location<'c>,
-) -> Result<(), CodegenError> {
-    let context = op_ctx.mlir_context;
-    let ptr_type = pointer(context, 0);
-
-    let calldata_ptr_syscall = op_ctx.get_calldata_ptr_syscall(block, location)?;
-
-    let calldata_ptr_ptr = block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            CALLDATA_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-
-    block.append_operation(llvm::store(
-        context,
-        calldata_ptr_syscall,
-        calldata_ptr_ptr.into(),
-        location,
-        LoadStoreOptions::default(),
-    ));
-
-    Ok(())
-}
-
-pub(crate) fn return_calldata_ptr<'c>(
+pub(crate) fn get_calldata_ptr<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
     location: Location<'c>,
@@ -1103,7 +1051,7 @@ pub(crate) fn return_calldata_ptr<'c>(
     Ok(calldata_ptr)
 }
 
-pub(crate) fn return_calldata_size<'c>(
+pub(crate) fn get_calldata_size<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
     location: Location<'c>,
@@ -1132,35 +1080,6 @@ pub(crate) fn return_calldata_size<'c>(
         .into();
 
     Ok(calldata_size)
-}
-
-pub(crate) fn setup_calldata_size<'c>(
-    op_ctx: &'c OperationCtx,
-    block: &'c Block,
-    location: Location<'c>,
-) -> Result<(), CodegenError> {
-    let context = op_ctx.mlir_context;
-    let calldata_size_syscall = op_ctx.get_calldata_size_syscall(block, location)?;
-    let ptr_type = pointer(context, 0);
-
-    let calldata_size_ptr = block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            CALLDATA_SIZE_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-
-    block.append_operation(llvm::store(
-        context,
-        calldata_size_syscall,
-        calldata_size_ptr.into(),
-        location,
-        LoadStoreOptions::default(),
-    ));
-
-    Ok(())
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
