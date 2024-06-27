@@ -1557,3 +1557,56 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
 
     run_program_assert_gas_exact_aux(env, db, needed_gas as _);
 }
+
+#[test]
+fn call_gas_check_with_value_and_empty_account() {
+    /*
+    This will test the gas consumption for a call with the following conditions:
+    Value: 3
+    Argument size: 0 bytes
+    Argument offset: 0 bytes
+    Return size: 0 bytes
+    Return offset: 0 bytes
+    Called account empty?: True
+    Address access is warm?: True
+    */
+    let db = Db::new();
+
+    // Calee
+    let (callee_address, bytecode) = (Address::from_low_u64_be(8080), Bytecode::default());
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 255_u8;
+    let value = 3_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+    ];
+
+    //address_access_cost + positive_value_cost + value_to_empty_account_cost
+    let caller_call_cost = 100 + 9000 + 25000;
+    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost;
+
+    let caller_balance: u8 = 5;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.update_account(caller_address, 0, caller_balance.into());
+
+    run_program_assert_gas_exact_aux(env, db, needed_gas as _);
+}
