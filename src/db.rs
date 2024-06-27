@@ -52,7 +52,6 @@ impl Db {
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
-        /// Inserts the key-value pair in the storage.
         let account = self.accounts.entry(address).or_default();
         account.storage.insert(key, value);
     }

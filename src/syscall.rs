@@ -803,7 +803,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type], &[uint8]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint8]).into(),
             ),
             Region::new(),
             attributes,
