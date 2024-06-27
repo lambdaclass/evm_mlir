@@ -5,7 +5,7 @@ use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
-use result::EVMResult;
+use result::{EVMError, ResultAndState};
 use syscall::SyscallContext;
 
 use crate::context::Context;
@@ -47,7 +47,7 @@ impl<DB: Database + Default> Evm<DB> {
 
 impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&mut self) -> EVMResult {
+    pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let output_file = PathBuf::from("output");
 
         let context = Context::new();
@@ -70,7 +70,10 @@ impl Evm<Db> {
         let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
 
+        // TODO: improve this once we stabilize the API a bit
+        context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, self.env.tx.gas_limit);
+
         context.get_result()
     }
 }

@@ -1,26 +1,14 @@
-use crate::{
-    db::AccountInfo,
-    primitives::{Address, U256},
-};
+use crate::{db::AccountInfo, primitives::U256};
 use bitflags::bitflags;
 use core::hash::Hash;
 use std::collections::HashMap;
-
-/// EVM State is a mapping from addresses to accounts.
-pub type EvmState = HashMap<Address, Account>;
-
-/// Structure used for EIP-1153 transient storage.
-pub type TransientStorage = HashMap<(Address, U256), U256>;
-
-/// An account's Storage is a mapping from 256-bit integer keys to [EvmStorageSlot]s.
-pub type EvmStorage = HashMap<U256, EvmStorageSlot>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Account {
     /// Balance, nonce, and code.
     pub info: AccountInfo,
     /// Storage cache
-    pub storage: EvmStorage,
+    pub storage: HashMap<U256, EvmStorageSlot>,
     /// Account status flags.
     pub status: AccountStatus,
 }

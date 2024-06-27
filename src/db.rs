@@ -1,15 +1,12 @@
 #![allow(unused)]
 use crate::{
     primitives::{Address, Bytes, B256, U256},
-    state::{Account, EvmState, EvmStorageSlot},
+    state::{Account, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Error,
-};
-
+use std::{collections::HashMap, fmt::Error, ops::Add};
+use thiserror::Error;
 pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -32,8 +29,14 @@ impl Db {
         Self::default()
     }
 
-    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
-        let mut db = Db::default();
+    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+        if let Some(a) = self.accounts.get_mut(&address) {
+            a.nonce = nonce;
+            a.balance = balance;
+        }
+    }
+
+    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
         let hash = B256::from_slice(&hasher.finalize());
@@ -41,9 +44,11 @@ impl Db {
             bytecode_hash: hash,
             ..Default::default()
         };
-        db.accounts.insert(address, account);
-        db.contracts.insert(hash, bytecode);
-        db
+
+        self.accounts.insert(address, account);
+        self.contracts.insert(hash, bytecode);
+
+        self
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -70,7 +75,7 @@ impl Db {
         self.contracts.get(&hash).cloned().ok_or(DatabaseError)
     }
 
-    pub fn into_state(self) -> EvmState {
+    pub fn into_state(self) -> HashMap<Address, Account> {
         self.accounts
             .iter()
             .map(|(address, db_account)| {
@@ -132,14 +137,9 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error("error on database access")]
 pub struct DatabaseError;
-
-impl fmt::Display for DatabaseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error on database access")
-    }
-}
 
 impl Database for Db {
     type Error = DatabaseError;
