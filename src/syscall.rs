@@ -24,7 +24,9 @@ use crate::{
     env::Env,
     primitives::{Address, U256 as EU256},
     result::{EVMResult, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
+    state::EvmStorageSlot,
 };
+use std::collections::HashMap;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -85,6 +87,7 @@ pub struct InnerContext {
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
+    journaled_storage: HashMap<EU256, EvmStorageSlot>,
 }
 
 /// The context passed to syscalls
@@ -168,7 +171,7 @@ impl<'c> SyscallContext<'c> {
             },
         };
 
-        let state = self.db.clone().into_state();
+        let state = self.db.clone().into_state(); // TOOD: usar tambien self.inner_context.journaled_state
 
         Ok(ResultAndState { result, state })
     }
@@ -254,24 +257,39 @@ impl<'c> SyscallContext<'c> {
         }
     }
 
-    pub extern "C" fn write_storage(
-        &mut self,
-        stg_key: &U256,
-        stg_value: &U256,
-        stg_original: &U256,
-    ) {
+    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> u8 {
+        // Stores the key-value in the db. Also updates the journaled storage and returns a boolean indicating if the key was cold.
         let address = self.env.tx.caller;
 
         let key = ((EU256::from(stg_key.hi)) << 128) + stg_key.lo;
         let value = ((EU256::from(stg_value.hi)) << 128) + stg_value.lo;
 
-        let (current_value, original_value) = self.db.write_storage(address, key, value);
+        self.db.write_storage(address, key, value);
 
-        stg_value.hi = (current_value >> 128).low_u128();
-        stg_value.lo = current_value.low_u128();
+        let (is_cold, original_value) = match self.inner_context.journaled_storage.get_mut(&key) {
+            Some(slot) => {
+                slot.present_value = value;
+                (slot.is_cold, slot.original_value)
+            }
+            None => {
+                let original_value = self.db.read_storage(address, key);
+                self.inner_context.journaled_storage.insert(
+                    key,
+                    EvmStorageSlot {
+                        original_value,
+                        present_value: value,
+                        is_cold: false,
+                    },
+                );
+                (true, original_value)
+            }
+        };
 
-        stg_original.hi = (original_value >> 128).low_u128();
-        stg_original.lo = original_value.low_u128();
+        stg_value.hi = (original_value >> 128).low_u128();
+        stg_value.lo = original_value.low_u128();
+
+        is_cold as u8 // TODO: devolver como bool? ver como definir atributo bool en MLIR
+                      // TOOD: es necesario almacenar is_cold en EvmStorageSlot? siempre se setea en false
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
@@ -402,8 +420,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage
-                as *const fn(*mut c_void, *const U256, *const U256, *const U256)
+            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
                 as *mut (),
         );
         engine.register_symbol(
@@ -610,7 +627,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type], &[uint8]).into(),
             ),
             Region::new(),
             attributes,
@@ -903,16 +920,19 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
-        original_value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-            &[syscall_ctx, key, value, original_value],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint8 = IntegerType::new(mlir_ctx, 8);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
+                &[syscall_ctx, key, value],
+                &[uint8.into()],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Receives log data and appends a log to the logs vector

@@ -2188,31 +2188,11 @@ fn codegen_sstore<'c, 'r>(
     ));
     assert!(res.verify());
 
-    // TODO: refactor using allocate_and_store_value util
-    let original_value_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        value,
-        original_value_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, original_value_ptr, location);
+    let is_cold = op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
+    // now value_otr containes the original value. Load it
+    // load original_value_ptr
 
     // TODO: calculate dynamic gas and check gas_left > 2300 + gas_needed
-
     Ok((start_block, ok_block))
 }
 

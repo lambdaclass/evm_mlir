@@ -17,13 +17,12 @@ pub struct DbAccount {
     pub nonce: u64,
     pub balance: U256,
     pub storage: HashMap<U256, U256>,
-    pub original_storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Db {
-    pub accounts: HashMap<Address, DbAccount>,
+    accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
     block_hashes: HashMap<U256, B256>,
 }
@@ -47,13 +46,10 @@ impl Db {
         db
     }
 
-    pub fn write_storage(&mut self, address: Address, key: U256, value: U256) -> (U256, U256) {
+    pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
         /// Inserts the key-value pair in the storage.
-        /// For gas calculations, the previous value is stored in original_storage, only when there is no entry for that key.
         let account = self.accounts.entry(address).or_default();
-        let current_value = account.storage.insert(key, value).unwrap_or(U256::zero());
-        let original_value = account.original_storage.entry(key).or_insert(current_value);
-        (current_value, original_value)
+        account.storage.insert(key, value);
     }
 
     pub fn read_storage(&self, address: Address, key: U256) -> U256 {
