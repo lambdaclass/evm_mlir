@@ -11,11 +11,7 @@ use evm_mlir::{
 };
 use num_bigint::BigUint;
 
-fn run_program_assert_num_result(
-    mut operations: Vec<Operation>,
-    mut env: Env,
-    expected_result: BigUint,
-) {
+fn append_return_result_operations(operations: &mut Vec<Operation>) {
     operations.extend([
         Operation::Push0,
         Operation::Mstore,
@@ -23,6 +19,10 @@ fn run_program_assert_num_result(
         Operation::Push0,
         Operation::Return,
     ]);
+}
+
+fn default_env_and_db_setup(operations: Vec<Operation>) -> (Env, Db) {
+    let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     let program = Program::from(operations);
     let (address, bytecode) = (
@@ -31,78 +31,50 @@ fn run_program_assert_num_result(
     );
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_bytecode(address, bytecode);
+    (env, db)
+}
+
+fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
     let result_data = BigUint::from_bytes_be(result.output().unwrap());
     assert_eq!(result_data, expected_result);
 }
-fn run_program_assert_bytes_result(
-    mut operations: Vec<Operation>,
-    mut env: Env,
-    expected_result: &[u8],
-) {
-    operations.extend([
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((1, 32_u8.into())),
-        Operation::Push0,
-        Operation::Return,
-    ]);
-    let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
-    env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+
+fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
     assert_eq!(result.output().unwrap().as_ref(), expected_result);
 }
 
-fn run_program_assert_halt(operations: Vec<Operation>, mut env: Env) {
-    let program = Program::from(operations);
-    env.tx.gas_limit = 999_999;
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
-    env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+fn run_program_assert_halt(env: Env, db: Db) {
     let mut evm = Evm::new(env, db);
-
     let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
 
 fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
+    let address = match env.tx.transact_to {
+        TransactTo::Call(a) => a,
+        TransactTo::Create => Address::zero(),
+    };
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas;
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
-    env_success.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
+
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit = needed_gas - 1;
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
-    env_halt.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
     let result = evm.transact().unwrap().result;
@@ -178,23 +150,27 @@ fn fibonacci_example() {
 
 #[test]
 fn test_opcode_origin() {
-    let operations = vec![Operation::Origin];
+    let mut operations = vec![Operation::Origin];
+    append_return_result_operations(&mut operations);
     let mut env = Env::default();
     let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
     env.tx.caller = caller;
+    env.tx.gas_limit = 999_999;
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let caller_bytes = &caller.to_fixed_bytes();
     //We extend the result to be 32 bytes long.
     let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
         .concat()
         .try_into()
         .unwrap();
-    run_program_assert_bytes_result(operations, env, &expected_result);
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
 fn test_opcode_origin_gas_check() {
     let operations = vec![Operation::Origin];
-
     let needed_gas = gas_cost::ORIGIN;
     let env = Env::default();
     run_program_assert_gas_exact(operations, env, needed_gas as _);
@@ -204,8 +180,8 @@ fn test_opcode_origin_gas_check() {
 fn test_opcode_origin_with_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Origin);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -723,13 +699,88 @@ fn log4() {
 }
 
 #[test]
+fn codecopy() {
+    let size = 12_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = program.to_bytecode();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
+fn codecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 6th byte (offset = 6)
+    // so the result must be [CODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0, ..., 0]
+    let size = 12_u8;
+    let offset = 6_u8;
+    let dest_offset = 0_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Codecopy, // 6th byte
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+
+    let result_data = result.output().unwrap();
+    let expected_result = [&program.to_bytecode()[6..], &[0_u8; 6]].concat();
+    assert_eq!(result_data, &expected_result);
+}
+
+#[test]
 fn callvalue_happy_path() {
     let callvalue: u32 = 1500;
-    let operations = vec![Operation::Callvalue];
+    let mut operations = vec![Operation::Callvalue];
+    append_return_result_operations(&mut operations);
     let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
     env.tx.value = EU256::from(callvalue);
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let db = Db::new().with_bytecode(Address::zero(), bytecode);
     let expected_result = BigUint::from(callvalue);
-    run_program_assert_num_result(operations, env, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -744,8 +795,8 @@ fn callvalue_gas_check() {
 fn callvalue_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Callvalue);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -756,13 +807,12 @@ fn coinbase_happy_path() {
         .expect("Decoding failed")
         .try_into()
         .expect("Incorrect length");
-    let operations = vec![Operation::Coinbase];
-    let mut env = Env::default();
+    let mut operations = vec![Operation::Coinbase];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.block.coinbase = coinbase.into();
-
-    let expected_result = BigUint::from_bytes_be(&coinbase);
-
-    run_program_assert_num_result(operations, env, expected_result);
+    let expected_result: [u8; 32] = [&[0u8; 12], &coinbase[..]].concat().try_into().unwrap();
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
@@ -777,19 +827,46 @@ fn coinbase_gas_check() {
 fn coinbase_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Coinbase);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn timestamp_happy_path() {
+    let timestamp: u64 = 1234567890;
+    let mut operations = vec![Operation::Timestamp];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.block.timestamp = timestamp.into();
+    let expected_result = BigUint::from(timestamp);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn timestamp_gas_check() {
+    let operations = vec![Operation::Timestamp];
+    let needed_gas = gas_cost::TIMESTAMP;
     let env = Env::default();
-    run_program_assert_halt(program, env);
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn timestamp_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Timestamp);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn basefee() {
-    let program = vec![Operation::Basefee];
-    let mut env = Env::default();
     let basefee = 10_u8;
-    let expected_result = BigUint::from(basefee);
+    let mut operations = vec![Operation::Basefee];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.block.basefee = EU256::from(basefee);
-
-    run_program_assert_num_result(program, env, expected_result);
+    let expected_result = BigUint::from(basefee);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -804,19 +881,18 @@ fn basefee_gas_check() {
 fn basefee_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Basefee);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn block_number_check() {
-    let program = vec![Operation::Number];
-    let mut env = Env::default();
-    let result = BigUint::from(2147483639_u32);
-
+    let mut operations = vec![Operation::Number];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.block.number = ethereum_types::U256::from(2147483639);
-
-    run_program_assert_num_result(program, env, result);
+    let expected_result = BigUint::from(2147483639_u32);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -831,40 +907,32 @@ fn block_number_check_gas() {
 #[test]
 fn block_number_with_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
-    let env = Env::default();
-
     program.push(Operation::Number);
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn sstore_with_stack_underflow() {
     let program = vec![Operation::Push0, Operation::Sstore];
-    let env = Env::default();
+    let (env, db) = default_env_and_db_setup(program);
 
-    run_program_assert_halt(program, env);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn sstore_happy_path() {
     let key = 80_u8;
     let value = 11_u8;
-    let program = Program::from(vec![
+    let operations = vec![
         Operation::Push((1_u8, BigUint::from(value))),
         Operation::Push((1_u8, BigUint::from(key))),
         Operation::Sstore,
-    ]);
+    ];
 
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
+    let (mut env, db) = default_env_and_db_setup(operations);
     let caller_address = Address::from_low_u64_be(41);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(address);
     env.tx.caller = caller_address;
-    let db = Db::new().with_bytecode(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -877,13 +945,12 @@ fn sstore_happy_path() {
 #[test]
 fn gasprice_happy_path() {
     let gas_price: u32 = 33192;
-    let operations = vec![Operation::Gasprice];
-    let mut env = Env::default();
+    let mut operations = vec![Operation::Gasprice];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.gas_price = EU256::from(gas_price);
-
     let expected_result = BigUint::from(gas_price);
-
-    run_program_assert_num_result(operations, env, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -898,18 +965,19 @@ fn gasprice_gas_check() {
 fn gasprice_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Gasprice);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn chainid_happy_path() {
     let chainid: u64 = 1333;
-    let operations = vec![Operation::Chainid];
-    let mut env = Env::default();
+    let mut operations = vec![Operation::Chainid];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.cfg.chain_id = chainid;
     let expected_result = BigUint::from(chainid);
-    run_program_assert_num_result(operations, env, expected_result);
+    run_program_assert_num_result(env, db, expected_result);
 }
 
 #[test]
@@ -924,15 +992,16 @@ fn chainid_gas_check() {
 fn chainid_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Chainid);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
 fn caller_happy_path() {
     let caller = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
-    let operations = vec![Operation::Caller];
-    let mut env = Env::default();
+    let mut operations = vec![Operation::Caller];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.caller = caller;
     let caller_bytes = &caller.to_fixed_bytes();
     //We extend the result to be 32 bytes long.
@@ -940,7 +1009,7 @@ fn caller_happy_path() {
         .concat()
         .try_into()
         .unwrap();
-    run_program_assert_bytes_result(operations, env, &expected_result);
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
@@ -955,8 +1024,8 @@ fn caller_gas_check() {
 fn caller_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Caller);
-    let env = Env::default();
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -1012,18 +1081,16 @@ fn sload_with_invalid_key() {
         Operation::Push((1_u8, BigUint::from(5_u8))),
         Operation::Sload,
     ];
-    let env = Env::default();
+    let (env, db) = default_env_and_db_setup(program);
     let result = BigUint::from(0_u8);
-
-    run_program_assert_num_result(program, env, result);
+    run_program_assert_num_result(env, db, result);
 }
 
 #[test]
 fn sload_with_stack_underflow() {
     let program = vec![Operation::Sload];
-    let env = Env::default();
-
-    run_program_assert_halt(program, env);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
@@ -1061,11 +1128,10 @@ fn address() {
 
 #[test]
 fn address_with_gas_cost() {
-    let address = [0xff; 20];
     let operations = vec![Operation::Address];
+    let address = Address::from_low_u64_be(1234);
     let mut env = Env::default();
-    env.tx.transact_to = TransactTo::Call(Address::from_slice(&address));
-
+    env.tx.transact_to = TransactTo::Call(address);
     let needed_gas = gas_cost::ADDRESS;
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -1074,6 +1140,222 @@ fn address_with_gas_cost() {
 fn address_stack_overflow() {
     let mut program = vec![Operation::Push0; 1024];
     program.push(Operation::Address);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+// address with more than 20 bytes should be invalid
+#[test]
+fn balance_with_invalid_address() {
+    let a = BigUint::from(1_u8) << 255_u8;
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let program = Program::from(vec![
+        Operation::Push((32_u8, a.clone())),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        // take the last 20 bytes of the address, because that's what it's done with it's avalid
+        Address::from_slice(&a.to_bytes_be()[0..20]),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(0_u8);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_non_existing_account() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = BigUint::from(0_u8);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn balance_with_existing_account() {
+    let address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let balance = EU256::from_dec_str("123456").unwrap();
+    let big_a = BigUint::from_bytes_be(address.as_bytes());
+    let program = Program::from(vec![
+        Operation::Push((20_u8, big_a)),
+        Operation::Balance,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ]);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap(),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.caller = address;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut db = Db::new().with_bytecode(address, bytecode);
+
+    db.update_account(address, 0, balance);
+
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+
+    assert!(&result.is_success());
+    let result = result.output().unwrap();
+    let expected_result = BigUint::from(123456_u32);
+    assert_eq!(BigUint::from_bytes_be(result), expected_result);
+}
+
+#[test]
+fn balance_with_stack_underflow() {
+    let program = vec![Operation::Balance];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn balance_static_gas_check() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
     let env = Env::default();
-    run_program_assert_halt(program, env);
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn selfbalance_with_existing_account() {
+    let contract_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let contract_balance: u64 = 12345;
+    let mut operations = vec![Operation::SelfBalance];
+    append_return_result_operations(&mut operations);
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    db.update_account(contract_address, 0, contract_balance.into());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(contract_address);
+    env.tx.gas_limit = 999_999;
+    let expected_result = BigUint::from(contract_balance);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn selfbalance_and_balance_with_address_check() {
+    let contract_address = Address::from_str("0x9bbfed6889322e016e0a02ee459d306fc19545d8").unwrap();
+    let contract_balance: u64 = 12345;
+    let mut operations = vec![
+        Operation::Address,
+        Operation::Balance,
+        Operation::SelfBalance,
+        Operation::Eq,
+    ];
+    append_return_result_operations(&mut operations);
+    let program = Program::from(operations);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    db.update_account(contract_address, 0, contract_balance.into());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(contract_address);
+    env.tx.gas_limit = 999_999;
+    let expected_result = BigUint::from(1_u8); //True
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn selfbalance_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::SelfBalance);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn selfbalance_gas_check() {
+    let operations = vec![Operation::SelfBalance];
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let needed_gas = gas_cost::SELFBALANCE;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn blobbasefee_happy_path() {
+    let blob_base_fee: u32 = 1500;
+    let mut operations = vec![Operation::BlobBaseFee];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.block.blob_base_fee = EU256::from(blob_base_fee);
+    let expected_result = BigUint::from(blob_base_fee);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn blobbasefee_gas_check() {
+    let operations = vec![Operation::BlobBaseFee];
+    let needed_gas = gas_cost::BLOBBASEFEE;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn blobbasefee_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::BlobBaseFee);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn gaslimit_happy_path() {
+    let gaslimit: u64 = 300;
+    let mut operations = vec![Operation::Gaslimit];
+    append_return_result_operations(&mut operations);
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.tx.gas_limit = gaslimit;
+    let expected_result = BigUint::from(gaslimit);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn gaslimit_gas_check() {
+    let operations = vec![Operation::Gaslimit];
+    let needed_gas = gas_cost::GASLIMIT;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn gaslimit_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Gaslimit);
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
