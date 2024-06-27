@@ -212,51 +212,97 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn call(
         &mut self,
-        gas: u64,
+        mut gas_to_send: u64,
         call_to_address: &U256,
         value_to_transfer: &U256,
         args_offset: u32,
         args_size: u32,
         ret_offset: u32,
         ret_size: u32,
+        available_gas: u64,
         consumed_gas: &mut u64,
     ) -> u32 {
+        //TODO: Add call depth check
         const REVERT_RETURN_CODE: u32 = 0;
         const SUCCESS_RETURN_CODE: u32 = 1;
+        const WARM_MEMORY_ACCESS_COST: u64 = 100;
+        const NOT_ZERO_VALUE_COST: u64 = 9000;
+        const EMPTY_CALLE_COST: u64 = 25000;
+        const STIPEND_GAS_ADDITION: u64 = 2300;
+        const GAS_CAP_DIVISION_FACTOR: u64 = 64;
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-        let address = call_to_address.to_address();
+        let callee_address = call_to_address.to_address();
         let value = value_to_transfer.to_primitive_u256();
 
+        //TODO: This should instead add the account fetch (warm or cold) cost
+        //For the moment we consider warm access
+        let callee_account = match self.db.basic(callee_address) {
+            Ok(maybe_account) => {
+                *consumed_gas = WARM_MEMORY_ACCESS_COST;
+                maybe_account.unwrap_or_default()
+            }
+            Err(_) => {
+                *consumed_gas = 0;
+                return REVERT_RETURN_CODE;
+            }
+        };
+
+        let caller_address = self.env.tx.caller;
         let caller_account = self
             .db
-            .basic(self.env.tx.caller)
-            .unwrap()
+            .basic(caller_address)
+            .unwrap() //We are sure it exists
             .unwrap_or_default();
 
-        if caller_account.balance < value {
-            //There isn't enough balance to send
-            *consumed_gas = 0;
-            return REVERT_RETURN_CODE;
+        if !value.is_zero() {
+            if caller_account.balance < value {
+                //There isn't enough balance to send
+                return REVERT_RETURN_CODE;
+            }
+            *consumed_gas += NOT_ZERO_VALUE_COST;
+            if callee_account.is_empty() {
+                *consumed_gas += EMPTY_CALLE_COST;
+            }
+            if available_gas < *consumed_gas {
+                return REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
+            }
+            let remaining_gas = available_gas - *consumed_gas;
+            gas_to_send = std::cmp::min(remaining_gas / GAS_CAP_DIVISION_FACTOR, gas_to_send);
+            *consumed_gas += gas_to_send;
+            gas_to_send += STIPEND_GAS_ADDITION;
+
+            //TODO: Maybe we should increment the nonce too
+            let caller_balance = caller_account.balance;
+            let caller_nonce = caller_account.nonce;
+            self.db
+                .update_account(caller_address, caller_nonce, caller_balance - value);
+
+            let callee_balance = callee_account.balance;
+            let callee_nonce = callee_account.nonce;
+            self.db
+                .update_account(callee_address, callee_nonce, callee_balance + value);
         }
 
         let mut env = self.env.clone();
-        env.tx.transact_to = TransactTo::Call(address);
+        env.tx.transact_to = TransactTo::Call(callee_address);
         //TODO: Check if this is ok
         env.tx.caller = match self.env.tx.transact_to {
             TransactTo::Call(a) => a,
             TransactTo::Create => Address::zero(),
         };
         env.tx.value = value;
-        env.tx.gas_limit = gas;
+        env.tx.gas_limit = gas_to_send;
 
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
         env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
 
+        //TODO: Check what to do if the bytecode is zero. Most probably the call will not be
+        //performed. What happens with the value, then? -> Remember to refund GAS
         let bytecode = self
             .db
-            .code_by_address(address)
+            .code_by_address(callee_address)
             .expect("failed to load bytecode");
         let program = Program::from_bytecode(&bytecode).unwrap();
 
@@ -632,6 +678,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                     u32,
                     u32,
                     u32,
+                    u64,
                     *mut u64,
                 ) as *mut (),
         );
@@ -992,7 +1039,7 @@ pub(crate) mod mlir {
                     context,
                     &[
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
-                        ptr_type,
+                        uint64, ptr_type,
                     ],
                     &[uint32],
                 )
@@ -1486,6 +1533,7 @@ pub(crate) mod mlir {
         args_size: Value<'c, 'c>,
         ret_offset: Value<'c, 'c>,
         ret_size: Value<'c, 'c>,
+        available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint32 = IntegerType::new(mlir_ctx, 32).into();
@@ -1502,6 +1550,7 @@ pub(crate) mod mlir {
                     args_size,
                     ret_offset,
                     ret_size,
+                    available_gas,
                     remaining_gas_ptr,
                 ],
                 &[uint32],

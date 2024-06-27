@@ -22,7 +22,7 @@ use crate::{
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
     utils::{
-        allocate_and_store_value, constant_value_from_i64, get_remaining_gas,
+        allocate_and_store_value, constant_value_from_i64, consume_gas_as_value, get_remaining_gas,
         integer_constant_from_u8, llvm_mlir,
     },
 };
@@ -854,7 +854,8 @@ impl<'c> OperationCtx<'c> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn call_syscall(
         &'c self,
-        block: &'c Block,
+        start_block: &'c Block,
+        finish_block: &'c Block,
         location: Location<'c>,
         gas: Value<'c, 'c>,
         address: Value<'c, 'c>,
@@ -868,32 +869,14 @@ impl<'c> OperationCtx<'c> {
         let uint64 = IntegerType::new(context, 64);
         let ptr_type = pointer(context, 0);
 
-        // The maximum gas value to send is available_gas / 64
-        let available_gas = get_remaining_gas(context, block)?;
-        let gas_denominator = block
-            .append_operation(arith::constant(
-                context,
-                IntegerAttribute::new(uint64.into(), 64).into(),
-                location,
-            ))
-            .result(0)?
-            .into();
-        let max_gas_to_send: Value = block
-            .append_operation(arith::divui(available_gas, gas_denominator, location))
-            .result(0)?
-            .into();
-        let gas_to_send: Value = block
-            .append_operation(arith::minui(max_gas_to_send, gas, location))
-            .result(0)?
-            .into();
-
+        let available_gas = get_remaining_gas(context, start_block)?;
         // Alloc and store value argument
-        let value_ptr = allocate_and_store_value(self, block, value, location)?;
-        let address_ptr = allocate_and_store_value(self, block, address, location)?;
+        let value_ptr = allocate_and_store_value(self, start_block, value, location)?;
+        let address_ptr = allocate_and_store_value(self, start_block, address, location)?;
 
         // Alloc pointer to return gas value
-        let gas_pointer_size = constant_value_from_i64(context, block, 1_i64)?;
-        let gas_return_ptr = block
+        let gas_pointer_size = constant_value_from_i64(context, start_block, 1_i64)?;
+        let gas_return_ptr = start_block
             .append_operation(llvm::alloca(
                 context,
                 gas_pointer_size,
@@ -907,20 +890,21 @@ impl<'c> OperationCtx<'c> {
         let result = syscall::mlir::call_syscall(
             context,
             self.syscall_ctx,
-            block,
+            start_block,
             location,
-            gas_to_send,
+            gas,
             address_ptr,
             value_ptr,
             args_offset,
             args_size,
             ret_offset,
             ret_size,
+            available_gas,
             gas_return_ptr,
         )?;
 
         // Update the available gas with the remaining gas after the call
-        let consumed_gas = block
+        let consumed_gas = start_block
             .append_operation(llvm::load(
                 context,
                 gas_return_ptr,
@@ -931,35 +915,22 @@ impl<'c> OperationCtx<'c> {
             .result(0)?
             .into();
 
-        let available_gas = block
-            .append_operation(arith::subi(available_gas, consumed_gas, location))
-            .result(0)?
-            .into();
+        let gas_flag = consume_gas_as_value(context, start_block, consumed_gas)?;
 
-        let global_gas_counter_ptr = block
-            .append_operation(llvm_mlir::addressof(
-                context,
-                GAS_COUNTER_GLOBAL,
-                ptr_type,
-                location,
-            ))
-            .result(0)?;
-
-        // Update new gas counter
-        let res = block.append_operation(llvm::store(
+        start_block.append_operation(cf::cond_br(
             context,
-            available_gas,
-            global_gas_counter_ptr.into(),
+            gas_flag,
+            &finish_block,
+            &self.revert_block,
+            &[],
+            &[],
             location,
-            LoadStoreOptions::default(),
         ));
-
-        assert!(res.verify());
 
         // Extend the 32 bits result to 256 bits
         let uint256 = IntegerType::new(context, 256);
 
-        let result = block
+        let result = finish_block
             .append_operation(arith::extui(result, uint256.into(), location))
             .result(0)?
             .into();

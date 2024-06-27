@@ -4544,8 +4544,10 @@ fn codegen_call<'c, 'r>(
         ret_size,
     )?;
 
+    let finish_block = region.append_block(Block::new(&[]));
     let call_result = op_ctx.call_syscall(
         &ret_block,
+        &finish_block,
         location,
         gas,
         address,
@@ -4556,7 +4558,7 @@ fn codegen_call<'c, 'r>(
         ret_size,
     )?;
 
-    stack_push(context, &ret_block, call_result)?;
+    stack_push(context, &finish_block, call_result)?;
 
-    Ok((start_block, ret_block))
+    Ok((start_block, finish_block))
 }
