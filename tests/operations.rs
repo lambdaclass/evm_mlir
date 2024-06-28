@@ -2,6 +2,8 @@
 //!
 //! These don't receive any input, and the CODE* opcodes
 //! may not work properly.
+use std::collections::HashMap;
+
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
     context::Context,
@@ -118,7 +120,8 @@ fn run_program_assert_gas_exact_with_initial_storage(
     env.tx.gas_limit = expected_gas;
     let mut db = Db::default();
     let mut context = SyscallContext::new(env.clone(), &mut db);
-    context.inner_context.journaled_storage.insert(
+    let mut initial_journaled_storage = HashMap::new();
+    initial_journaled_storage.insert(
         U256::from(key),
         EvmStorageSlot {
             original_value: U256::from(original_value),
@@ -126,10 +129,11 @@ fn run_program_assert_gas_exact_with_initial_storage(
             is_cold,
         },
     );
-
+    context.inner_context.journaled_storage = initial_journaled_storage.clone();
     let result = run_program_get_result(program.clone(), &mut context, expected_gas);
     assert!(result.is_success());
 
+    context.inner_context.journaled_storage = initial_journaled_storage;
     let result = run_program_get_result(program, &mut context, expected_gas - 1);
     assert!(result.is_halt());
 }
@@ -2686,8 +2690,8 @@ fn sstore_gas_cost_cold_to_zero() {
     let original_value = 10;
     let is_cold = true;
 
-    let needed_gas = 2900 + 2 * gas_cost::PUSHN;
-    let _refunded_gas = 4800; // TODO: check gas refund
+    let needed_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let _refunded_gas = 4_800; // TODO: check gas refund
 
     let key = 80_u8;
     let operations = vec![
@@ -2709,11 +2713,11 @@ fn sstore_gas_cost_cold_to_zero() {
 #[test]
 fn sstore_gas_cost_cold_to_non_zero() {
     let new_value: u8 = 20;
-    let present_value = 0;
+    let present_value = 10;
     let original_value = 10;
     let is_cold = true;
 
-    let needed_gas = 2900 + 2 * gas_cost::PUSHN;
+    let needed_gas = 5_000 + 2 * gas_cost::PUSHN;
     let _refunded_gas = 0; // TODO: check gas refund
 
     let key = 80_u8;
@@ -2761,14 +2765,41 @@ fn sstore_gas_cost_warm_restore_original_from_zero() {
 }
 
 #[test]
+fn sstore_gas_cost_warm_undo_free_slot() {
+    let new_value: u8 = 20;
+    let present_value = 0;
+    let original_value = 10;
+    let is_cold = false;
+
+    let needed_gas = 100 + 2 * gas_cost::PUSHN;
+    let _refunded_gas = -4_800; // TODO: check gas refund
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas as _,
+    );
+}
+
+#[test]
 fn sstore_gas_cost_warm_undo_restore() {
     let new_value: u8 = 20;
     let present_value = 10;
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 100 + 2 * gas_cost::PUSHN;
-    let _refunded_gas = -4_800; // TODO: check gas refund
+    let needed_gas = 2_900 + 2 * gas_cost::PUSHN;
+    let _refunded_gas = 0; // TODO: check gas refund
 
     let key = 80_u8;
     let operations = vec![
@@ -2794,7 +2825,8 @@ fn sstore_gas_cost_warm_restore_original_from_non_zero() {
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 2_900 + 2 * gas_cost::PUSHN;
+    let needed_gas = 100 + 2 * gas_cost::PUSHN;
+    let _refunded_gas = 2_800; // TODO: check gas refund
 
     let key = 80_u8;
     let operations = vec![
@@ -2821,6 +2853,7 @@ fn sstore_gas_cost_warm_update() {
     let is_cold = false;
 
     let needed_gas = 100 + 2 * gas_cost::PUSHN;
+    let _refunded_gas = 0; // TODO: check gas refund
 
     let key = 80_u8;
     let operations = vec![

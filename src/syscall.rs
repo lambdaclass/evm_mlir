@@ -88,7 +88,7 @@ pub struct InnerContext {
     // The program bytecode
     pub program: Vec<u8>,
     gas_remaining: Option<u64>,
-    gas_refund: Option<u64>,
+    gas_refund: Option<i64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
     pub journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: instead of making it pub implement insert method?
@@ -335,12 +335,17 @@ impl<'c> SyscallContext<'c> {
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
         let value = u256_from_u128(stg_value.hi, stg_value.lo);
 
+        // Update the journaled storage and retrieve the previous stored values.
         let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
         {
             Some(slot) => {
                 let current_value = slot.present_value;
+                let is_cold = slot.is_cold;
+
                 slot.present_value = value;
-                (slot.original_value, current_value, slot.is_cold)
+                slot.is_cold = false;
+
+                (slot.original_value, current_value, is_cold)
             }
             None => {
                 let original_value = self.db.read_storage(self.env.tx.caller, key);
@@ -348,14 +353,15 @@ impl<'c> SyscallContext<'c> {
                     key,
                     EvmStorageSlot {
                         original_value,
-                        present_value: value, // se cargan valores como si el write es exitoso. Si falla, igual se descarta
+                        present_value: value,
                         is_cold: false,
                     },
                 );
-                (original_value, original_value, true) // se devuelven valores previos
+                (original_value, original_value, true)
             }
         };
 
+        // Compute the gas cost
         let mut gas_cost: u64;
         if value == current {
             gas_cost = 100;
@@ -372,7 +378,8 @@ impl<'c> SyscallContext<'c> {
             gas_cost += 2_100;
         }
 
-        let mut gas_refund: u64 = 0;
+        // Compute the gas refund
+        let mut gas_refund: i64 = 0;
         if value != current {
             if current == original {
                 if !original.is_zero() && value.is_zero() {
@@ -396,6 +403,7 @@ impl<'c> SyscallContext<'c> {
             }
         }
 
+        // Check if gas is enough, and then perform the write operation
         if gas_cost > *gas_remaining {
             return 1;
         }
