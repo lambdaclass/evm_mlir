@@ -1386,6 +1386,23 @@ fn sstore_gas_cost_on_cold_zero_value() {
 }
 
 #[test]
+fn sstore_halts_with_insufficient_gas() {
+    // The amount of gas left to the transaction has to be less than or equal 2300.
+    let new_value = 10_u8;
+
+    let extra_gas_needed = 2_300;
+    let needed_gas = 22_100 + 2 * gas_cost::PUSHN + extra_gas_needed;
+
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(80_u8))),
+        Operation::Sstore,
+    ];
+    let env = Env::default();
+    run_program_assert_gas_exact(program, env, needed_gas as _);
+}
+
+#[test]
 fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
     let new_value: u8 = 0;
     let original_value = 10;
