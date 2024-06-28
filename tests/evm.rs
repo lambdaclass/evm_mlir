@@ -1382,7 +1382,6 @@ fn extcodecopy() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
     let (address, bytecode) = (
         Address::from_low_u64_be(address.into()),
         Bytecode::from(program.clone().to_bytecode()),
@@ -1414,7 +1413,6 @@ fn extcodecopy_with_offset_out_of_bounds() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
     let (address, bytecode) = (
         Address::from_low_u64_be(address.into()),
         Bytecode::from(program.clone().to_bytecode()),
@@ -1456,7 +1454,6 @@ fn extcodecopy_with_dirty_memory() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
     let (address, bytecode) = (
         Address::from_low_u64_be(address.into()),
         Bytecode::from(program.clone().to_bytecode()),
@@ -1502,7 +1499,6 @@ fn extcodecopy_with_wrong_address() {
     .into();
 
     let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
     let (address, bytecode) = (
         Address::from_low_u64_be(address.into()),
         Bytecode::from(program.clone().to_bytecode()),
