@@ -15,7 +15,7 @@ use melior::{
 
 use crate::{
     constants::{
-        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        call_opcode, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
@@ -919,11 +919,10 @@ impl<'c> OperationCtx<'c> {
 
         // Compare the result value to see if its an error
         // return_value == return_error_code -> HALT
-        //TODO: Use a constant for this return error code
         let return_error_code = start_block
             .append_operation(arith::constant(
                 context,
-                IntegerAttribute::new(uint32.into(), 2).into(),
+                IntegerAttribute::new(uint32.into(), call_opcode::HALT_RETURN_CODE.into()).into(),
                 location,
             ))
             .result(0)?

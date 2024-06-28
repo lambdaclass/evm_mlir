@@ -18,6 +18,7 @@
 use std::{ffi::c_void, path::PathBuf};
 
 use crate::{
+    constants::call_opcode,
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
@@ -223,17 +224,6 @@ impl<'c> SyscallContext<'c> {
         consumed_gas: &mut u64,
     ) -> u32 {
         //TODO: Add call depth check
-        //Return values
-        const SUCCESS_RETURN_CODE: u32 = 1;
-        const REVERT_RETURN_CODE: u32 = 0;
-        const HALT_RETURN_CODE: u32 = 2;
-
-        //Gas costs constants
-        const WARM_MEMORY_ACCESS_COST: u64 = 100;
-        const NOT_ZERO_VALUE_COST: u64 = 9000;
-        const EMPTY_CALLE_COST: u64 = 25000;
-        const STIPEND_GAS_ADDITION: u64 = 2300;
-        const GAS_CAP_DIVISION_FACTOR: u64 = 64;
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = call_to_address.to_address();
         let value = value_to_transfer.to_primitive_u256();
@@ -242,12 +232,12 @@ impl<'c> SyscallContext<'c> {
         //For the moment we consider warm access
         let callee_account = match self.db.basic(callee_address) {
             Ok(maybe_account) => {
-                *consumed_gas = WARM_MEMORY_ACCESS_COST;
+                *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
                 maybe_account.unwrap_or_default()
             }
             Err(_) => {
                 *consumed_gas = 0;
-                return REVERT_RETURN_CODE;
+                return call_opcode::REVERT_RETURN_CODE;
             }
         };
 
@@ -262,16 +252,16 @@ impl<'c> SyscallContext<'c> {
         if !value.is_zero() {
             if caller_account.balance < value {
                 //There isn't enough balance to send
-                return REVERT_RETURN_CODE;
+                return call_opcode::REVERT_RETURN_CODE;
             }
-            *consumed_gas += NOT_ZERO_VALUE_COST;
+            *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
             if callee_account.is_empty() {
-                *consumed_gas += EMPTY_CALLE_COST;
+                *consumed_gas += call_opcode::EMPTY_CALLE_COST;
             }
             if available_gas < *consumed_gas {
-                return REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
+                return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
             }
-            stipend = STIPEND_GAS_ADDITION;
+            stipend = call_opcode::STIPEND_GAS_ADDITION;
 
             //TODO: Maybe we should increment the nonce too
             let caller_balance = caller_account.balance;
@@ -286,7 +276,10 @@ impl<'c> SyscallContext<'c> {
         }
 
         let remaining_gas = available_gas - *consumed_gas;
-        gas_to_send = std::cmp::min(remaining_gas / GAS_CAP_DIVISION_FACTOR, gas_to_send);
+        gas_to_send = std::cmp::min(
+            remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+            gas_to_send,
+        );
         *consumed_gas += gas_to_send;
         gas_to_send += stipend;
 
@@ -335,7 +328,7 @@ impl<'c> SyscallContext<'c> {
             } => {
                 self.write_to_memory(ret_offset as _, ret_size as _, output.data());
                 *consumed_gas -= gas_to_send - gas_used;
-                SUCCESS_RETURN_CODE
+                call_opcode::SUCCESS_RETURN_CODE
             }
             //TODO: If we revert, should we still send the value to the called contract?
             ExecutionResult::Revert {
@@ -343,11 +336,11 @@ impl<'c> SyscallContext<'c> {
             } => {
                 self.write_to_memory(ret_offset as _, ret_size as _, &output);
                 *consumed_gas -= gas_to_send - gas_used;
-                REVERT_RETURN_CODE
+                call_opcode::REVERT_RETURN_CODE
             }
             ExecutionResult::Halt { gas_used, .. } => {
                 *consumed_gas -= gas_to_send - gas_used;
-                HALT_RETURN_CODE
+                call_opcode::HALT_RETURN_CODE
             }
         }
     }

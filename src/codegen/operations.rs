@@ -4457,17 +4457,6 @@ fn codegen_call<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    /*
-    1. Get arguments from stack
-    2. Validations
-        - There is enough gas to perform the op -> Then it will be divided by 64
-        - value < account.balance (probably this will be checked from the syscall (Rust) side)
-        - Offset and size are correct (both for args and ret)
-    3. Call the syscall
-    4. Update the gas value
-    5. Push the result on to the stack
-    */
-
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -4524,7 +4513,6 @@ fn codegen_call<'c, 'r>(
         .result(0)?
         .into();
 
-    //TODO: Gas cost calculation has to be added to this expansions
     let args_block = region.append_block(Block::new(&[]));
     let ret_block = region.append_block(Block::new(&[]));
     expand_memory_from_offset_and_size(
@@ -4534,6 +4522,7 @@ fn codegen_call<'c, 'r>(
         region,
         args_offset,
         args_size,
+        gas_cost::CALL,
     )?;
     expand_memory_from_offset_and_size(
         op_ctx,
@@ -4542,6 +4531,7 @@ fn codegen_call<'c, 'r>(
         region,
         ret_offset,
         ret_size,
+        gas_cost::CALL,
     )?;
 
     let finish_block = region.append_block(Block::new(&[]));

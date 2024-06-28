@@ -1164,8 +1164,8 @@ pub(crate) fn expand_memory_from_offset_and_size<'c>(
     region: &'c Region<'c>,
     offset: Value<'c, 'c>,
     size: Value<'c, 'c>,
+    fixed_gas: i64,
 ) -> Result<(), CodegenError> {
-    // truncate offsets and size to 32 bits
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     //required size = des_offset + size
@@ -1174,8 +1174,14 @@ pub(crate) fn expand_memory_from_offset_and_size<'c>(
         .result(0)?
         .into();
 
-    //TODO: Modify gas consumption
-    extend_memory(op_ctx, block, return_block, region, required_memory_size, 0)?;
+    extend_memory(
+        op_ctx,
+        block,
+        return_block,
+        region,
+        required_memory_size,
+        fixed_gas,
+    )?;
     Ok(())
 }
 

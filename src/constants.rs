@@ -72,6 +72,7 @@ pub mod gas_cost {
     pub const KECCAK256: i64 = 30;
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
+    pub const CALL: i64 = 0;
     pub const ADDRESS: i64 = 2;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
@@ -100,6 +101,20 @@ pub mod gas_cost {
     pub fn exp_dynamic_cost(exponent: u64) -> i64 {
         10 + 50 * exponent_byte_size(exponent)
     }
+}
+
+pub mod call_opcode {
+    // Return codes
+    pub const SUCCESS_RETURN_CODE: u32 = 1;
+    pub const REVERT_RETURN_CODE: u32 = 0;
+    pub const HALT_RETURN_CODE: u32 = 2;
+
+    // Gas related constants
+    pub const WARM_MEMORY_ACCESS_COST: u64 = 100;
+    pub const NOT_ZERO_VALUE_COST: u64 = 9000;
+    pub const EMPTY_CALLE_COST: u64 = 25000;
+    pub const STIPEND_GAS_ADDITION: u64 = 2300;
+    pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }
 
 #[cfg(test)]
