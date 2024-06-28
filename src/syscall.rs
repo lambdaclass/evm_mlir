@@ -46,10 +46,10 @@ impl U256 {
     }
 }
 
-impl TryFrom<U256> for Address {
+impl TryFrom<&U256> for Address {
     type Error = ();
 
-    fn try_from(value: U256) -> Result<Self, Self::Error> {
+    fn try_from(value: &U256) -> Result<Self, Self::Error> {
         const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
         let hi_bytes = value.hi.to_be_bytes();
         let lo_bytes = value.lo.to_be_bytes();
@@ -338,7 +338,7 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
-        let Ok(address) = Address::try_from(*address_value) else {
+        let Ok(address) = Address::try_from(address_value) else {
             self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
             return;
         };
