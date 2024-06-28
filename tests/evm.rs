@@ -943,19 +943,26 @@ fn extcodecopy_with_dirty_memory() {
 #[test]
 fn extcodecopy_with_wrong_address() {
     // A wrong address should return an empty bytecode
-    let size = 0_u8;
+    let size = 10_u8;
     let offset = 0_u8;
-    let dest_offset = 0_u8;
+    let dest_offset = 2_u8;
     let address = 100_u8;
     let wrong_address = &[0xff; 32]; // All bits on
+    let all_ones = BigUint::from_bytes_be(&[0xff_u8; 32]);
+
     let program: Program = vec![
+        //First, we write ones into the memory
+        Operation::Push((32_u8, all_ones)),
+        Operation::Push0,
+        Operation::Mstore,
+        //Begin with Extcodecopy
         Operation::Push((1_u8, BigUint::from(size))),
         Operation::Push((1_u8, BigUint::from(offset))),
         Operation::Push((1_u8, BigUint::from(dest_offset))),
         Operation::Push((32_u8, BigUint::from_bytes_be(wrong_address))),
         Operation::ExtcodeCopy,
-        Operation::Push((1_u8, BigUint::from(size))),
-        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(0_u8))),
         Operation::Return,
     ]
     .into();
@@ -973,6 +980,13 @@ fn extcodecopy_with_wrong_address() {
 
     assert!(&result.is_success());
     let result_data = result.return_data().unwrap();
-    let expected_result = Bytecode::default();
-    assert_eq!(result_data, &expected_result);
+
+    let expected_result = [
+        vec![0xff; 2],  // 2 bytes of dirty memory (offset = 2)
+        vec![0_u8; 10], // 4 bytes of padding (size = 10)
+        vec![0xff; 20], // 20 more bytes of dirty memory
+    ]
+    .concat();
+
+    assert_eq!(result_data, expected_result);
 }
