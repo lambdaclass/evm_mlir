@@ -1,8 +1,12 @@
 #![allow(unused)]
-use crate::primitives::{Address, Bytes, B256, U256};
+use crate::{
+    primitives::{Address, Bytes, B256, U256},
+    state::{Account, EvmStorageSlot},
+};
+use core::fmt;
 use sha3::{Digest, Keccak256};
-use std::{collections::HashMap, convert::Infallible, fmt::Error};
-
+use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
+use thiserror::Error;
 pub type Bytecode = Bytes;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -25,8 +29,14 @@ impl Db {
         Self::default()
     }
 
-    pub fn with_bytecode(self, address: Address, bytecode: Bytecode) -> Self {
-        let mut db = Db::default();
+    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+        if let Some(a) = self.accounts.get_mut(&address) {
+            a.nonce = nonce;
+            a.balance = balance;
+        }
+    }
+
+    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
         let hash = B256::from_slice(&hasher.finalize());
@@ -34,9 +44,11 @@ impl Db {
             bytecode_hash: hash,
             ..Default::default()
         };
-        db.accounts.insert(address, account);
-        db.contracts.insert(hash, bytecode);
-        db
+
+        self.accounts.insert(address, account);
+        self.contracts.insert(hash, bytecode);
+
+        self
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -49,7 +61,7 @@ impl Db {
             .get(&address)
             .and_then(|account| account.storage.get(&key))
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or(U256::zero())
     }
 
     pub fn code_by_address(&self, address: Address) -> Bytecode {
@@ -63,9 +75,29 @@ impl Db {
             None => Bytecode::default(),
         }
     }
+
+    pub fn into_state(self) -> HashMap<Address, Account> {
+        self.accounts
+            .iter()
+            .map(|(address, db_account)| {
+                (
+                    *address,
+                    Account {
+                        info: AccountInfo::from(db_account.clone()),
+                        storage: db_account
+                            .storage
+                            .iter()
+                            .map(|(k, v)| (*k, EvmStorageSlot::from(*v)))
+                            .collect(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect()
+    }
 }
 
-#[derive(Default, Clone, PartialEq, Debug)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,
@@ -76,6 +108,17 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
+}
+
+impl From<DbAccount> for AccountInfo {
+    fn from(db_account: DbAccount) -> Self {
+        Self {
+            balance: db_account.balance,
+            nonce: db_account.nonce,
+            code_hash: db_account.bytecode_hash,
+            code: None,
+        }
+    }
 }
 
 pub trait Database {
@@ -95,7 +138,8 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
+#[error("error on database access")]
 pub struct DatabaseError;
 
 impl Database for Db {
@@ -103,12 +147,7 @@ impl Database for Db {
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
-        Ok(self.accounts.get(&address).map(|db_account| AccountInfo {
-            balance: db_account.balance,
-            nonce: db_account.nonce,
-            code_hash: db_account.bytecode_hash,
-            code: None,
-        }))
+        Ok(self.accounts.get(&address).cloned().map(AccountInfo::from))
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
