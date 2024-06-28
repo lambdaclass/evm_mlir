@@ -24,9 +24,10 @@ use crate::{
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value,
         expand_memory_from_offset_and_size, extend_memory, get_basefee, get_block_number,
-        get_memory_pointer, get_nth_from_stack, get_remaining_gas, get_stack_pointer,
-        inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result,
-        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack,
+        get_remaining_gas, get_stack_pointer, inc_stack_pointer, integer_constant_from_i64,
+        llvm_mlir, return_empty_result, return_result_from_stack, stack_pop, stack_push,
+        swap_stack_elements,
     },
 };
 
@@ -73,12 +74,14 @@ pub fn generate_code_for_op<'c>(
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
-        Operation::BlobBaseFee => codegen_blobbasefee(op_ctx, region),
+        Operation::Gaslimit => codegen_gaslimit(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
         Operation::SelfBalance => codegen_selfbalance(op_ctx, region),
+        Operation::BlobBaseFee => codegen_blobbasefee(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
         Operation::Sload => codegen_sload(op_ctx, region),
+        Operation::Sstore => codegen_sstore(op_ctx, region),
         Operation::Jump => codegen_jump(op_ctx, region),
         Operation::Jumpi => codegen_jumpi(op_ctx, region),
         Operation::PC { pc } => codegen_pc(op_ctx, region, pc),
@@ -2253,6 +2256,80 @@ fn codegen_sload<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
+fn codegen_sstore<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // TODO: add gas consumption and check gas_left > 2300 + gas_needed
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let key = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
+
+    let key_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    let value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        value,
+        value_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location);
+
+    Ok((start_block, ok_block))
+}
+
 fn codegen_codesize<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -3533,9 +3610,7 @@ fn codegen_calldataload<'c, 'r>(
 
     let offset = stack_pop(context, &ok_block)?;
 
-    // TODO: add a calldata_ptr and size setup
-
-    let calldata_ptr = op_ctx.get_calldata_ptr_syscall(&ok_block, location)?;
+    let calldata_ptr = get_calldata_ptr(op_ctx, &ok_block, location)?;
 
     // max_slice_width = 32
     let max_slice_width = ok_block
@@ -3547,7 +3622,8 @@ fn codegen_calldataload<'c, 'r>(
         .result(0)?
         .into();
 
-    let calldata_size_u32 = op_ctx.get_calldata_size_syscall(&ok_block, location)?;
+    let calldata_size_u32 = get_calldata_size(op_ctx, &ok_block, location)?;
+
     // convert calldata_size from u32 to u256
     let calldata_size = ok_block
         .append_operation(arith::extui(calldata_size_u32, uint256.into(), location))
@@ -4449,6 +4525,48 @@ fn codegen_blobbasefee<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, blob_base_fee)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_gaslimit<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_size_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::GASLIMIT)?;
+
+    let ok_flag = start_block
+        .append_operation(arith::andi(stack_size_flag, gas_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        ok_flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gaslimit = op_ctx.get_gaslimit(&ok_block, location)?;
+
+    let uint256 = IntegerType::new(context, 256);
+    let result = ok_block
+        .append_operation(arith::extui(gaslimit, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
 }

@@ -61,7 +61,7 @@ impl Db {
             .get(&address)
             .and_then(|account| account.storage.get(&key))
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or(U256::zero())
     }
 
     pub fn code_by_address(&self, address: Address) -> Result<Bytecode, DatabaseError> {

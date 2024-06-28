@@ -55,6 +55,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x41) COINBASE
 1. (0x42) TIMESTAMP
 1. (0x43) NUMBER
+1. (0x45) GASLIMIT
 1. (0x46) CHAINID
 1. (0x47) SELFBALANCE
 1. (0x48) BASEFEE
@@ -64,6 +65,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x52) MSTORE
 1. (0x53) MSTORE8
 1. (0x54) SLOAD
+1. (0x55) SSTORE
 1. (0x56) JUMP
 1. (0x57) JUMPI
 1. (0x58) PC
@@ -156,9 +158,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
 1. (0x44) DIFFICULTY
-1. (0x45) GASLIMIT
 1. (0x49) BLOBHASH
-1. (0x55) SSTORE
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
 1. (0xF0) CREATE
