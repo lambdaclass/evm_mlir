@@ -91,8 +91,7 @@ pub struct InnerContext {
     gas_refund: Option<i64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
-    pub journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: instead of making it pub implement insert method?
-                                                           // TODO: rename as journaled_state. Move hashmap into a struct
+    journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename as journaled_state. Move hashmap into a struct
 }
 
 /// The context passed to syscalls
