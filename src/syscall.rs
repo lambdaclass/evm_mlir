@@ -44,16 +44,21 @@ impl U256 {
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
-    pub fn try_into_address(&self) -> Option<Address> {
+}
+
+impl TryFrom<U256> for Address {
+    type Error = ();
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
         const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
-        let hi_bytes = self.hi.to_be_bytes();
-        let lo_bytes = self.lo.to_be_bytes();
+        let hi_bytes = value.hi.to_be_bytes();
+        let lo_bytes = value.lo.to_be_bytes();
         // Address is valid only if first 12 bytes are set to zero
-        if self.hi & FIRST_12_BYTES_MASK != 0 {
-            return None;
+        if value.hi & FIRST_12_BYTES_MASK != 0 {
+            return Err(());
         }
         let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-        Some(Address::from_slice(&address))
+        Ok(Address::from_slice(&address))
     }
 }
 
@@ -333,7 +338,7 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
-        let Some(address) = address_value.try_into_address() else {
+        let Ok(address) = Address::try_from(*address_value) else {
             self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
             return;
         };
