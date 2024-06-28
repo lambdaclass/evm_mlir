@@ -91,7 +91,7 @@ pub struct InnerContext {
     gas_refund: Option<i64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
-    journaled_storage: HashMap<EU256, EvmStorageSlot>,
+    journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
 }
 
 /// The context passed to syscalls
@@ -176,7 +176,7 @@ impl<'c> SyscallContext<'c> {
             },
         };
 
-        let state = self.db.clone().into_state(); // TOOD: usar tambien self.inner_context.journaled_state
+        let state = self.db.clone().into_state(); // TODO: update the state with the journaled_storage entries
 
         Ok(ResultAndState { result, state })
     }
@@ -402,7 +402,6 @@ impl<'c> SyscallContext<'c> {
                 }
             }
         }
-        // TODO: cap gas_refund to one fifth of the total transaction cost
 
         // Check if gas is enough, and then perform the write operation
         // The amount of gas left to the transaction hass to be less than or equal 2300 (since Istanbul fork).
