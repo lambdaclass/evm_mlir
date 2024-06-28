@@ -50,7 +50,6 @@ impl U256 {
         let lo_bytes = self.lo.to_be_bytes();
         // Address is valid only if first 12 bytes are set to zero
         if self.hi & FIRST_12_BYTES_MASK != 0 {
-            println!("Not valid");
             return None;
         }
         let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
