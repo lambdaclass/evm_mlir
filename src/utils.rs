@@ -1,7 +1,6 @@
 use melior::{
     dialect::{
-        arith,
-        arith::CmpiPredicate,
+        arith::{self, CmpiPredicate},
         cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,
@@ -1222,6 +1221,34 @@ pub(crate) fn extend_memory<'c>(
         location,
     ));
 
+    Ok(())
+}
+
+pub(crate) fn expand_memory_from_offset_and_size<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    return_block: &'c Block,
+    region: &'c Region<'c>,
+    offset: Value<'c, 'c>,
+    size: Value<'c, 'c>,
+    fixed_gas: i64,
+) -> Result<(), CodegenError> {
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    //required size = des_offset + size
+    let required_memory_size = block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    extend_memory(
+        op_ctx,
+        block,
+        return_block,
+        region,
+        required_memory_size,
+        fixed_gas,
+    )?;
     Ok(())
 }
 

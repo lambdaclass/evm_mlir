@@ -15,13 +15,16 @@ use melior::{
 
 use crate::{
     constants::{
-        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        call_opcode, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
-    utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
+    utils::{
+        allocate_and_store_value, constant_value_from_i64, consume_gas_as_value, get_remaining_gas,
+        integer_constant_from_u8, llvm_mlir,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -886,5 +889,118 @@ impl<'c> OperationCtx<'c> {
             balance,
             location,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call_syscall(
+        &'c self,
+        start_block: &'c Block,
+        finish_block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+    ) -> Result<Value, CodegenError> {
+        let context = self.mlir_context;
+        let uint32 = IntegerType::new(context, 32);
+        let uint64 = IntegerType::new(context, 64);
+        let ptr_type = pointer(context, 0);
+
+        let available_gas = get_remaining_gas(context, start_block)?;
+        // Alloc and store value argument
+        let value_ptr = allocate_and_store_value(self, start_block, value, location)?;
+        let address_ptr = allocate_and_store_value(self, start_block, address, location)?;
+
+        // Alloc pointer to return gas value
+        let gas_pointer_size = constant_value_from_i64(context, start_block, 1_i64)?;
+        let gas_return_ptr = start_block
+            .append_operation(llvm::alloca(
+                context,
+                gas_pointer_size,
+                ptr_type,
+                location,
+                AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint64.into()))),
+            ))
+            .result(0)?
+            .into();
+
+        let return_value = syscall::mlir::call_syscall(
+            context,
+            self.syscall_ctx,
+            start_block,
+            location,
+            gas,
+            address_ptr,
+            value_ptr,
+            args_offset,
+            args_size,
+            ret_offset,
+            ret_size,
+            available_gas,
+            gas_return_ptr,
+        )?;
+
+        // Update the available gas with the remaining gas after the call
+        let consumed_gas = start_block
+            .append_operation(llvm::load(
+                context,
+                gas_return_ptr,
+                uint64.into(),
+                location,
+                LoadStoreOptions::default(),
+            ))
+            .result(0)?
+            .into();
+        let gas_flag = consume_gas_as_value(context, start_block, consumed_gas)?;
+
+        // Compare the result value to see if its an error
+        // return_value == return_error_code -> HALT
+        let return_error_code = start_block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint32.into(), call_opcode::HALT_RETURN_CODE.into()).into(),
+                location,
+            ))
+            .result(0)?
+            .into();
+        let return_ok_flag = start_block
+            .append_operation(arith::cmpi(
+                context,
+                arith::CmpiPredicate::Ne,
+                return_value,
+                return_error_code,
+                location,
+            ))
+            .result(0)?
+            .into();
+
+        let condition = start_block
+            .append_operation(arith::andi(gas_flag, return_ok_flag, location))
+            .result(0)?
+            .into();
+
+        start_block.append_operation(cf::cond_br(
+            context,
+            condition,
+            finish_block,
+            &self.revert_block,
+            &[],
+            &[],
+            location,
+        ));
+
+        // Extend the 32 bits result to 256 bits
+        let uint256 = IntegerType::new(context, 256);
+
+        let result = finish_block
+            .append_operation(arith::extui(return_value, uint256.into(), location))
+            .result(0)?
+            .into();
+
+        Ok(result)
     }
 }

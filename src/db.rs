@@ -108,6 +108,14 @@ pub struct AccountInfo {
     pub code: Option<Bytecode>,
 }
 
+impl AccountInfo {
+    pub fn is_empty(&self) -> bool {
+        self.balance.is_zero()
+            && self.nonce == 0
+            && self.code.clone().unwrap_or_default().is_empty()
+    }
+}
+
 impl From<DbAccount> for AccountInfo {
     fn from(db_account: DbAccount) -> Self {
         Self {

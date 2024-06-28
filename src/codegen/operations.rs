@@ -22,11 +22,12 @@ use crate::{
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
-        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_block_number, get_calldata_ptr, get_calldata_size, get_memory_pointer,
-        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        constant_value_from_i64, consume_gas, consume_gas_as_value,
+        expand_memory_from_offset_and_size, extend_memory, get_basefee, get_block_number,
+        get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack,
+        get_remaining_gas, get_stack_pointer, inc_stack_pointer, integer_constant_from_i64,
+        llvm_mlir, return_empty_result, return_result_from_stack, stack_pop, stack_push,
+        swap_stack_elements,
     },
 };
 
@@ -90,6 +91,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Mcopy => codegen_mcopy(op_ctx, region),
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
+        Operation::Call => codegen_call(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Mstore => codegen_mstore(op_ctx, region),
@@ -4567,4 +4569,104 @@ fn codegen_gaslimit<'c, 'r>(
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_call<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 7)?;
+    let gas_flag = consume_gas(context, &start_block, 0)?; //TODO: Change this
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gas = stack_pop(context, &ok_block)?;
+    let address = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+    let args_offset = stack_pop(context, &ok_block)?;
+    let args_size = stack_pop(context, &ok_block)?;
+    let ret_offset = stack_pop(context, &ok_block)?;
+    let ret_size = stack_pop(context, &ok_block)?;
+
+    // Truncate arguments to their corresponding sizes
+    let gas = ok_block
+        .append_operation(arith::trunci(gas, uint64.into(), location))
+        .result(0)?
+        .into();
+    let args_offset = ok_block
+        .append_operation(arith::trunci(args_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let args_size = ok_block
+        .append_operation(arith::trunci(args_size, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_offset = ok_block
+        .append_operation(arith::trunci(ret_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_size = ok_block
+        .append_operation(arith::trunci(ret_size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let args_block = region.append_block(Block::new(&[]));
+    let ret_block = region.append_block(Block::new(&[]));
+    expand_memory_from_offset_and_size(
+        op_ctx,
+        &ok_block,
+        &args_block,
+        region,
+        args_offset,
+        args_size,
+        gas_cost::CALL,
+    )?;
+    expand_memory_from_offset_and_size(
+        op_ctx,
+        &args_block,
+        &ret_block,
+        region,
+        ret_offset,
+        ret_size,
+        gas_cost::CALL,
+    )?;
+
+    let finish_block = region.append_block(Block::new(&[]));
+    let call_result = op_ctx.call_syscall(
+        &ret_block,
+        &finish_block,
+        location,
+        gas,
+        address,
+        value,
+        args_offset,
+        args_size,
+        ret_offset,
+        ret_size,
+    )?;
+
+    stack_push(context, &finish_block, call_result)?;
+
+    Ok((start_block, finish_block))
 }
