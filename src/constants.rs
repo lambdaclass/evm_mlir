@@ -13,8 +13,6 @@ pub const MAIN_ENTRYPOINT: &str = "main";
 //  -> This implies refactoring codegen/operations.rs
 /// Contains the gas costs of the EVM instructions
 pub mod gas_cost {
-    use num_bigint::BigUint;
-
     pub const ADD: i64 = 3;
     pub const MUL: i64 = 5;
     pub const SUB: i64 = 3;
@@ -102,33 +100,6 @@ pub mod gas_cost {
 
     pub fn exp_dynamic_cost(exponent: u64) -> i64 {
         10 + 50 * exponent_byte_size(exponent)
-    }
-
-    pub fn sstore_dynamic_gas_refund(new: BigUint, current: BigUint, original: BigUint) -> i64 {
-        let mut gas_refunds: i64 = 0;
-        if new != current {
-            if current == original {
-                if original != BigUint::ZERO && new == BigUint::ZERO {
-                    gas_refunds += 4_800;
-                }
-            } else {
-                if original != BigUint::ZERO {
-                    if current == BigUint::ZERO {
-                        gas_refunds -= 4_800;
-                    } else if new == BigUint::ZERO {
-                        gas_refunds += 4_800;
-                    }
-                }
-                if new == original {
-                    if original == BigUint::ZERO {
-                        gas_refunds += 19_900;
-                    } else {
-                        gas_refunds += 2_800;
-                    }
-                }
-            }
-        }
-        gas_refunds
     }
 }
 

@@ -15,7 +15,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, GAS_COUNTER_GLOBAL, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -2263,6 +2263,8 @@ fn codegen_sstore<'c, 'r>(
     let location = Location::unknown(context);
     let ptr_type = pointer(context, 0);
     let uint256 = IntegerType::new(context, 256);
+    let uint64 = IntegerType::new(context, 64);
+    let uint8 = IntegerType::new(context, 8);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -2322,12 +2324,59 @@ fn codegen_sstore<'c, 'r>(
     ));
     assert!(res.verify());
 
-    let _is_cold = op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
-    // now value_otr containes the original value. Load it
-    // load original_value_ptr
+    // Get address of gas counter global
+    let gas_counter_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
 
-    // TODO: calculate dynamic gas and check gas_left > 2300 + gas_needed
-    Ok((start_block, ok_block))
+    // Write storage and update the gas counter
+    let write_result =
+        op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, gas_counter_ptr, location)?;
+
+    // Check if the return value is zero
+    let zero_constant_value = ok_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint8.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let flag = ok_block
+        .append_operation(
+            ods::llvm::icmp(
+                context,
+                IntegerType::new(context, 1).into(),
+                zero_constant_value,
+                write_result,
+                IntegerAttribute::new(uint64.into(), 0).into(),
+                location,
+            )
+            .into(),
+        )
+        .result(0)?
+        .into();
+    let return_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &return_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // TODO: check gas_left > 2300 + gas_needed
+    // TODO: cap gas_refund
+    Ok((start_block, return_block))
 }
 
 fn codegen_codesize<'c, 'r>(

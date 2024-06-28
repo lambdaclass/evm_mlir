@@ -88,9 +88,11 @@ pub struct InnerContext {
     // The program bytecode
     pub program: Vec<u8>,
     gas_remaining: Option<u64>,
+    gas_refund: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
     pub journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: instead of making it pub implement insert method?
+                                                           // TODO: rename as journaled_state. Move hashmap into a struct
 }
 
 /// The context passed to syscalls
@@ -324,39 +326,85 @@ impl<'c> SyscallContext<'c> {
         stg_value.lo = result.low_u128();
     }
 
-    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> u8 {
-        // Stores the key-value in the db. Also updates the journaled storage and returns a boolean indicating if the key was cold.
-        let address = self.env.tx.caller;
-
+    pub extern "C" fn write_storage(
+        &mut self,
+        stg_key: &U256,
+        stg_value: &mut U256,
+        gas_remaining: &mut u64,
+    ) -> u8 {
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
         let value = u256_from_u128(stg_value.hi, stg_value.lo);
 
-        self.db.write_storage(address, key, value);
-
-        let (is_cold, original_value) = match self.inner_context.journaled_storage.get_mut(&key) {
+        let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
+        {
             Some(slot) => {
+                let current_value = slot.present_value;
                 slot.present_value = value;
-                (slot.is_cold, slot.original_value)
+                (slot.original_value, current_value, slot.is_cold)
             }
             None => {
-                let original_value = self.db.read_storage(address, key);
+                let original_value = self.db.read_storage(self.env.tx.caller, key);
                 self.inner_context.journaled_storage.insert(
                     key,
                     EvmStorageSlot {
                         original_value,
-                        present_value: value,
+                        present_value: value, // se cargan valores como si el write es exitoso. Si falla, igual se descarta
                         is_cold: false,
                     },
                 );
-                (true, original_value)
+                (original_value, original_value, true) // se devuelven valores previos
             }
         };
 
-        stg_value.hi = (original_value >> 128).low_u128();
-        stg_value.lo = original_value.low_u128();
+        let mut gas_cost: u64;
+        if value == current {
+            gas_cost = 100;
+        } else if current == original {
+            if original.is_zero() {
+                gas_cost = 20_000;
+            } else {
+                gas_cost = 2_900;
+            }
+        } else {
+            gas_cost = 100;
+        }
+        if is_cold {
+            gas_cost += 2_100;
+        }
 
-        is_cold as u8 // TODO: devolver como bool? ver como definir atributo bool en MLIR
-                      // TOOD: es necesario almacenar is_cold en EvmStorageSlot? siempre se setea en false
+        let mut gas_refund: u64 = 0;
+        if value != current {
+            if current == original {
+                if !original.is_zero() && value.is_zero() {
+                    gas_refund += 4_800;
+                }
+            } else {
+                if !original.is_zero() {
+                    if current.is_zero() {
+                        gas_refund -= 4_800;
+                    } else if value.is_zero() {
+                        gas_refund += 4_800;
+                    }
+                }
+                if value == original {
+                    if original.is_zero() {
+                        gas_refund += 19_900;
+                    } else {
+                        gas_refund += 2_800;
+                    }
+                }
+            }
+        }
+
+        if gas_cost > *gas_remaining {
+            return 1;
+        }
+        *gas_remaining -= gas_cost;
+        let current_refund = self.inner_context.gas_refund.unwrap_or(0);
+        self.inner_context.gas_refund = Some(gas_refund + current_refund);
+
+        self.db.write_storage(self.env.tx.caller, key, value);
+        0
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
@@ -520,7 +568,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
+            SyscallContext::write_storage
+                as *const fn(*mut c_void, *const U256, *const U256, *const u64)
                 as *mut (),
         );
         engine.register_symbol(
@@ -803,7 +852,8 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint8]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type, ptr_type], &[uint8])
+                    .into(),
             ),
             Region::new(),
             attributes,
@@ -1185,6 +1235,7 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        gas_remaining: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8);
@@ -1192,7 +1243,7 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-                &[syscall_ctx, key, value],
+                &[syscall_ctx, key, value, gas_remaining],
                 &[uint8.into()],
                 location,
             ))
