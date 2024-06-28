@@ -2374,8 +2374,6 @@ fn codegen_sstore<'c, 'r>(
         location,
     ));
 
-    // TODO: check gas_left > 2300 + gas_needed
-    // TODO: cap gas_refund
     Ok((start_block, return_block))
 }
 

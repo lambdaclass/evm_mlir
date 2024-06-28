@@ -86,7 +86,6 @@ fn run_program_assert_gas_and_refund(mut env: Env, db: Db, needed_gas: u64, refu
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
     assert_eq!(result.gas_used(), needed_gas);
-    // TODO: refactor other tests to check gas like this
     assert_eq!(result.gas_refunded(), refunded_gas);
 }
 

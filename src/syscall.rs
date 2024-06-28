@@ -91,7 +91,7 @@ pub struct InnerContext {
     gas_refund: Option<i64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
-    journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename as journaled_state. Move hashmap into a struct
+    journaled_storage: HashMap<EU256, EvmStorageSlot>,
 }
 
 /// The context passed to syscalls
@@ -402,9 +402,11 @@ impl<'c> SyscallContext<'c> {
                 }
             }
         }
+        // TODO: cap gas_refund to one fifth of the total transaction cost
 
         // Check if gas is enough, and then perform the write operation
-        if gas_cost > *gas_remaining {
+        // The amount of gas left to the transaction hass to be less than or equal 2300 (since Istanbul fork).
+        if gas_cost > *gas_remaining + 2_300 {
             return 1;
         }
         *gas_remaining -= gas_cost;
