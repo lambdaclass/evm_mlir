@@ -2668,7 +2668,7 @@ fn log_with_stack_underflow() {
 
 #[test]
 fn sstore_gas_cost_cold_new_value() {
-    let needed_gas: u16 = 22_100;
+    let needed_gas = 22_100 + 2 * gas_cost::PUSHN;
 
     let new_value = 10_u8;
     let operations = vec![
@@ -2686,7 +2686,7 @@ fn sstore_gas_cost_cold_to_zero() {
     let original_value = 10;
     let is_cold = true;
 
-    let needed_gas = 2900;
+    let needed_gas = 2900 + 2 * gas_cost::PUSHN;
     let _refunded_gas = 4800; // TODO: check gas refund
 
     let key = 80_u8;
@@ -2702,7 +2702,7 @@ fn sstore_gas_cost_cold_to_zero() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
 
@@ -2713,7 +2713,7 @@ fn sstore_gas_cost_cold_to_non_zero() {
     let original_value = 10;
     let is_cold = true;
 
-    let needed_gas = 2900;
+    let needed_gas = 2900 + 2 * gas_cost::PUSHN;
     let _refunded_gas = 0; // TODO: check gas refund
 
     let key = 80_u8;
@@ -2729,7 +2729,7 @@ fn sstore_gas_cost_cold_to_non_zero() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
 
@@ -2740,7 +2740,7 @@ fn sstore_gas_cost_warm_restore_original_from_zero() {
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 100;
+    let needed_gas = 100 + 2 * gas_cost::PUSHN;
     let _refunded_gas = -2_000; // TODO: check gas refund
 
     let key = 80_u8;
@@ -2756,7 +2756,7 @@ fn sstore_gas_cost_warm_restore_original_from_zero() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
 
@@ -2767,7 +2767,7 @@ fn sstore_gas_cost_warm_undo_restore() {
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 100;
+    let needed_gas = 100 + 2 * gas_cost::PUSHN;
     let _refunded_gas = -4_800; // TODO: check gas refund
 
     let key = 80_u8;
@@ -2783,7 +2783,7 @@ fn sstore_gas_cost_warm_undo_restore() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
 
@@ -2794,7 +2794,7 @@ fn sstore_gas_cost_warm_restore_original_from_non_zero() {
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 2_900;
+    let needed_gas = 2_900 + 2 * gas_cost::PUSHN;
 
     let key = 80_u8;
     let operations = vec![
@@ -2809,7 +2809,7 @@ fn sstore_gas_cost_warm_restore_original_from_non_zero() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
 
@@ -2820,7 +2820,7 @@ fn sstore_gas_cost_warm_update() {
     let original_value = 10;
     let is_cold = false;
 
-    let needed_gas = 100;
+    let needed_gas = 100 + 2 * gas_cost::PUSHN;
 
     let key = 80_u8;
     let operations = vec![
@@ -2835,6 +2835,6 @@ fn sstore_gas_cost_warm_update() {
         original_value,
         present_value,
         is_cold,
-        needed_gas,
+        needed_gas as _,
     );
 }
