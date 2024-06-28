@@ -44,6 +44,18 @@ impl U256 {
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
+    pub fn try_into_address(&self) -> Option<Address> {
+        const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
+        let hi_bytes = self.hi.to_be_bytes();
+        let lo_bytes = self.lo.to_be_bytes();
+        // Address is valid only if first 12 bytes are set to zero
+        if self.hi & FIRST_12_BYTES_MASK != 0 {
+            println!("Not valid");
+            return None;
+        }
+        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
+        Some(Address::from_slice(&address))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -314,34 +326,29 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn copy_ext_code_to_memory(
         &mut self,
-        address: &U256,
+        address_value: &U256,
         code_offset: u32,
         size: u32,
         dest_offset: u32,
     ) {
-        let address_hi_bytes = address.hi.to_be_bytes();
-        let address_lo_bytes = address.lo.to_be_bytes();
-        // build the 20-byte address from the hi and lo bytes of the U256 address
-        let address = [&address_hi_bytes[12..16], &address_lo_bytes[..]].concat();
-        let address: Address = Address::from_slice(&address);
-        let code = match self.db.code_by_address(address) {
-            Ok(bytecode) => bytecode,
-            Err(_) => return,
-        };
-        let code_size = code.len();
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
-        // adjust the size so it does not go out of bounds
-        let size = if code_offset + size > code_size {
-            code_size.saturating_sub(code_offset)
-        } else {
-            size
+        let Some(address) = address_value.try_into_address() else {
+            self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
+            return;
         };
-
-        let code_slice = &code[code_offset..code_offset + size];
+        let code = self.db.code_by_address(address);
+        let code_size = code.len();
+        let code_to_copy_size = code_size.saturating_sub(code_offset);
+        let code_slice = &code[code_offset..code_offset + code_to_copy_size];
+        let padding_size = size - code_to_copy_size;
+        let padding_offset = dest_offset + code_to_copy_size;
         // copy the program into memory
-        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
+        self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
+            .copy_from_slice(code_slice);
+        // pad the left part with zero
+        self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
     }
 }
 

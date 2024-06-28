@@ -1,7 +1,7 @@
 #![allow(unused)]
 use crate::primitives::{Address, Bytes, B256, U256};
 use sha3::{Digest, Keccak256};
-use std::{collections::HashMap, fmt::Error};
+use std::{collections::HashMap, convert::Infallible, fmt::Error};
 
 pub type Bytecode = Bytes;
 
@@ -52,14 +52,16 @@ impl Db {
             .unwrap_or_default()
     }
 
-    pub fn code_by_address(&self, address: Address) -> Result<Bytecode, DatabaseError> {
+    pub fn code_by_address(&self, address: Address) -> Bytecode {
         // Returns the bytecode of an address
-        let hash = self
-            .accounts
-            .get(&address)
-            .ok_or(DatabaseError)?
-            .bytecode_hash;
-        self.contracts.get(&hash).cloned().ok_or(DatabaseError)
+        match self.accounts.get(&address) {
+            Some(acc) => self
+                .contracts
+                .get(&acc.bytecode_hash)
+                .cloned()
+                .unwrap_or_default(),
+            None => Bytecode::default(),
+        }
     }
 }
 
@@ -97,7 +99,7 @@ pub trait Database {
 pub struct DatabaseError;
 
 impl Database for Db {
-    type Error = DatabaseError;
+    type Error = Infallible;
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
@@ -110,8 +112,7 @@ impl Database for Db {
     }
 
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        // Returns Error if no contract with that address
-        self.contracts.get(&code_hash).cloned().ok_or(DatabaseError)
+        Ok(self.contracts.get(&code_hash).cloned().unwrap_or_default())
     }
 
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
@@ -120,8 +121,7 @@ impl Database for Db {
     }
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
-        // Returns Error if no block with that number
-        self.block_hashes.get(&number).cloned().ok_or(DatabaseError)
+        Ok(self.block_hashes.get(&number).cloned().unwrap_or_default())
     }
 }
 

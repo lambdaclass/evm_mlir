@@ -885,3 +885,95 @@ fn extcodecopy_with_offset_out_of_bounds() {
     let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
     assert_eq!(result_data, expected_result);
 }
+
+#[test]
+fn extcodecopy_with_dirty_memory() {
+    // copies to memory the bytecode from the 8th byte (offset = 8) with size = 12
+    // so the result must be [EXTCODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0,0,0,0,0,0]
+    // Here we want to test if the copied data overwrites the information already stored in memory
+    let size = 10_u8;
+    let offset = 43_u8;
+    let dest_offset = 2_u8;
+    let address = 100_u8;
+
+    let all_ones = BigUint::from_bytes_be(&[0xff_u8; 32]);
+
+    let program: Program = vec![
+        //First, we write ones into the memory
+        Operation::Push((32_u8, all_ones)),
+        Operation::Push0,
+        Operation::Mstore,
+        //Then, we want make our call to Extcodecopy
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy, // 43th byte
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(0_u8))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+
+    let result_data = result.return_data().unwrap();
+    //let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
+    let expected_result = [
+        &[0xff; 2],                              // 2 bytes of dirty memory (offset = 2)
+        &program.to_bytecode()[offset.into()..], // 6 bytes
+        &[0_u8; 4],                              // 4 bytes of padding (size = 10 = 6 + 4)
+        &[0xff; 20],                             // 20 more bytes of dirty memory
+    ]
+    .concat();
+    assert_eq!(result_data, expected_result);
+}
+
+#[test]
+fn extcodecopy_with_wrong_address() {
+    // A wrong address should return an empty bytecode
+    let size = 0_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let wrong_address = &[0xff; 32]; // All bits on
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((32_u8, BigUint::from_bytes_be(wrong_address))),
+        Operation::ExtcodeCopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact();
+
+    assert!(&result.is_success());
+    let result_data = result.return_data().unwrap();
+    let expected_result = Bytecode::default();
+    assert_eq!(result_data, &expected_result);
+}
