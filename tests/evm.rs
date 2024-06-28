@@ -930,7 +930,6 @@ fn extcodecopy_with_dirty_memory() {
     assert!(&result.is_success());
 
     let result_data = result.return_data().unwrap();
-    //let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
     let expected_result = [
         &[0xff; 2],                              // 2 bytes of dirty memory (offset = 2)
         &program.to_bytecode()[offset.into()..], // 6 bytes
