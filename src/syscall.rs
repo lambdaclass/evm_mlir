@@ -143,6 +143,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
+        let gas_refunded = self.inner_context.gas_refund.unwrap_or(0) as u64;
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let exit_status = self
@@ -155,14 +156,14 @@ impl<'c> SyscallContext<'c> {
             ExitStatusCode::Return => ExecutionResult::Success {
                 reason: SuccessReason::Return,
                 gas_used,
-                gas_refunded: 0, // TODO: implement gas refunds
+                gas_refunded,
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
                 logs: self.logs(),
             },
             ExitStatusCode::Stop => ExecutionResult::Success {
                 reason: SuccessReason::Stop,
                 gas_used,
-                gas_refunded: 0, // TODO: implement gas refunds
+                gas_refunded,
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
                 logs: self.logs(),
             },
