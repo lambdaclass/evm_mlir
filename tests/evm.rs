@@ -1400,7 +1400,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
         Operation::Sstore,
     ];
 
-    let (env, mut db) = default_env_and_db_setup(program);
+    let (env, db) = default_env_and_db_setup(program);
     db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, refunded_gas as _);
@@ -1426,7 +1426,7 @@ fn sstore_gas_cost_update_warm_value() {
         Operation::Sstore,
     ];
 
-    let (env, mut db) = default_env_and_db_setup(program);
+    let (env, db) = default_env_and_db_setup(program);
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, refunded_gas as _);
 }
