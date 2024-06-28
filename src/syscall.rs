@@ -90,7 +90,7 @@ pub struct InnerContext {
     gas_remaining: Option<u64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
-    journaled_storage: HashMap<EU256, EvmStorageSlot>,
+    pub journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: instead of making it pub implement insert method?
 }
 
 /// The context passed to syscalls

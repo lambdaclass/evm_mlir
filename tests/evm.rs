@@ -56,10 +56,8 @@ fn run_program_assert_halt(env: Env, db: Db) {
 }
 
 fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
-    let address = match env.tx.transact_to {
-        TransactTo::Call(a) => a,
-        TransactTo::Create => Address::zero(),
-    };
+    let address = env.tx.get_address();
+
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();

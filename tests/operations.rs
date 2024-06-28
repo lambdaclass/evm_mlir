@@ -8,9 +8,10 @@ use evm_mlir::{
     db::Db,
     env::Env,
     executor::Executor,
-    primitives::Bytes,
+    primitives::{Bytes, U256},
     program::{Operation, Program},
     result::{ExecutionResult, Output, SuccessReason},
+    state::EvmStorageSlot,
     syscall::SyscallContext,
 };
 use hex_literal::hex;
@@ -20,6 +21,19 @@ use tempfile::NamedTempFile;
 
 fn run_program_get_result_with_gas(
     operations: Vec<Operation>,
+    initial_gas: u64,
+) -> ExecutionResult {
+    let mut env = Env::default();
+    env.tx.gas_limit = initial_gas;
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env, &mut db);
+
+    run_program_get_result(operations, &mut context, initial_gas)
+}
+
+fn run_program_get_result(
+    operations: Vec<Operation>,
+    syscall_context: &mut SyscallContext,
     initial_gas: u64,
 ) -> ExecutionResult {
     // Insert a return operation at the end of the program to verify top of stack.
@@ -35,14 +49,9 @@ fn run_program_get_result_with_gas(
 
     let executor = Executor::new(&module, Default::default());
 
-    let mut env = Env::default();
-    env.tx.gas_limit = initial_gas;
-    let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let _result = executor.execute(syscall_context, initial_gas);
 
-    let _result = executor.execute(&mut context, initial_gas);
-
-    context.get_result().unwrap().result
+    syscall_context.get_result().unwrap().result
 }
 
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: &[u8]) {
@@ -94,6 +103,34 @@ fn run_program_assert_gas_exact(program: Vec<Operation>, expected_gas: u64) {
     assert!(result.is_success());
 
     let result = run_program_get_result_with_gas(program, expected_gas - 1);
+    assert!(result.is_halt());
+}
+
+fn run_program_assert_gas_exact_with_initial_storage(
+    program: Vec<Operation>,
+    key: u8,
+    original_value: u8,
+    present_value: u8,
+    is_cold: bool,
+    expected_gas: u64,
+) {
+    let mut env = Env::default();
+    env.tx.gas_limit = expected_gas;
+    let mut db = Db::default();
+    let mut context = SyscallContext::new(env.clone(), &mut db);
+    context.inner_context.journaled_storage.insert(
+        U256::from(key),
+        EvmStorageSlot {
+            original_value: U256::from(original_value),
+            present_value: U256::from(present_value),
+            is_cold,
+        },
+    );
+
+    let result = run_program_get_result(program.clone(), &mut context, expected_gas);
+    assert!(result.is_success());
+
+    let result = run_program_get_result(program, &mut context, expected_gas - 1);
     assert!(result.is_halt());
 }
 
@@ -2627,4 +2664,177 @@ fn log_with_stack_underflow() {
         let program = vec![Operation::Log(n)];
         run_program_assert_halt(program);
     }
+}
+
+#[test]
+fn sstore_gas_cost_cold_new_value() {
+    let needed_gas: u16 = 22_100;
+
+    let new_value = 10_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(80_u8))),
+        Operation::Sstore,
+    ];
+    run_program_assert_gas_exact(operations, needed_gas as _);
+}
+
+#[test]
+fn sstore_gas_cost_cold_to_zero() {
+    let new_value: u8 = 0;
+    let present_value = 10;
+    let original_value = 10;
+    let is_cold = true;
+
+    let needed_gas = 2900;
+    let _refunded_gas = 4800; // TODO: check gas refund
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
+}
+
+#[test]
+fn sstore_gas_cost_cold_to_non_zero() {
+    let new_value: u8 = 20;
+    let present_value = 0;
+    let original_value = 10;
+    let is_cold = true;
+
+    let needed_gas = 2900;
+    let _refunded_gas = 0; // TODO: check gas refund
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
+}
+
+#[test]
+fn sstore_gas_cost_warm_restore_original_from_zero() {
+    let new_value: u8 = 10;
+    let present_value = 0;
+    let original_value = 10;
+    let is_cold = false;
+
+    let needed_gas = 100;
+    let _refunded_gas = -2_000; // TODO: check gas refund
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
+}
+
+#[test]
+fn sstore_gas_cost_warm_undo_restore() {
+    let new_value: u8 = 20;
+    let present_value = 10;
+    let original_value = 10;
+    let is_cold = false;
+
+    let needed_gas = 100;
+    let _refunded_gas = -4_800; // TODO: check gas refund
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
+}
+
+#[test]
+fn sstore_gas_cost_warm_restore_original_from_non_zero() {
+    let new_value: u8 = 10;
+    let present_value = 20;
+    let original_value = 10;
+    let is_cold = false;
+
+    let needed_gas = 2_900;
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
+}
+
+#[test]
+fn sstore_gas_cost_warm_update() {
+    let new_value: u8 = 30;
+    let present_value = 20;
+    let original_value = 10;
+    let is_cold = false;
+
+    let needed_gas = 100;
+
+    let key = 80_u8;
+    let operations = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    run_program_assert_gas_exact_with_initial_storage(
+        operations,
+        key,
+        original_value,
+        present_value,
+        is_cold,
+        needed_gas,
+    );
 }
