@@ -10,7 +10,7 @@ use evm_mlir::{
     executor::Executor,
     primitives::Bytes,
     program::{Operation, Program},
-    result::{ExecutionResult, Output, SuccessReason},
+    result::{ExecutionResult, HaltReason, Output, SuccessReason},
     syscall::SyscallContext,
 };
 use hex_literal::hex;
@@ -2672,8 +2672,8 @@ fn invalid_gas_check() {
 
     let gas = 999;
     let result = run_program_get_result_with_gas(program.clone(), gas as _);
-    let expected_result = ExecutionResult::Revert {
-        output: Bytes::default(),
+    let expected_result = ExecutionResult::Halt {
+        reason: HaltReason::OpcodeNotFound, //TODO: Modify in the future to proper reason
         gas_used: gas,
     };
     assert_eq!(result, expected_result);

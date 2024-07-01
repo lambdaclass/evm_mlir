@@ -4404,11 +4404,7 @@ fn codegen_invalid<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let empty_block = region.append_block(Block::new(&[]));
 
-    // consume all the gas
-    let remaining_gas = get_remaining_gas(context, &start_block)?;
-    consume_gas_as_value(context, &start_block, remaining_gas)?;
-
-    return_empty_result(op_ctx, &start_block, ExitStatusCode::Revert, location)?;
+    start_block.append_operation(cf::br(&op_ctx.revert_block, &[], location));
 
     Ok((start_block, empty_block))
 }
