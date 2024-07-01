@@ -4070,7 +4070,7 @@ fn codegen_extcodesize<'c, 'r>(
     let gas_flag = consume_gas(
         context,
         &start_block,
-        gas_cost::EXTCODESIZE + gas_cost::EXTCODESIZE_WARM,
+        gas_cost::EXTCODESIZE_WARM,
     )?;
 
     let condition = start_block

@@ -1552,7 +1552,7 @@ fn extcodesize_gas_check() {
         Operation::Push((1_u8, address.into())),
         Operation::ExtcodeSize,
     ];
-    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE + gas_cost::EXTCODESIZE_WARM;
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
     let env = Env::default();
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -1564,6 +1564,16 @@ fn extcodesize_with_wrong_address() {
         Operation::Push((1_u8, address.into())),
         Operation::ExtcodeSize,
     ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_invalid_address() {
+    // Address with upper 12 bytes filled with 1s is invalid
+    let address = BigUint::from_bytes_be(&[0xff; 32]);
+    let operations = vec![Operation::Push((32_u8, address)), Operation::ExtcodeSize];
     let (env, db) = default_env_and_db_setup(operations);
     let expected_result = 0_u8;
     run_program_assert_num_result(env, db, expected_result.into())

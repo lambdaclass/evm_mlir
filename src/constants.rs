@@ -74,7 +74,6 @@ pub mod gas_cost {
     pub const LOG: i64 = 375;
     pub const EXTCODESIZE_WARM: i64 = 100;
     pub const EXTCODECOPY_WARM: i64 = 100;
-    pub const EXTCODESIZE: i64 = 0;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
 
