@@ -99,6 +99,14 @@ impl ExecutionResult {
             | Self::Halt { gas_used, .. } => gas_used,
         }
     }
+
+    /// Returns the gas refunded.
+    pub fn gas_refunded(&self) -> u64 {
+        match *self {
+            Self::Success { gas_refunded, .. } => gas_refunded,
+            _ => 0,
+        }
+    }
 }
 
 /// Output of a transaction execution.

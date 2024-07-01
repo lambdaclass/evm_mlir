@@ -666,14 +666,16 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        gas_remaining: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::storage_write_syscall(
             self.mlir_context,
             self.syscall_ctx,
             block,
             key,
             value,
+            gas_remaining,
             location,
         )
     }

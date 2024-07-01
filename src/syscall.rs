@@ -18,14 +18,17 @@
 use std::ffi::c_void;
 
 use crate::{
+    constants::gas_cost,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
-    primitives::Address,
+    primitives::{Address, U256 as EU256},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
+    state::EvmStorageSlot,
     utils::u256_from_u128,
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
+use std::collections::HashMap;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -102,8 +105,10 @@ pub struct InnerContext {
     // The program bytecode
     pub program: Vec<u8>,
     gas_remaining: Option<u64>,
+    gas_refund: Option<i64>,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
+    journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
 }
 
 /// The context passed to syscalls
@@ -154,6 +159,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
+        let gas_refunded = self.inner_context.gas_refund.unwrap_or(0) as u64;
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let exit_status = self
@@ -166,14 +172,14 @@ impl<'c> SyscallContext<'c> {
             ExitStatusCode::Return => ExecutionResult::Success {
                 reason: SuccessReason::Return,
                 gas_used,
-                gas_refunded: 0, // TODO: implement gas refunds
+                gas_refunded,
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
                 logs: self.logs(),
             },
             ExitStatusCode::Stop => ExecutionResult::Success {
                 reason: SuccessReason::Stop,
                 gas_used,
-                gas_refunded: 0, // TODO: implement gas refunds
+                gas_refunded,
                 output: Output::Call(return_values.into()), // TODO: add case Output::Create
                 logs: self.logs(),
             },
@@ -187,7 +193,7 @@ impl<'c> SyscallContext<'c> {
             },
         };
 
-        let state = self.db.clone().into_state();
+        let state = self.db.clone().into_state(); // TODO: update the state with the journaled_storage entries
 
         Ok(ResultAndState { result, state })
     }
@@ -337,13 +343,94 @@ impl<'c> SyscallContext<'c> {
         stg_value.lo = result.low_u128();
     }
 
-    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &U256) {
-        let address = self.env.tx.caller;
-
+    pub extern "C" fn write_storage(
+        &mut self,
+        stg_key: &U256,
+        stg_value: &mut U256,
+        gas_remaining: &mut u64,
+    ) -> u8 {
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
         let value = u256_from_u128(stg_value.hi, stg_value.lo);
 
-        self.db.write_storage(address, key, value);
+        // Update the journaled storage and retrieve the previous stored values.
+        let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
+        {
+            Some(slot) => {
+                let current_value = slot.present_value;
+                let is_cold = slot.is_cold;
+
+                slot.present_value = value;
+                slot.is_cold = false;
+
+                (slot.original_value, current_value, is_cold)
+            }
+            None => {
+                let original_value = self.db.read_storage(self.env.tx.caller, key);
+                self.inner_context.journaled_storage.insert(
+                    key,
+                    EvmStorageSlot {
+                        original_value,
+                        present_value: value,
+                        is_cold: false,
+                    },
+                );
+                (original_value, original_value, true)
+            }
+        };
+
+        // Compute the gas cost
+        let mut gas_cost: u64;
+        if value == current {
+            gas_cost = 100;
+        } else if current == original {
+            if original.is_zero() {
+                gas_cost = 20_000;
+            } else {
+                gas_cost = 2_900;
+            }
+        } else {
+            gas_cost = 100;
+        }
+        if is_cold {
+            gas_cost += 2_100;
+        }
+
+        // Compute the gas refund
+        let mut gas_refund: i64 = 0;
+        if value != current {
+            if current == original {
+                if !original.is_zero() && value.is_zero() {
+                    gas_refund += 4_800;
+                }
+            } else {
+                if !original.is_zero() {
+                    if current.is_zero() {
+                        gas_refund -= 4_800;
+                    } else if value.is_zero() {
+                        gas_refund += 4_800;
+                    }
+                }
+                if value == original {
+                    if original.is_zero() {
+                        gas_refund += 19_900;
+                    } else {
+                        gas_refund += 2_800;
+                    }
+                }
+            }
+        }
+
+        // Check if gas is enough, and then perform the write operation
+        // The amount of gas left to the transaction hass to be less than or equal 2300 (since Istanbul fork).
+        if gas_cost + (gas_cost::SSTORE_MIN_REMAINING_GAS as u64) > *gas_remaining {
+            return 1;
+        }
+        *gas_remaining -= gas_cost;
+        let current_refund = self.inner_context.gas_refund.unwrap_or(0);
+        self.inner_context.gas_refund = Some(gas_refund + current_refund);
+
+        self.db.write_storage(self.env.tx.caller, key, value);
+        0
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
@@ -535,7 +622,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
+            SyscallContext::write_storage
+                as *const fn(*mut c_void, *const U256, *const U256, *const u64)
                 as *mut (),
         );
         engine.register_symbol(
@@ -824,7 +912,8 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type, ptr_type], &[uint8])
+                    .into(),
             ),
             Region::new(),
             attributes,
@@ -1218,15 +1307,20 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        gas_remaining: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-            &[syscall_ctx, key, value],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint8 = IntegerType::new(mlir_ctx, 8);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
+                &[syscall_ctx, key, value, gas_remaining],
+                &[uint8.into()],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Receives log data and appends a log to the logs vector
