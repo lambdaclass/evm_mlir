@@ -72,6 +72,7 @@ pub mod gas_cost {
     pub const KECCAK256: i64 = 30;
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
+    pub const EXTCODECOPY_WARM: i64 = 100;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
     pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;

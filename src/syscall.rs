@@ -55,6 +55,22 @@ impl U256 {
     }
 }
 
+impl TryFrom<&U256> for Address {
+    type Error = ();
+
+    fn try_from(value: &U256) -> Result<Self, Self::Error> {
+        const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
+        let hi_bytes = value.hi.to_be_bytes();
+        let lo_bytes = value.lo.to_be_bytes();
+        // Address is valid only if first 12 bytes are set to zero
+        if value.hi & FIRST_12_BYTES_MASK != 0 {
+            return Err(());
+        }
+        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
+        Ok(Address::from_slice(&address))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExitStatusCode {
     Return = 0,
@@ -521,6 +537,33 @@ impl<'c> SyscallContext<'c> {
             };
         }
     }
+
+    pub extern "C" fn copy_ext_code_to_memory(
+        &mut self,
+        address_value: &U256,
+        code_offset: u32,
+        size: u32,
+        dest_offset: u32,
+    ) {
+        let size = size as usize;
+        let code_offset = code_offset as usize;
+        let dest_offset = dest_offset as usize;
+        let Ok(address) = Address::try_from(address_value) else {
+            self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
+            return;
+        };
+        let code = self.db.code_by_address(address);
+        let code_size = code.len();
+        let code_to_copy_size = code_size.saturating_sub(code_offset);
+        let code_slice = &code[code_offset..code_offset + code_to_copy_size];
+        let padding_size = size - code_to_copy_size;
+        let padding_offset = dest_offset + code_to_copy_size;
+        // copy the program into memory
+        self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
+            .copy_from_slice(code_slice);
+        // pad the left part with zero
+        self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
+    }
 }
 
 pub mod symbols {
@@ -551,6 +594,7 @@ pub mod symbols {
     pub const STORE_IN_GASPRICE_PTR: &str = "evm_mlir__store_in_gasprice_ptr";
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
     pub const STORE_IN_SELFBALANCE_PTR: &str = "evm_mlir__store_in_selfbalance_ptr";
+    pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -689,6 +733,12 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_SELFBALANCE_PTR,
             SyscallContext::store_in_selfbalance_ptr as *const extern "C" fn(&SyscallContext) -> u64
+                as *mut (),
+        );
+        engine.register_symbol(
+            symbols::COPY_EXT_CODE_TO_MEMORY,
+            SyscallContext::copy_ext_code_to_memory
+                as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32)
                 as *mut (),
         );
     };
@@ -995,6 +1045,18 @@ pub(crate) mod mlir {
             StringAttribute::new(context, symbols::STORE_IN_BALANCE),
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_EXT_CODE_TO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, uint32, uint32, uint32], &[])
+                    .into(),
             ),
             Region::new(),
             attributes,
@@ -1516,6 +1578,28 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
             &[syscall_ctx, address, balance],
+            &[],
+            location,
+        ));
+    }
+
+    /// Receives an account address and copies the corresponding bytecode
+    /// to memory.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn copy_ext_code_to_memory_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address_ptr: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        dest_offset: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_EXT_CODE_TO_MEMORY),
+            &[syscall_ctx, address_ptr, offset, size, dest_offset],
             &[],
             location,
         ));

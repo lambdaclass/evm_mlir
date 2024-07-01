@@ -72,6 +72,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
+        Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
         Operation::Gaslimit => codegen_gaslimit(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
@@ -4616,4 +4617,95 @@ fn codegen_gaslimit<'c, 'r>(
     stack_push(context, &ok_block, result)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_extcodecopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 4)?;
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    let address = stack_pop(context, &ok_block)?;
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // where to copy from
+    let offset_u256 = stack_pop(context, &ok_block)?;
+    let size_u256 = stack_pop(context, &ok_block)?;
+
+    let offset = ok_block
+        .append_operation(arith::trunci(offset_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let size = ok_block
+        .append_operation(arith::trunci(size_u256, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let required_size = ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+
+    // TODO: compute address access cost (cold and warm accesses)
+
+    // consume 3 * (size + 31) / 32 gas
+    let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
+    let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
+
+    let memory_extension_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &memory_extension_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let end_block = region.append_block(Block::new(&[]));
+
+    extend_memory(
+        op_ctx,
+        &memory_extension_block,
+        &end_block,
+        region,
+        required_size,
+        gas_cost::EXTCODECOPY_WARM,
+    )?;
+
+    let address_ptr = allocate_and_store_value(op_ctx, &end_block, address, location)?;
+    op_ctx.copy_ext_code_to_memory_syscall(
+        &end_block,
+        address_ptr,
+        offset,
+        size,
+        dest_offset,
+        location,
+    );
+
+    Ok((start_block, end_block))
 }
