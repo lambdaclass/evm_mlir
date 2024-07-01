@@ -688,25 +688,25 @@ impl Program {
                 }
                 Opcode::PUSH22 => {
                     pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                    let x = bytecode[pc..(pc + 22)].try_into().unwrap();
                     pc += 21;
                     Operation::Push((22, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::PUSH23 => {
                     pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                    let x = bytecode[pc..(pc + 23)].try_into().unwrap();
                     pc += 22;
                     Operation::Push((23, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::PUSH24 => {
                     pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                    let x = bytecode[pc..(pc + 24)].try_into().unwrap();
                     pc += 23;
                     Operation::Push((24, (BigUint::from_bytes_be(x))))
                 }
                 Opcode::PUSH25 => {
                     pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                    let x = bytecode[pc..(pc + 25)].try_into().unwrap();
                     pc += 24;
                     Operation::Push((25, (BigUint::from_bytes_be(x))))
                 }
