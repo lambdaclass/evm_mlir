@@ -18,6 +18,7 @@
 use std::ffi::c_void;
 
 use crate::{
+    constants::gas_cost,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
     primitives::{Address, U256 as EU256},
@@ -405,7 +406,7 @@ impl<'c> SyscallContext<'c> {
 
         // Check if gas is enough, and then perform the write operation
         // The amount of gas left to the transaction hass to be less than or equal 2300 (since Istanbul fork).
-        if gas_cost + 2_300 > *gas_remaining {
+        if gas_cost + (gas_cost::SSTORE_MIN_REMAINING_GAS as u64) > *gas_remaining {
             return 1;
         }
         *gas_remaining -= gas_cost;
