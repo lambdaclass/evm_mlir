@@ -159,7 +159,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x3E) RETURNDATACOPY
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
-1. (0x44) DIFFICULTY
 1. (0x49) BLOBHASH
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE

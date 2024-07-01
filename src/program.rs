@@ -55,7 +55,6 @@ pub enum Opcode {
     TIMESTAMP = 0x42,
     NUMBER = 0x43,
     PREVRANDAO = 0x44,
-    // DIFFICULTY = 0x44,
     GASLIMIT = 0x45,
     CHAINID = 0x46,
     SELFBALANCE = 0x47,
