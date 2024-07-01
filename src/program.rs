@@ -223,8 +223,6 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::EXTCODESIZE as u8 => Opcode::EXTCODESIZE,
             x if x == Opcode::EXTCODECOPY as u8 => Opcode::EXTCODECOPY,
             x if x == Opcode::COINBASE as u8 => Opcode::COINBASE,
-            x if x == Opcode::EXTCODECOPY as u8 => Opcode::EXTCODECOPY,
-            x if x == Opcode::COINBASE as u8 => Opcode::COINBASE,
             x if x == Opcode::TIMESTAMP as u8 => Opcode::TIMESTAMP,
             x if x == Opcode::NUMBER as u8 => Opcode::NUMBER,
             x if x == Opcode::GASLIMIT as u8 => Opcode::GASLIMIT,
