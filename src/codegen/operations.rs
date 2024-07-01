@@ -78,6 +78,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Codecopy => codegen_codecopy(op_ctx, region),
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
+        Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
@@ -4052,6 +4053,48 @@ fn codegen_gasprice<'c, 'r>(
         .into();
 
     stack_push(context, &ok_block, gasprice)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_extcodesize<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256).into();
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // TODO: handle cold and warm accesses for dynamic gas computation
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE_WARM)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
+    let codesize = op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, location)?;
+    let codesize = ok_block
+        .append_operation(arith::extui(codesize, uint256, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, codesize)?;
 
     Ok((start_block, ok_block))
 }

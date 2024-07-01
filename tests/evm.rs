@@ -1514,3 +1514,67 @@ fn extcodecopy_with_wrong_address() {
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
+
+#[test]
+fn extcodesize() {
+    let address = 40_u8;
+    let mut operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    append_return_result_operations(&mut operations);
+
+    let mut env = Env::default();
+    let program = Program::from(operations);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address as _),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = program.to_bytecode().len();
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn extcodesize_gas_check() {
+    // in this case we are not considering cold and warm accesses
+    // we assume every access is warm
+    let address = 40_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn extcodesize_with_wrong_address() {
+    let address = 0_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_invalid_address() {
+    // Address with upper 12 bytes filled with 1s is invalid
+    let address = BigUint::from_bytes_be(&[0xff; 32]);
+    let operations = vec![Operation::Push((32_u8, address)), Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
