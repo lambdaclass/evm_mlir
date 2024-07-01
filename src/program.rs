@@ -489,11 +489,10 @@ impl Program {
 
         while pc < bytecode.len() {
             match Self::parse_operation(bytecode, pc) {
-                Ok(Some((op, new_pc))) => {
+                Ok((op, new_pc)) => {
                     operations.push(op);
                     pc = new_pc;
                 }
-                Ok(None) => break,
                 Err(e) => {
                     failed_opcodes.push(e);
                     pc += 1;
@@ -519,11 +518,10 @@ impl Program {
 
         while pc < bytecode.len() {
             match Self::parse_operation(bytecode, pc) {
-                Ok(Some((op, new_pc))) => {
+                Ok((op, new_pc)) => {
                     operations.push(op);
                     pc = new_pc;
                 }
-                Ok(None) => break,
                 Err(_) => {
                     operations.push(Operation::Invalid);
                     pc += 1;
@@ -549,11 +547,8 @@ impl Program {
     fn parse_operation(
         bytecode: &[u8],
         mut pc: usize,
-    ) -> Result<Option<(Operation, usize)>, OpcodeParseError> {
-        let Some(opcode) = bytecode.get(pc).copied() else {
-            return Ok(None);
-        };
-        let opcode = Opcode::try_from(opcode)?;
+    ) -> Result<(Operation, usize), OpcodeParseError> {
+        let opcode = Opcode::try_from(bytecode[pc])?;
 
         let op = match opcode {
             Opcode::STOP => Operation::Stop,
@@ -852,7 +847,7 @@ impl Program {
         };
         pc += 1;
 
-        Ok(Some((op, pc)))
+        Ok((op, pc))
     }
 
     fn get_codesize(operations: &[Operation]) -> u32 {
