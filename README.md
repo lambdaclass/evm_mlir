@@ -147,6 +147,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xA4) LOG4
 1. (0xF3) RETURN
 1. (0xFD) REVERT
+1. (0xFE) INVALID
 
 </details>
 
@@ -168,7 +169,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xF4) DELEGATECALL
 1. (0xF5) CREATE2
 1. (0xFA) STATICCALL
-1. (0xFE) INVALID
 1. (0xFF) SELFDESTRUCT
 
 </details>

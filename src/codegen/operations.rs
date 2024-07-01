@@ -82,6 +82,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
+        Operation::Prevrandao => codegen_prevrandao(op_ctx, region),
         Operation::Gaslimit => codegen_gaslimit(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
         Operation::SelfBalance => codegen_selfbalance(op_ctx, region),
@@ -107,7 +108,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
-        Operation::Prevrandao => codegen_prevrandao(op_ctx, region),
+        Operation::Invalid => codegen_invalid(op_ctx, region),
     }
 }
 
@@ -4393,6 +4394,20 @@ fn codegen_codecopy<'c, 'r>(
     op_ctx.copy_code_to_memory_syscall(&copy_block, offset, size, dest_offset, location);
 
     Ok((start_block, copy_block))
+}
+
+fn codegen_invalid<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let start_block = region.append_block(Block::new(&[]));
+    let empty_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::br(&op_ctx.revert_block, &[], location));
+
+    Ok((start_block, empty_block))
 }
 
 fn codegen_selfbalance<'c, 'r>(
