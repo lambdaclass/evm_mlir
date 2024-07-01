@@ -4067,11 +4067,7 @@ fn codegen_extcodesize<'c, 'r>(
     let uint256 = IntegerType::new(context, 256).into();
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
     // TODO: handle cold and warm accesses for dynamic gas computation
-    let gas_flag = consume_gas(
-        context,
-        &start_block,
-        gas_cost::EXTCODESIZE_WARM,
-    )?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE_WARM)?;
 
     let condition = start_block
         .append_operation(arith::andi(gas_flag, flag, location))
