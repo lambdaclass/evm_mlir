@@ -53,7 +53,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
 1. (0x3B) EXTCODESIZE
-1. (0x3A) EXTCODECOPY
+1. (0x3C) EXTCODECOPY
 1. (0x41) COINBASE
 1. (0x42) TIMESTAMP
 1. (0x43) NUMBER
