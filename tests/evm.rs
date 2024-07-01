@@ -1514,3 +1514,43 @@ fn extcodecopy_with_wrong_address() {
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
+
+#[test]
+fn prevrandao() {
+    let mut program = vec![Operation::Prevrandao];
+    append_return_result_operations(&mut program);
+    let (mut env, db) = default_env_and_db_setup(program);
+    let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let randao = EU256::from_str(randao_str).expect("Error while converting str to B256");
+    env.block.prevrandao = Some(randao);
+
+    let mut randao_bytes: [u8; 32] = [0x00; 32];
+    randao.to_big_endian(&mut randao_bytes);
+    run_program_assert_bytes_result(env, db, &randao_bytes);
+}
+
+#[test]
+fn prevrandao_check_gas() {
+    let program = vec![Operation::Prevrandao];
+    let env = Env::default();
+    let gas_needed = gas_cost::PREVRANDAO;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn prevrandao_with_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Prevrandao);
+    let (env, db) = default_env_and_db_setup(program);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn prevrandao_when_randao_is_not_set() {
+    let program = vec![Operation::Prevrandao];
+    let (env, db) = default_env_and_db_setup(program);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into());
+}

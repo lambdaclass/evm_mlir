@@ -59,7 +59,7 @@ pub struct BlockEnv {
     // NOTE: `prevrandao` can be found in a block in place of `mix_hash`.
     //
     // [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    //pub prevrandao: Option<B256>,
+    pub prevrandao: Option<U256>,
     // Excess blob gas and blob gasprice.
     // See also [`crate::calc_excess_blob_gas`]
     // and [`calc_blob_gasprice`].
