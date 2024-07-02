@@ -20,7 +20,13 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        allocate_and_store_value, check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas, constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee, get_blob_hash_at_index, get_block_number, get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements
+        allocate_and_store_value, check_if_zero, check_stack_has_at_least,
+        check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
+        get_blob_hash_at_index, get_block_number, get_calldata_ptr, get_calldata_size,
+        get_memory_pointer, get_nth_from_stack, get_remaining_gas, get_stack_pointer,
+        inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
