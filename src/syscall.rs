@@ -401,7 +401,7 @@ impl<'c> SyscallContext<'c> {
         let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
         let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
         let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
-        let reset_zero_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
+        let reset_back_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
         let reset_to_original = (current != value) && (original == value);
 
         let gas_refund: i64 = if reset_non_zero_to_zero {
@@ -410,7 +410,7 @@ impl<'c> SyscallContext<'c> {
             -2_000
         } else if undo_reset_to_zero {
             -4_800
-        } else if reset_zero_to_zero {
+        } else if reset_back_to_zero {
             19_900
         } else if reset_to_original {
             2_800
