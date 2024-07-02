@@ -452,20 +452,14 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
-        // supposing the index is a usize at most
-        // TODO: check if this is ok
-        let index = index.lo as usize;
-        let aux = self.env.tx.blob_hashes.get(index);
-        match aux {
-            Some(hash) => {
-                blobhash.lo = hash.low_u128();
-                blobhash.hi = (hash >> 128).low_u128();
-            }
-            None => {
-                blobhash.lo = 0;
-                blobhash.hi = 0;
-            }
-        }
+        *blobhash = usize::try_from(index.lo).map_or(U256::default(), |idx| {
+            self.env
+                .tx
+                .blob_hashes
+                .get(idx)
+                .cloned()
+                .map_or(U256::default(), |x| U256::from_be_bytes(x.into()))
+        });
     }
 
     pub extern "C" fn copy_ext_code_to_memory(

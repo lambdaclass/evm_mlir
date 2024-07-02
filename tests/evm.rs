@@ -1559,3 +1559,15 @@ fn blobhash_with_index_out_of_bounds() {
     let expected_result = [0x00; 32];
     run_program_assert_bytes_result(env, db, &expected_result);
 }
+
+#[test]
+fn blobhash_with_index_too_big() {
+    // when index > usize::MAX the result must be a 32-byte-zero.
+    let index: u128 = usize::MAX as u128 + 1;
+    let mut program = vec![Operation::Push((32_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (env, db) = default_env_and_db_setup(program);
+
+    let expected_result = [0x00; 32];
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
