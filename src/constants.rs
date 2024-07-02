@@ -49,6 +49,7 @@ pub mod gas_cost {
     pub const GASPRICE: i64 = 2;
     pub const SELFBALANCE: i64 = 5;
     pub const NUMBER: i64 = 2;
+    pub const PREVRANDAO: i64 = 2;
     pub const BLOBBASEFEE: i64 = 2;
     pub const CHAINID: i64 = 2;
     pub const BASEFEE: i64 = 2;
@@ -73,6 +74,8 @@ pub mod gas_cost {
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
     pub const CALL: i64 = 0;
+    pub const EXTCODESIZE_WARM: i64 = 100;
+    pub const EXTCODECOPY_WARM: i64 = 100;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
 

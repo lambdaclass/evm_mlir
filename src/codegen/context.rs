@@ -420,14 +420,24 @@ pub fn generate_revert_block<'c>(
 ) -> Result<Block<'c>, CodegenError> {
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
     let revert_block = Block::new(&[]);
     let remaining_gas = get_remaining_gas(context, &revert_block)?;
 
-    let zero_constant = revert_block
+    let zero_u32 = revert_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let zero_u64 = revert_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 0).into(),
             location,
         ))
         .result(0)?
@@ -442,13 +452,15 @@ pub fn generate_revert_block<'c>(
         .result(0)?
         .into();
 
+    consume_gas_as_value(context, &revert_block, remaining_gas)?;
+
     syscall::mlir::write_result_syscall(
         context,
         syscall_ctx,
         &revert_block,
-        zero_constant,
-        zero_constant,
-        remaining_gas,
+        zero_u32,
+        zero_u32,
+        zero_u64,
         reason,
         location,
     );
@@ -849,7 +861,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,
         basefee_ptr: Value<'c, 'c>,
@@ -861,6 +872,21 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             basefee_ptr,
             block,
+            location,
+        )
+    }
+
+    pub(crate) fn get_prevrandao_syscall(
+        &'c self,
+        block: &'c Block,
+        prevrandao_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_prevrandao_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            prevrandao_ptr,
             location,
         )
     }
@@ -887,6 +913,42 @@ impl<'c> OperationCtx<'c> {
             block,
             address,
             balance,
+            location,
+        )
+    }
+
+    pub(crate) fn copy_ext_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        address_ptr: Value,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_ext_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address_ptr,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
+    pub(crate) fn get_codesize_from_address_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_codesize_from_address_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
             location,
         )
     }

@@ -10,7 +10,7 @@ use evm_mlir::{
     executor::Executor,
     primitives::Bytes,
     program::{Operation, Program},
-    result::{ExecutionResult, Output, SuccessReason},
+    result::{ExecutionResult, HaltReason, Output, SuccessReason},
     syscall::SyscallContext,
 };
 use hex_literal::hex;
@@ -2627,4 +2627,54 @@ fn log_with_stack_underflow() {
         let program = vec![Operation::Log(n)];
         run_program_assert_halt(program);
     }
+}
+
+#[test]
+fn extcodecopy_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeCopy];
+    run_program_assert_halt(program);
+}
+
+#[test]
+fn extcodecopy_gas_check() {
+    let size = 9_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy,
+    ];
+
+    let static_gas = gas_cost::PUSHN * 4;
+    let dynamic_gas = gas_cost::memory_copy_cost(size.into())
+        + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
+        + gas_cost::EXTCODECOPY_WARM;
+    let expected_gas = static_gas + dynamic_gas;
+    run_program_assert_gas_exact(program, expected_gas as _);
+}
+
+#[test]
+fn invalid_gas_check() {
+    let program = vec![
+        Operation::Invalid,
+        // none of the operations below should be executed
+        Operation::Push((1_u8, 10_u8.into())),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let gas = 999;
+    let result = run_program_get_result_with_gas(program.clone(), gas as _);
+    let expected_result = ExecutionResult::Halt {
+        reason: HaltReason::OpcodeNotFound, //TODO: Modify in the future to proper reason
+        gas_used: gas,
+    };
+    assert_eq!(result, expected_result);
 }

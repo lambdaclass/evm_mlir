@@ -56,12 +56,9 @@ impl Evm<Db> {
             TransactTo::Call(code_address) => code_address,
             TransactTo::Create => unimplemented!(), // TODO: implement creation
         };
-        let bytecode = self
-            .db
-            .code_by_address(code_address)
-            .expect("failed to load bytecode");
 
-        let program = Program::from_bytecode(&bytecode).unwrap(); // TODO: map invalid/unknown opcodes to INVALID operation
+        let bytecode = self.db.code_by_address(code_address);
+        let program = Program::from_bytecode(&bytecode);
 
         let module = context
             .compile(&program, &output_file)

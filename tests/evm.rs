@@ -4,7 +4,7 @@ use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, U256 as EU256},
+    primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
     Env, Evm,
@@ -1372,6 +1372,264 @@ fn gaslimit_stack_overflow() {
     program.push(Operation::Gaslimit);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
+}
+
+#[test]
+fn extcodecopy() {
+    // insert the program in the db with address = 100
+    // and then copy the program bytecode in memory
+    // with extcodecopy(address=100, dest_offset, offset, size)
+    let size = 14_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = program.to_bytecode();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn extcodecopy_with_offset_out_of_bounds() {
+    // copies to memory the bytecode from the 8th byte (offset = 8) with size = 12
+    // so the result must be [EXTCODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0,0,0,0,0,0]
+    let size = 12_u8;
+    let offset = 8_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy, // 8th byte
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn extcodecopy_with_dirty_memory() {
+    // copies to memory the bytecode from the 8th byte (offset = 8) with size = 12
+    // so the result must be [EXTCODECOPY, PUSH, size, PUSH, dest_offset, RETURN, 0,0,0,0,0,0]
+    // Here we want to test if the copied data overwrites the information already stored in memory
+    let size = 10_u8;
+    let offset = 43_u8;
+    let dest_offset = 2_u8;
+    let address = 100_u8;
+
+    let all_ones = BigUint::from_bytes_be(&[0xff_u8; 32]);
+
+    let program: Program = vec![
+        //First, we write ones into the memory
+        Operation::Push((32_u8, all_ones)),
+        Operation::Push0,
+        Operation::Mstore,
+        //Then, we want make our call to Extcodecopy
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy, // 43th byte
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(0_u8))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = [
+        &[0xff; 2],                              // 2 bytes of dirty memory (offset = 2)
+        &program.to_bytecode()[offset.into()..], // 6 bytes
+        &[0_u8; 4],                              // 4 bytes of padding (size = 10 = 6 + 4)
+        &[0xff; 20],                             // 20 more bytes of dirty memory
+    ]
+    .concat();
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn extcodecopy_with_wrong_address() {
+    // A wrong address should return an empty bytecode
+    let size = 10_u8;
+    let offset = 0_u8;
+    let dest_offset = 2_u8;
+    let address = 100_u8;
+    let wrong_address = &[0xff; 32]; // All bits on
+    let all_ones = BigUint::from_bytes_be(&[0xff_u8; 32]);
+
+    let program: Program = vec![
+        //First, we write ones into the memory
+        Operation::Push((32_u8, all_ones)),
+        Operation::Push0,
+        Operation::Mstore,
+        //Begin with Extcodecopy
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((32_u8, BigUint::from_bytes_be(wrong_address))),
+        Operation::ExtcodeCopy,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::Push((1_u8, BigUint::from(0_u8))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = [
+        vec![0xff; 2],  // 2 bytes of dirty memory (offset = 2)
+        vec![0_u8; 10], // 4 bytes of padding (size = 10)
+        vec![0xff; 20], // 20 more bytes of dirty memory
+    ]
+    .concat();
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn prevrandao() {
+    let mut program = vec![Operation::Prevrandao];
+    append_return_result_operations(&mut program);
+    let (mut env, db) = default_env_and_db_setup(program);
+    let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let randao = B256::from_str(randao_str).expect("Error while converting str to B256");
+    env.block.prevrandao = Some(randao);
+
+    let expected_result = randao.as_bytes();
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn prevrandao_check_gas() {
+    let program = vec![Operation::Prevrandao];
+    let env = Env::default();
+    let gas_needed = gas_cost::PREVRANDAO;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn prevrandao_with_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Prevrandao);
+    let (env, db) = default_env_and_db_setup(program);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn prevrandao_when_randao_is_not_set() {
+    let program = vec![Operation::Prevrandao];
+    let (env, db) = default_env_and_db_setup(program);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into());
+}
+
+#[test]
+fn extcodesize() {
+    let address = 40_u8;
+    let mut operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    append_return_result_operations(&mut operations);
+
+    let mut env = Env::default();
+    let program = Program::from(operations);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address as _),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = program.to_bytecode().len();
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn extcodesize_gas_check() {
+    // in this case we are not considering cold and warm accesses
+    // we assume every access is warm
+    let address = 40_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn extcodesize_with_wrong_address() {
+    let address = 0_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_invalid_address() {
+    // Address with upper 12 bytes filled with 1s is invalid
+    let address = BigUint::from_bytes_be(&[0xff; 32]);
+    let operations = vec![Operation::Push((32_u8, address)), Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
 }
 
 #[test]
