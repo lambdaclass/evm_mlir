@@ -2262,10 +2262,8 @@ fn codegen_sstore<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64).into();
     let ptr_type = pointer(context, 0);
-    let uint256 = IntegerType::new(context, 256);
-    let uint64 = IntegerType::new(context, 64);
-    let uint8 = IntegerType::new(context, 8);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -2283,47 +2281,24 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
+    let key_ptr = allocate_and_store_value(op_ctx, &ok_block, key, location)?;
+    let value_ptr = allocate_and_store_value(op_ctx, &ok_block, value, location)?;
 
-    let key_ptr = ok_block
-        .append_operation(llvm::alloca(
+    // Write storage and get the gas cost
+    let gas_cost = op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
+
+    let min_remaining_gas = ok_block
+        .append_operation(arith::constant(
             context,
-            pointer_size,
-            ptr_type,
+            IntegerAttribute::new(uint64, gas_cost::SSTORE_MIN_REMAINING_GAS).into(),
             location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
         ))
         .result(0)?
         .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        key,
-        key_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    let value_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
+    let needed_gas = ok_block
+        .append_operation(arith::addi(min_remaining_gas, gas_cost, location))
         .result(0)?
         .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        value,
-        value_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
 
     // Get address of gas counter global
     let gas_counter_ptr = ok_block
@@ -2333,49 +2308,59 @@ fn codegen_sstore<'c, 'r>(
             ptr_type,
             location,
         ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = ok_block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            uint64,
+            location,
+            LoadStoreOptions::default(),
+        ))
         .result(0)?
         .into();
 
-    // Write storage and update the gas counter
-    let write_result =
-        op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, gas_counter_ptr, location)?;
-
-    // Check if the return value is zero
-    let zero_constant_value = ok_block
-        .append_operation(arith::constant(
+    // Check that gas_counter >= SSTORE_MIN_REMAINING_GAS + needed_gas
+    let flag = ok_block
+        .append_operation(arith::cmpi(
             context,
-            IntegerAttribute::new(uint8.into(), 0).into(),
+            arith::CmpiPredicate::Sge,
+            gas_counter,
+            needed_gas,
             location,
         ))
         .result(0)?
         .into();
-    let flag = ok_block
-        .append_operation(
-            ods::llvm::icmp(
-                context,
-                IntegerType::new(context, 1).into(),
-                zero_constant_value,
-                write_result,
-                IntegerAttribute::new(uint64.into(), 0).into(),
-                location,
-            )
-            .into(),
-        )
-        .result(0)?
-        .into();
-    let return_block = region.append_block(Block::new(&[]));
+
+    let end_block = region.append_block(Block::new(&[]));
 
     ok_block.append_operation(cf::cond_br(
         context,
         flag,
-        &return_block,
+        &end_block,
         &op_ctx.revert_block,
         &[],
         &[],
         location,
     ));
 
-    Ok((start_block, return_block))
+    // Subtract gas from gas counter
+    let new_gas_counter = end_block
+        .append_operation(arith::subi(gas_counter, gas_cost, location))
+        .result(0)?;
+
+    // Store new gas counter
+    end_block.append_operation(llvm::store(
+        context,
+        new_gas_counter.into(),
+        gas_counter_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    Ok((start_block, end_block))
 }
 
 fn codegen_codesize<'c, 'r>(

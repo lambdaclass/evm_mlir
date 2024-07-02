@@ -103,7 +103,6 @@ impl Context {
         let mut melior_module = MeliorModule::from_operation(op).expect("module failed to create");
 
         compile_program(context, &melior_module, program)?;
-
         assert!(melior_module.as_operation().verify());
 
         let filename = output_file.as_ref().with_extension("mlir");

@@ -18,7 +18,6 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::gas_cost,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
     primitives::{Address, U256 as EU256},
@@ -105,7 +104,7 @@ pub struct InnerContext {
     // The program bytecode
     pub program: Vec<u8>,
     gas_remaining: Option<u64>,
-    gas_refund: Option<i64>,
+    gas_refund: u64,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
     journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
@@ -159,7 +158,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_refunded = self.inner_context.gas_refund.unwrap_or(0) as u64;
+        let gas_refunded = self.inner_context.gas_refund;
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let exit_status = self
@@ -343,12 +342,7 @@ impl<'c> SyscallContext<'c> {
         stg_value.lo = result.low_u128();
     }
 
-    pub extern "C" fn write_storage(
-        &mut self,
-        stg_key: &U256,
-        stg_value: &mut U256,
-        gas_remaining: &mut u64,
-    ) -> u8 {
+    pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
         let value = u256_from_u128(stg_value.hi, stg_value.lo);
 
@@ -379,7 +373,7 @@ impl<'c> SyscallContext<'c> {
         };
 
         // Compute the gas cost
-        let mut gas_cost: u64;
+        let mut gas_cost: i64; // TODO: simplificar ifs
         if value == current {
             gas_cost = 100;
         } else if current == original {
@@ -419,18 +413,14 @@ impl<'c> SyscallContext<'c> {
                 }
             }
         }
+        if gas_refund > 0 {
+            self.inner_context.gas_refund += gas_refund as u64;
+        } else {
+            self.inner_context.gas_refund -= gas_refund.abs() as u64;
+        };
 
-        // Check if gas is enough, and then perform the write operation
-        // The amount of gas left to the transaction hass to be less than or equal 2300 (since Istanbul fork).
-        if gas_cost + (gas_cost::SSTORE_MIN_REMAINING_GAS as u64) > *gas_remaining {
-            return 1;
-        }
-        *gas_remaining -= gas_cost;
-        let current_refund = self.inner_context.gas_refund.unwrap_or(0);
-        self.inner_context.gas_refund = Some(gas_refund + current_refund);
-
-        self.db.write_storage(self.env.tx.caller, key, value);
-        0
+        self.db.write_storage(self.env.tx.caller, key, value); // TODO: commit into db only at end of tx
+        gas_cost
     }
 
     pub extern "C" fn append_log(&mut self, offset: u32, size: u32) {
@@ -622,8 +612,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::STORAGE_WRITE,
-            SyscallContext::write_storage
-                as *const fn(*mut c_void, *const U256, *const U256, *const u64)
+            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
                 as *mut (),
         );
         engine.register_symbol(
@@ -912,8 +901,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type, ptr_type], &[uint8])
-                    .into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -1307,16 +1295,15 @@ pub(crate) mod mlir {
         block: &'c Block,
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
-        gas_remaining: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint8 = IntegerType::new(mlir_ctx, 8);
+        let uint64 = IntegerType::new(mlir_ctx, 64);
         let value = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_WRITE),
-                &[syscall_ctx, key, value, gas_remaining],
-                &[uint8.into()],
+                &[syscall_ctx, key, value],
+                &[uint64.into()],
                 location,
             ))
             .result(0)?;
