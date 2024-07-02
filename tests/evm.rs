@@ -4,7 +4,7 @@ use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, U256 as EU256},
+    primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
     Env, Evm,
@@ -1521,12 +1521,11 @@ fn prevrandao() {
     append_return_result_operations(&mut program);
     let (mut env, db) = default_env_and_db_setup(program);
     let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
-    let randao = EU256::from_str(randao_str).expect("Error while converting str to B256");
+    let randao = B256::from_str(randao_str).expect("Error while converting str to B256");
     env.block.prevrandao = Some(randao);
 
-    let mut randao_bytes: [u8; 32] = [0x00; 32];
-    randao.to_big_endian(&mut randao_bytes);
-    run_program_assert_bytes_result(env, db, &randao_bytes);
+    let expected_result = randao.as_bytes();
+    run_program_assert_bytes_result(env, db, expected_result);
 }
 
 #[test]

@@ -874,7 +874,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    #[allow(unused)]
     pub(crate) fn get_prevrandao_syscall(
         &'c self,
         block: &'c Block,

@@ -38,7 +38,7 @@ pub struct U256 {
 }
 
 impl U256 {
-    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+    pub fn from_fixed_be_bytes(bytes: [u8; 32]) -> Self {
         let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
         let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
         U256 { hi, lo }
@@ -226,7 +226,7 @@ impl<'c> SyscallContext<'c> {
         let mut hasher = Keccak256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        *hash_ptr = U256::from_be_bytes(result.into());
+        *hash_ptr = U256::from_fixed_be_bytes(result.into());
     }
 
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
@@ -412,8 +412,7 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_prevrandao(&self, prevrandao: &mut U256) {
         let randao = self.env.block.prevrandao.unwrap_or_default();
-        prevrandao.hi = (randao >> 128).low_u128();
-        prevrandao.lo = randao.low_u128();
+        *prevrandao = U256::from_fixed_be_bytes(randao.into());
     }
 
     pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
