@@ -19,7 +19,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     let program = Program::from_bytecode(&bytes);
 
     // This is for intermediate files
-    let output_file = PathBuf::from("/dev/null");
+    let output_file = PathBuf::from("/tmp/output");
 
     let context = Context::new();
     let module = context
