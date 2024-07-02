@@ -347,7 +347,7 @@ impl<'c> SyscallContext<'c> {
             .journaled_storage
             .get(&key)
             .map(|slot| slot.present_value)
-            .unwrap_or(self.db.read_storage(address, key));
+            .unwrap_or_else(|| self.db.read_storage(address, key));
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();

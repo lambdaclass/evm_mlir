@@ -2295,10 +2295,6 @@ fn codegen_sstore<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let needed_gas = ok_block
-        .append_operation(arith::addi(min_remaining_gas, gas_cost, location))
-        .result(0)?
-        .into();
 
     // Get address of gas counter global
     let gas_counter_ptr = ok_block
@@ -2322,13 +2318,19 @@ fn codegen_sstore<'c, 'r>(
         .result(0)?
         .into();
 
-    // Check that gas_counter >= SSTORE_MIN_REMAINING_GAS + needed_gas
+    // Substract from gas counter
+    let remaining_gas = ok_block
+        .append_operation(arith::subi(gas_counter, gas_cost, location))
+        .result(0)?
+        .into();
+
+    // Check that (gas_counter - needed_gas) >= SSTORE_MIN_REMAINING_GAS
     let flag = ok_block
         .append_operation(arith::cmpi(
             context,
             arith::CmpiPredicate::Sge,
-            gas_counter,
-            needed_gas,
+            remaining_gas,
+            min_remaining_gas,
             location,
         ))
         .result(0)?
@@ -2346,15 +2348,10 @@ fn codegen_sstore<'c, 'r>(
         location,
     ));
 
-    // Subtract gas from gas counter
-    let new_gas_counter = end_block
-        .append_operation(arith::subi(gas_counter, gas_cost, location))
-        .result(0)?;
-
     // Store new gas counter
     end_block.append_operation(llvm::store(
         context,
-        new_gas_counter.into(),
+        remaining_gas,
         gas_counter_ptr.into(),
         location,
         LoadStoreOptions::default(),
