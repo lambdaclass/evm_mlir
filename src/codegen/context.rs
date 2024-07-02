@@ -21,7 +21,7 @@ use crate::{
     errors::CodegenError,
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
-    utils::{get_remaining_gas, integer_constant_from_u8, llvm_mlir},
+    utils::{consume_gas_as_value, get_remaining_gas, integer_constant_from_u8, llvm_mlir},
 };
 
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ impl<'c> OperationCtx<'c> {
         // Append setup code to be run at the start
         generate_stack_setup_code(context, module, setup_block)?;
         generate_memory_setup_code(context, module, setup_block)?;
-        generate_calldata_setup_code(context, module, setup_block)?;
+        generate_calldata_setup_code(context, syscall_ctx, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
         syscall::mlir::declare_syscalls(context, module);
@@ -335,6 +335,7 @@ fn generate_memory_setup_code<'c>(
 
 fn generate_calldata_setup_code<'c>(
     context: &'c MeliorContext,
+    syscall_ctx: Value<'c, 'c>,
     module: &'c Module,
     block: &'c Block<'c>,
 ) -> Result<(), CodegenError> {
@@ -342,6 +343,7 @@ fn generate_calldata_setup_code<'c>(
     let ptr_type = pointer(context, 0);
     let uint32 = IntegerType::new(context, 32).into();
 
+    // Declare globals
     let body = module.body();
     let res = body.append_operation(llvm_mlir::global(
         context,
@@ -358,15 +360,29 @@ fn generate_calldata_setup_code<'c>(
     ));
     assert!(res.verify());
 
-    let zero = block
-        .append_operation(arith::constant(
+    // Setup CALLDATA_PTR_GLOBAL
+    let calldata_ptr_value =
+        syscall::mlir::get_calldata_ptr_syscall(context, syscall_ctx, block, location)?;
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
             context,
-            IntegerAttribute::new(uint32, 0).into(),
+            CALLDATA_PTR_GLOBAL,
+            ptr_type,
             location,
         ))
-        .result(0)?
-        .into();
+        .result(0)?;
 
+    block.append_operation(llvm::store(
+        context,
+        calldata_ptr_value,
+        calldata_ptr_ptr.into(),
+        location,
+        LoadStoreOptions::default(),
+    ));
+
+    // Setup CALLDATA_SIZE_GLOBAL
+    let calldata_size_value =
+        syscall::mlir::get_calldata_size_syscall(context, syscall_ctx, block, location)?;
     let calldata_size_ptr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -376,14 +392,13 @@ fn generate_calldata_setup_code<'c>(
         ))
         .result(0)?;
 
-    let res = block.append_operation(llvm::store(
+    block.append_operation(llvm::store(
         context,
-        zero,
+        calldata_size_value,
         calldata_size_ptr.into(),
         location,
         LoadStoreOptions::default(),
     ));
-    assert!(res.verify());
 
     Ok(())
 }
@@ -402,14 +417,24 @@ pub fn generate_revert_block<'c>(
 ) -> Result<Block<'c>, CodegenError> {
     let location = Location::unknown(context);
     let uint32 = IntegerType::new(context, 32).into();
+    let uint64 = IntegerType::new(context, 64).into();
 
     let revert_block = Block::new(&[]);
     let remaining_gas = get_remaining_gas(context, &revert_block)?;
 
-    let zero_constant = revert_block
+    let zero_u32 = revert_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint32, 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let zero_u64 = revert_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint64, 0).into(),
             location,
         ))
         .result(0)?
@@ -424,13 +449,15 @@ pub fn generate_revert_block<'c>(
         .result(0)?
         .into();
 
+    consume_gas_as_value(context, &revert_block, remaining_gas)?;
+
     syscall::mlir::write_result_syscall(
         context,
         syscall_ctx,
         &revert_block,
-        zero_constant,
-        zero_constant,
-        remaining_gas,
+        zero_u32,
+        zero_u32,
+        zero_u64,
         reason,
         location,
     );
@@ -459,6 +486,25 @@ impl<'c> OperationCtx<'c> {
             size,
             gas,
             reason,
+            location,
+        )
+    }
+
+    pub(crate) fn keccak256_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        hash_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::keccak256_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            hash_ptr,
             location,
         )
     }
@@ -527,6 +573,36 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_caller_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        caller_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_caller_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            caller_ptr,
+        )
+    }
+
+    pub(crate) fn store_in_blobbasefee_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        blob_base_fee_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_blobbasefee_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            blob_base_fee_ptr,
+        )
+    }
+
     pub(crate) fn store_in_gasprice_ptr(
         &'c self,
         block: &'c Block,
@@ -542,6 +618,29 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn get_gaslimit(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_gaslimit(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    pub(crate) fn store_in_selfbalance_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        selfbalance_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_selfbalance_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            selfbalance_ptr,
+        )
+    }
+
     pub(crate) fn extend_memory_syscall(
         &'c self,
         block: &'c Block,
@@ -553,6 +652,40 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             new_size,
+            location,
+        )
+    }
+
+    pub(crate) fn storage_read_syscall(
+        &'c self,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::storage_read_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            key,
+            value,
+            location,
+        )
+    }
+
+    pub(crate) fn storage_write_syscall(
+        &'c self,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::storage_write_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            key,
+            value,
             location,
         )
     }
@@ -662,6 +795,19 @@ impl<'c> OperationCtx<'c> {
         );
     }
 
+    pub(crate) fn get_coinbase_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_coinbase_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+        )
+    }
+
     #[allow(unused)]
     pub(crate) fn get_block_number_syscall(
         &'c self,
@@ -678,7 +824,103 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn store_in_timestamp_ptr(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+        timestamp_ptr: Value<'c, 'c>,
+    ) {
+        syscall::mlir::store_in_timestamp_ptr(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            location,
+            timestamp_ptr,
+        )
+    }
+
+    pub(crate) fn copy_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     #[allow(unused)]
+    pub(crate) fn store_in_basefee_ptr_syscall(
+        &'c self,
+        basefee_ptr: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_basefee_ptr_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            basefee_ptr,
+            block,
+            location,
+        )
+    }
+
+    #[allow(unused)]
+    pub(crate) fn get_address_ptr_syscall(
+        &'c self,
+        block: &'c Block,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::get_address_ptr_syscall(self.mlir_context, self.syscall_ctx, block, location)
+    }
+
+    pub(crate) fn store_in_balance_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        balance: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::store_in_balance_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            balance,
+            location,
+        )
+    }
+
+    pub(crate) fn copy_ext_code_to_memory_syscall(
+        &'c self,
+        block: &'c Block,
+        address_ptr: Value,
+        offset: Value,
+        size: Value,
+        dest_offset: Value,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::copy_ext_code_to_memory_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address_ptr,
+            offset,
+            size,
+            dest_offset,
+            location,
+        )
+    }
+
     pub(crate) fn get_blob_hash_at_index_syscall(
         &'c self,
         block: &'c Block,

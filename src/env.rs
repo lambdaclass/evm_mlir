@@ -31,21 +31,23 @@ pub struct CfgEnv {
 
 #[derive(Clone, Debug, Default)]
 pub struct BlockEnv {
-    // The number of ancestor blocks of this block (block height).
+    /// The number of ancestor blocks of this block (block height).
     pub number: U256,
-    // Coinbase or miner or address that created and signed the block.
-    //
-    // This is the receiver address of all the gas spent in the block.
-    //pub coinbase: Address,
-
-    // The timestamp of the block in seconds since the UNIX epoch.
-    //pub timestamp: U256,
+    /// Coinbase or miner or address that created and signed the block.
+    ///
+    /// This is the receiver address of all the gas spent in the block.
+    pub coinbase: Address,
+    /// The timestamp of the block in seconds since the UNIX epoch.
+    pub timestamp: U256,
     // The gas limit of the block.
     //pub gas_limit: U256,
+    // The base fee per blob, added in [EIP-4844]
+    pub blob_base_fee: U256,
+    //
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
     // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    //pub basefee: U256,
+    pub basefee: U256,
     // The difficulty of the block.
     //
     // Unused after the Paris (AKA the merge) upgrade, and replaced by `prevrandao`.
@@ -128,7 +130,8 @@ impl Default for TxEnv {
     fn default() -> Self {
         Self {
             caller: Address::zero(),
-            gas_limit: u64::MAX,
+            // TODO: we are using signed comparison for the gas counter
+            gas_limit: i64::MAX as _,
             gas_price: U256::zero(),
             // gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
@@ -150,4 +153,14 @@ pub enum TransactTo {
     Call(Address),
     /// Contract creation.
     Create,
+}
+
+impl TxEnv {
+    pub fn get_address(&self) -> Address {
+        match self.transact_to {
+            TransactTo::Call(addr) => addr,
+            // TODO: check if its ok to return zero in this case
+            TransactTo::Create => Address::zero(),
+        }
+    }
 }
