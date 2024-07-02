@@ -388,7 +388,7 @@ impl<'c> SyscallContext<'c> {
             20_000
         } else if original == current {
             2_900
-            } else {
+        } else {
             100
         };
 
@@ -398,29 +398,26 @@ impl<'c> SyscallContext<'c> {
         }
 
         // Compute the gas refund
-        let mut gas_refund: i64 = 0;
-        if value != current {
-            if current == original {
-                if !original.is_zero() && value.is_zero() {
-                    gas_refund += 4_800;
-                }
-            } else {
-                if !original.is_zero() {
-                    if current.is_zero() {
-                        gas_refund -= 4_800;
-                    } else if value.is_zero() {
-                        gas_refund += 4_800;
-                    }
-                }
-                if value == original {
-                    if original.is_zero() {
-                        gas_refund += 19_900;
-                    } else {
-                        gas_refund += 2_800;
-                    }
-                }
-            }
-        }
+        let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
+        let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
+        let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
+        let reset_zero_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
+        let reset_to_original = (current != value) && (original == value);
+
+        let gas_refund: i64 = if reset_non_zero_to_zero {
+            4_800
+        } else if undo_reset_to_zero_into_original {
+            -2_000
+        } else if undo_reset_to_zero {
+            -4_800
+        } else if reset_zero_to_zero {
+            19_900
+        } else if reset_to_original {
+            2_800
+        } else {
+            0
+        };
+
         if gas_refund > 0 {
             self.inner_context.gas_refund += gas_refund as u64;
         } else {
