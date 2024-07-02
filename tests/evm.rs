@@ -963,6 +963,24 @@ fn sstore_happy_path() {
 }
 
 #[test]
+fn sstore_sload_happy_path() {
+    let key = 80_u8;
+    let value = 11_u8;
+    let mut operations = vec![
+        // sstore
+        Operation::Push((1_u8, BigUint::from(value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        // sload
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sload,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    run_program_assert_num_result(env, db, BigUint::from(value));
+}
+
+#[test]
 fn gasprice_happy_path() {
     let gas_price: u32 = 33192;
     let mut operations = vec![Operation::Gasprice];

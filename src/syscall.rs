@@ -341,7 +341,13 @@ impl<'c> SyscallContext<'c> {
 
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
 
-        let result = self.db.read_storage(address, key); // TODO: cambiar para leer del journaled state primero
+        // Read value from journaled_storage. If there isn't one, then read from db
+        let result = self
+            .inner_context
+            .journaled_storage
+            .get(&key)
+            .map(|slot| slot.present_value)
+            .unwrap_or(self.db.read_storage(address, key));
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
