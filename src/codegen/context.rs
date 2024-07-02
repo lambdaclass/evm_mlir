@@ -846,7 +846,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    #[allow(unused)]
     pub(crate) fn store_in_basefee_ptr_syscall(
         &'c self,
         basefee_ptr: Value<'c, 'c>,
@@ -909,7 +908,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    #[allow(unused)]
     pub(crate) fn get_codesize_from_address_syscall(
         &'c self,
         block: &'c Block,

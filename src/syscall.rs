@@ -407,10 +407,9 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
-        match Address::try_from(address) {
-            Ok(add) => self.db.code_by_address(add).len() as _,
-            Err(_) => 0,
-        }
+        Address::try_from(address)
+            .map(|a| self.db.code_by_address(a).len())
+            .unwrap_or(0) as _
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
