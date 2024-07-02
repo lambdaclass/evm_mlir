@@ -38,7 +38,7 @@ pub struct U256 {
 }
 
 impl U256 {
-    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+    pub fn from_fixed_be_bytes(bytes: [u8; 32]) -> Self {
         let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
         let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
         U256 { hi, lo }
@@ -226,7 +226,7 @@ impl<'c> SyscallContext<'c> {
         let mut hasher = Keccak256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        *hash_ptr = U256::from_be_bytes(result.into());
+        *hash_ptr = U256::from_fixed_be_bytes(result.into());
     }
 
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
@@ -416,6 +416,11 @@ impl<'c> SyscallContext<'c> {
         self.env.tx.get_address().to_fixed_bytes().as_ptr()
     }
 
+    pub extern "C" fn get_prevrandao(&self, prevrandao: &mut U256) {
+        let randao = self.env.block.prevrandao.unwrap_or_default();
+        *prevrandao = U256::from_fixed_be_bytes(randao.into());
+    }
+
     pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
         self.env.block.coinbase.as_ptr()
     }
@@ -515,6 +520,7 @@ pub mod symbols {
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
     pub const STORE_IN_SELFBALANCE_PTR: &str = "evm_mlir__store_in_selfbalance_ptr";
     pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
+    pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -644,6 +650,10 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_PREVRANDAO,
+            SyscallContext::get_prevrandao as *const fn(*mut c_void, *mut U256) as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CHAINID,
@@ -948,6 +958,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_PREVRANDAO),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -1531,7 +1550,22 @@ pub(crate) mod mlir {
         ));
     }
 
-    #[allow(unused)]
+    pub(crate) fn get_prevrandao_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        prevrandao_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_PREVRANDAO),
+            &[syscall_ctx, prevrandao_ptr],
+            &[],
+            location,
+        ));
+    }
+
     pub(crate) fn get_codesize_from_address_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,

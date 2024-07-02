@@ -54,7 +54,7 @@ pub enum Opcode {
     COINBASE = 0x41,
     TIMESTAMP = 0x42,
     NUMBER = 0x43,
-    // DIFFICULTY = 0x44,
+    PREVRANDAO = 0x44,
     GASLIMIT = 0x45,
     CHAINID = 0x46,
     SELFBALANCE = 0x47,
@@ -158,7 +158,7 @@ pub enum Opcode {
     // STATICCALL = 0xFA,
     // unused 0xFB-0xFC
     REVERT = 0xFD,
-    // INVALID = 0xFE,
+    INVALID = 0xFE,
     // SELFDESTRUCT = 0xFF,
 }
 
@@ -225,6 +225,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::COINBASE as u8 => Opcode::COINBASE,
             x if x == Opcode::TIMESTAMP as u8 => Opcode::TIMESTAMP,
             x if x == Opcode::NUMBER as u8 => Opcode::NUMBER,
+            x if x == Opcode::PREVRANDAO as u8 => Opcode::PREVRANDAO,
             x if x == Opcode::GASLIMIT as u8 => Opcode::GASLIMIT,
             x if x == Opcode::CHAINID as u8 => Opcode::CHAINID,
             x if x == Opcode::SELFBALANCE as u8 => Opcode::SELFBALANCE,
@@ -367,6 +368,7 @@ pub enum Operation {
     Coinbase,
     Timestamp,
     Number,
+    Prevrandao,
     Gaslimit,
     Chainid,
     SelfBalance,
@@ -392,6 +394,7 @@ pub enum Operation {
     Log(u8),
     Return,
     Revert,
+    Invalid,
 }
 
 impl Operation {
@@ -440,6 +443,7 @@ impl Operation {
             Operation::Coinbase => vec![Opcode::COINBASE as u8],
             Operation::Timestamp => vec![Opcode::TIMESTAMP as u8],
             Operation::Number => vec![Opcode::NUMBER as u8],
+            Operation::Prevrandao => vec![Opcode::PREVRANDAO as u8],
             Operation::Gaslimit => vec![Opcode::GASLIMIT as u8],
             Operation::Chainid => vec![Opcode::CHAINID as u8],
             Operation::SelfBalance => vec![Opcode::SELFBALANCE as u8],
@@ -472,6 +476,7 @@ impl Operation {
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Return => vec![Opcode::RETURN as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
+            Operation::Invalid => vec![Opcode::INVALID as u8],
         }
     }
 }
@@ -483,321 +488,22 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn from_bytecode(bytecode: &[u8]) -> Result<Self, ParseError> {
+    pub fn from_bytecode_checked(bytecode: &[u8]) -> Result<Self, ParseError> {
         let mut operations = vec![];
         let mut pc = 0;
         let mut failed_opcodes = vec![];
 
         while pc < bytecode.len() {
-            let Some(opcode) = bytecode.get(pc).copied() else {
-                break;
-            };
-
-            let opcode = Opcode::try_from(opcode);
-
-            if let Err(e) = opcode {
-                failed_opcodes.push(e);
-                pc += 1;
-                continue;
+            match Self::parse_operation(bytecode, pc) {
+                Ok((op, new_pc)) => {
+                    operations.push(op);
+                    pc = new_pc;
+                }
+                Err(e) => {
+                    failed_opcodes.push(e);
+                    pc += 1;
+                }
             }
-
-            let op = match opcode.unwrap() {
-                Opcode::STOP => Operation::Stop,
-                Opcode::ADD => Operation::Add,
-                Opcode::MUL => Operation::Mul,
-                Opcode::SUB => Operation::Sub,
-                Opcode::DIV => Operation::Div,
-                Opcode::SDIV => Operation::Sdiv,
-                Opcode::MOD => Operation::Mod,
-                Opcode::SMOD => Operation::SMod,
-                Opcode::ADDMOD => Operation::Addmod,
-                Opcode::MULMOD => Operation::Mulmod,
-                Opcode::EXP => Operation::Exp,
-                Opcode::SIGNEXTEND => Operation::SignExtend,
-                Opcode::LT => Operation::Lt,
-                Opcode::GT => Operation::Gt,
-                Opcode::SLT => Operation::Slt,
-                Opcode::SGT => Operation::Sgt,
-                Opcode::EQ => Operation::Eq,
-                Opcode::ISZERO => Operation::IsZero,
-                Opcode::AND => Operation::And,
-                Opcode::OR => Operation::Or,
-                Opcode::XOR => Operation::Xor,
-                Opcode::NOT => Operation::Not,
-                Opcode::BYTE => Operation::Byte,
-                Opcode::SHL => Operation::Shl,
-                Opcode::SHR => Operation::Shr,
-                Opcode::SAR => Operation::Sar,
-                Opcode::KECCAK256 => Operation::Keccak256,
-                Opcode::ADDRESS => Operation::Address,
-                Opcode::BALANCE => Operation::Balance,
-                Opcode::ORIGIN => Operation::Origin,
-                Opcode::CALLER => Operation::Caller,
-                Opcode::CALLVALUE => Operation::Callvalue,
-                Opcode::CALLDATALOAD => Operation::CalldataLoad,
-                Opcode::CALLDATASIZE => Operation::CallDataSize,
-                Opcode::CALLDATACOPY => Operation::CallDataCopy,
-                Opcode::CODESIZE => Operation::Codesize,
-                Opcode::CODECOPY => Operation::Codecopy,
-                Opcode::GASPRICE => Operation::Gasprice,
-                Opcode::EXTCODESIZE => Operation::ExtcodeSize,
-                Opcode::EXTCODECOPY => Operation::ExtcodeCopy,
-                Opcode::COINBASE => Operation::Coinbase,
-                Opcode::TIMESTAMP => Operation::Timestamp,
-                Opcode::NUMBER => Operation::Number,
-                Opcode::GASLIMIT => Operation::Gaslimit,
-                Opcode::CHAINID => Operation::Chainid,
-                Opcode::SELFBALANCE => Operation::SelfBalance,
-                Opcode::BASEFEE => Operation::Basefee,
-                Opcode::BLOBBASEFEE => Operation::BlobBaseFee,
-                Opcode::POP => Operation::Pop,
-                Opcode::MLOAD => Operation::Mload,
-                Opcode::MSTORE => Operation::Mstore,
-                Opcode::MSTORE8 => Operation::Mstore8,
-                Opcode::SLOAD => Operation::Sload,
-                Opcode::SSTORE => Operation::Sstore,
-                Opcode::JUMP => Operation::Jump,
-                Opcode::JUMPI => Operation::Jumpi,
-                Opcode::PC => Operation::PC { pc },
-                Opcode::MSIZE => Operation::Msize,
-                Opcode::GAS => Operation::Gas,
-                Opcode::JUMPDEST => Operation::Jumpdest { pc },
-                Opcode::MCOPY => Operation::Mcopy,
-                Opcode::PUSH0 => Operation::Push0,
-                Opcode::PUSH1 => {
-                    // TODO: return error if not enough bytes (same for PUSHN)
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 1)].try_into().unwrap();
-                    Operation::Push((1, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH2 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 2)].try_into().unwrap();
-                    pc += 1;
-                    Operation::Push((2, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH3 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 3)].try_into().unwrap();
-                    pc += 2;
-                    Operation::Push((3, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH4 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 4)].try_into().unwrap();
-                    pc += 3;
-                    Operation::Push((4, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH5 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 5)].try_into().unwrap();
-                    pc += 4;
-                    Operation::Push((5, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH6 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 6)].try_into().unwrap();
-                    pc += 5;
-                    Operation::Push((6, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH7 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 7)].try_into().unwrap();
-                    pc += 6;
-                    Operation::Push((7, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH8 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 8)].try_into().unwrap();
-                    pc += 7;
-                    Operation::Push((8, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH9 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 9)].try_into().unwrap();
-                    pc += 8;
-                    Operation::Push((9, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH10 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 10)].try_into().unwrap();
-                    pc += 9;
-                    Operation::Push((10, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH11 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 11)].try_into().unwrap();
-                    pc += 10;
-                    Operation::Push((11, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH12 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 12)].try_into().unwrap();
-                    pc += 11;
-                    Operation::Push((12, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH13 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 13)].try_into().unwrap();
-                    pc += 12;
-                    Operation::Push((13, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH14 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 14)].try_into().unwrap();
-                    pc += 13;
-                    Operation::Push((14, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH15 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 15)].try_into().unwrap();
-                    pc += 14;
-                    Operation::Push((15, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH16 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 16)].try_into().unwrap();
-                    pc += 15;
-                    Operation::Push((16, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH17 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 17)].try_into().unwrap();
-                    pc += 16;
-                    Operation::Push((17, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH18 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 18)].try_into().unwrap();
-                    pc += 17;
-                    Operation::Push((18, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH19 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 19)].try_into().unwrap();
-                    pc += 18;
-                    Operation::Push((19, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH20 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 20)].try_into().unwrap();
-                    pc += 19;
-                    Operation::Push((20, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH21 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 21)].try_into().unwrap();
-                    pc += 20;
-                    Operation::Push((21, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH22 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
-                    pc += 21;
-                    Operation::Push((22, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH23 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
-                    pc += 22;
-                    Operation::Push((23, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH24 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
-                    pc += 23;
-                    Operation::Push((24, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH25 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
-                    pc += 24;
-                    Operation::Push((25, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH26 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 26)].try_into().unwrap();
-                    pc += 25;
-                    Operation::Push((26, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH27 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 27)].try_into().unwrap();
-                    pc += 26;
-                    Operation::Push((27, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH28 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 28)].try_into().unwrap();
-                    pc += 27;
-                    Operation::Push((28, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH29 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 29)].try_into().unwrap();
-                    pc += 28;
-                    Operation::Push((29, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH30 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 30)].try_into().unwrap();
-                    pc += 29;
-                    Operation::Push((30, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH31 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 31)].try_into().unwrap();
-                    pc += 30;
-                    Operation::Push((31, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::PUSH32 => {
-                    pc += 1;
-                    let x = bytecode[pc..(pc + 32)].try_into().unwrap();
-                    pc += 31;
-                    Operation::Push((32, (BigUint::from_bytes_be(x))))
-                }
-                Opcode::DUP1 => Operation::Dup(1),
-                Opcode::DUP2 => Operation::Dup(2),
-                Opcode::DUP3 => Operation::Dup(3),
-                Opcode::DUP4 => Operation::Dup(4),
-                Opcode::DUP5 => Operation::Dup(5),
-                Opcode::DUP6 => Operation::Dup(6),
-                Opcode::DUP7 => Operation::Dup(7),
-                Opcode::DUP8 => Operation::Dup(8),
-                Opcode::DUP9 => Operation::Dup(9),
-                Opcode::DUP10 => Operation::Dup(10),
-                Opcode::DUP11 => Operation::Dup(11),
-                Opcode::DUP12 => Operation::Dup(12),
-                Opcode::DUP13 => Operation::Dup(13),
-                Opcode::DUP14 => Operation::Dup(14),
-                Opcode::DUP15 => Operation::Dup(15),
-                Opcode::DUP16 => Operation::Dup(16),
-                Opcode::SWAP1 => Operation::Swap(1),
-                Opcode::SWAP2 => Operation::Swap(2),
-                Opcode::SWAP3 => Operation::Swap(3),
-                Opcode::SWAP4 => Operation::Swap(4),
-                Opcode::SWAP5 => Operation::Swap(5),
-                Opcode::SWAP6 => Operation::Swap(6),
-                Opcode::SWAP7 => Operation::Swap(7),
-                Opcode::SWAP8 => Operation::Swap(8),
-                Opcode::SWAP9 => Operation::Swap(9),
-                Opcode::SWAP10 => Operation::Swap(10),
-                Opcode::SWAP11 => Operation::Swap(11),
-                Opcode::SWAP12 => Operation::Swap(12),
-                Opcode::SWAP13 => Operation::Swap(13),
-                Opcode::SWAP14 => Operation::Swap(14),
-                Opcode::SWAP15 => Operation::Swap(15),
-                Opcode::SWAP16 => Operation::Swap(16),
-                Opcode::LOG0 => Operation::Log(0),
-                Opcode::LOG1 => Operation::Log(1),
-                Opcode::LOG2 => Operation::Log(2),
-                Opcode::LOG3 => Operation::Log(3),
-                Opcode::LOG4 => Operation::Log(4),
-                Opcode::RETURN => Operation::Return,
-                Opcode::REVERT => Operation::Revert,
-            };
-            operations.push(op);
-            pc += 1;
         }
 
         let code_size = Self::get_codesize(&operations);
@@ -812,6 +518,346 @@ impl Program {
         }
     }
 
+    pub fn from_bytecode(bytecode: &[u8]) -> Self {
+        let mut operations = vec![];
+        let mut pc = 0;
+
+        while pc < bytecode.len() {
+            match Self::parse_operation(bytecode, pc) {
+                Ok((op, new_pc)) => {
+                    operations.push(op);
+                    pc = new_pc;
+                }
+                Err(_) => {
+                    operations.push(Operation::Invalid);
+                    pc += 1;
+                }
+            }
+        }
+
+        let code_size = Self::get_codesize(&operations);
+
+        Program {
+            operations,
+            code_size,
+        }
+    }
+
+    pub fn to_bytecode(self) -> Vec<u8> {
+        self.operations
+            .iter()
+            .flat_map(Operation::to_bytecode)
+            .collect::<Vec<u8>>()
+    }
+
+    fn parse_operation(
+        bytecode: &[u8],
+        mut pc: usize,
+    ) -> Result<(Operation, usize), OpcodeParseError> {
+        let opcode = Opcode::try_from(bytecode[pc])?;
+
+        let op = match opcode {
+            Opcode::STOP => Operation::Stop,
+            Opcode::ADD => Operation::Add,
+            Opcode::MUL => Operation::Mul,
+            Opcode::SUB => Operation::Sub,
+            Opcode::DIV => Operation::Div,
+            Opcode::SDIV => Operation::Sdiv,
+            Opcode::MOD => Operation::Mod,
+            Opcode::SMOD => Operation::SMod,
+            Opcode::ADDMOD => Operation::Addmod,
+            Opcode::MULMOD => Operation::Mulmod,
+            Opcode::EXP => Operation::Exp,
+            Opcode::SIGNEXTEND => Operation::SignExtend,
+            Opcode::LT => Operation::Lt,
+            Opcode::GT => Operation::Gt,
+            Opcode::SLT => Operation::Slt,
+            Opcode::SGT => Operation::Sgt,
+            Opcode::EQ => Operation::Eq,
+            Opcode::ISZERO => Operation::IsZero,
+            Opcode::AND => Operation::And,
+            Opcode::OR => Operation::Or,
+            Opcode::XOR => Operation::Xor,
+            Opcode::NOT => Operation::Not,
+            Opcode::BYTE => Operation::Byte,
+            Opcode::SHL => Operation::Shl,
+            Opcode::SHR => Operation::Shr,
+            Opcode::SAR => Operation::Sar,
+            Opcode::KECCAK256 => Operation::Keccak256,
+            Opcode::ADDRESS => Operation::Address,
+            Opcode::BALANCE => Operation::Balance,
+            Opcode::ORIGIN => Operation::Origin,
+            Opcode::CALLER => Operation::Caller,
+            Opcode::CALLVALUE => Operation::Callvalue,
+            Opcode::CALLDATALOAD => Operation::CalldataLoad,
+            Opcode::CALLDATASIZE => Operation::CallDataSize,
+            Opcode::CALLDATACOPY => Operation::CallDataCopy,
+            Opcode::CODESIZE => Operation::Codesize,
+            Opcode::CODECOPY => Operation::Codecopy,
+            Opcode::GASPRICE => Operation::Gasprice,
+            Opcode::EXTCODESIZE => Operation::ExtcodeSize,
+            Opcode::EXTCODECOPY => Operation::ExtcodeCopy,
+            Opcode::COINBASE => Operation::Coinbase,
+            Opcode::TIMESTAMP => Operation::Timestamp,
+            Opcode::NUMBER => Operation::Number,
+            Opcode::PREVRANDAO => Operation::Prevrandao,
+            Opcode::GASLIMIT => Operation::Gaslimit,
+            Opcode::CHAINID => Operation::Chainid,
+            Opcode::SELFBALANCE => Operation::SelfBalance,
+            Opcode::BASEFEE => Operation::Basefee,
+            Opcode::BLOBBASEFEE => Operation::BlobBaseFee,
+            Opcode::POP => Operation::Pop,
+            Opcode::MLOAD => Operation::Mload,
+            Opcode::MSTORE => Operation::Mstore,
+            Opcode::MSTORE8 => Operation::Mstore8,
+            Opcode::SLOAD => Operation::Sload,
+            Opcode::SSTORE => Operation::Sstore,
+            Opcode::JUMP => Operation::Jump,
+            Opcode::JUMPI => Operation::Jumpi,
+            Opcode::PC => Operation::PC { pc },
+            Opcode::MSIZE => Operation::Msize,
+            Opcode::GAS => Operation::Gas,
+            Opcode::JUMPDEST => Operation::Jumpdest { pc },
+            Opcode::MCOPY => Operation::Mcopy,
+            Opcode::PUSH0 => Operation::Push0,
+            Opcode::PUSH1 => {
+                // TODO: return error if not enough bytes (same for PUSHN)
+                pc += 1;
+                let x = bytecode[pc..(pc + 1)].try_into().unwrap();
+                Operation::Push((1, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH2 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 2)].try_into().unwrap();
+                pc += 1;
+                Operation::Push((2, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH3 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 3)].try_into().unwrap();
+                pc += 2;
+                Operation::Push((3, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH4 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 4)].try_into().unwrap();
+                pc += 3;
+                Operation::Push((4, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH5 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 5)].try_into().unwrap();
+                pc += 4;
+                Operation::Push((5, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH6 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 6)].try_into().unwrap();
+                pc += 5;
+                Operation::Push((6, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH7 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 7)].try_into().unwrap();
+                pc += 6;
+                Operation::Push((7, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH8 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 8)].try_into().unwrap();
+                pc += 7;
+                Operation::Push((8, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH9 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 9)].try_into().unwrap();
+                pc += 8;
+                Operation::Push((9, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH10 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 10)].try_into().unwrap();
+                pc += 9;
+                Operation::Push((10, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH11 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 11)].try_into().unwrap();
+                pc += 10;
+                Operation::Push((11, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH12 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 12)].try_into().unwrap();
+                pc += 11;
+                Operation::Push((12, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH13 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 13)].try_into().unwrap();
+                pc += 12;
+                Operation::Push((13, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH14 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 14)].try_into().unwrap();
+                pc += 13;
+                Operation::Push((14, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH15 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 15)].try_into().unwrap();
+                pc += 14;
+                Operation::Push((15, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH16 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 16)].try_into().unwrap();
+                pc += 15;
+                Operation::Push((16, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH17 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 17)].try_into().unwrap();
+                pc += 16;
+                Operation::Push((17, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH18 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 18)].try_into().unwrap();
+                pc += 17;
+                Operation::Push((18, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH19 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 19)].try_into().unwrap();
+                pc += 18;
+                Operation::Push((19, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH20 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 20)].try_into().unwrap();
+                pc += 19;
+                Operation::Push((20, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH21 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 21)].try_into().unwrap();
+                pc += 20;
+                Operation::Push((21, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH22 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                pc += 21;
+                Operation::Push((22, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH23 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                pc += 22;
+                Operation::Push((23, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH24 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                pc += 23;
+                Operation::Push((24, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH25 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                pc += 24;
+                Operation::Push((25, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH26 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 26)].try_into().unwrap();
+                pc += 25;
+                Operation::Push((26, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH27 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 27)].try_into().unwrap();
+                pc += 26;
+                Operation::Push((27, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH28 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 28)].try_into().unwrap();
+                pc += 27;
+                Operation::Push((28, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH29 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 29)].try_into().unwrap();
+                pc += 28;
+                Operation::Push((29, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH30 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 30)].try_into().unwrap();
+                pc += 29;
+                Operation::Push((30, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH31 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 31)].try_into().unwrap();
+                pc += 30;
+                Operation::Push((31, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::PUSH32 => {
+                pc += 1;
+                let x = bytecode[pc..(pc + 32)].try_into().unwrap();
+                pc += 31;
+                Operation::Push((32, (BigUint::from_bytes_be(x))))
+            }
+            Opcode::DUP1 => Operation::Dup(1),
+            Opcode::DUP2 => Operation::Dup(2),
+            Opcode::DUP3 => Operation::Dup(3),
+            Opcode::DUP4 => Operation::Dup(4),
+            Opcode::DUP5 => Operation::Dup(5),
+            Opcode::DUP6 => Operation::Dup(6),
+            Opcode::DUP7 => Operation::Dup(7),
+            Opcode::DUP8 => Operation::Dup(8),
+            Opcode::DUP9 => Operation::Dup(9),
+            Opcode::DUP10 => Operation::Dup(10),
+            Opcode::DUP11 => Operation::Dup(11),
+            Opcode::DUP12 => Operation::Dup(12),
+            Opcode::DUP13 => Operation::Dup(13),
+            Opcode::DUP14 => Operation::Dup(14),
+            Opcode::DUP15 => Operation::Dup(15),
+            Opcode::DUP16 => Operation::Dup(16),
+            Opcode::SWAP1 => Operation::Swap(1),
+            Opcode::SWAP2 => Operation::Swap(2),
+            Opcode::SWAP3 => Operation::Swap(3),
+            Opcode::SWAP4 => Operation::Swap(4),
+            Opcode::SWAP5 => Operation::Swap(5),
+            Opcode::SWAP6 => Operation::Swap(6),
+            Opcode::SWAP7 => Operation::Swap(7),
+            Opcode::SWAP8 => Operation::Swap(8),
+            Opcode::SWAP9 => Operation::Swap(9),
+            Opcode::SWAP10 => Operation::Swap(10),
+            Opcode::SWAP11 => Operation::Swap(11),
+            Opcode::SWAP12 => Operation::Swap(12),
+            Opcode::SWAP13 => Operation::Swap(13),
+            Opcode::SWAP14 => Operation::Swap(14),
+            Opcode::SWAP15 => Operation::Swap(15),
+            Opcode::SWAP16 => Operation::Swap(16),
+            Opcode::LOG0 => Operation::Log(0),
+            Opcode::LOG1 => Operation::Log(1),
+            Opcode::LOG2 => Operation::Log(2),
+            Opcode::LOG3 => Operation::Log(3),
+            Opcode::LOG4 => Operation::Log(4),
+            Opcode::RETURN => Operation::Return,
+            Opcode::REVERT => Operation::Revert,
+            Opcode::INVALID => Operation::Invalid,
+        };
+        pc += 1;
+
+        Ok((op, pc))
+    }
+
     fn get_codesize(operations: &[Operation]) -> u32 {
         operations
             .iter()
@@ -821,13 +867,6 @@ impl Program {
                 _ => 1,
             })
             .sum()
-    }
-
-    pub fn to_bytecode(self) -> Vec<u8> {
-        self.operations
-            .iter()
-            .flat_map(Operation::to_bytecode)
-            .collect::<Vec<u8>>()
     }
 }
 
