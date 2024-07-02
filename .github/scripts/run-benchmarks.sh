@@ -5,7 +5,7 @@ echo "# Benchmarking results" > bench-hyperfine.md
 sudo swapoff -a # Disabling swap memory to reduce noise
 for program in factorial fibonacci;
 do
-    hyperfine -w 5 -r 10 -N --export-markdown "bench-${program}.md" \
+    sudo hyperfine -w 5 -r 10 -N --export-markdown "bench-${program}.md" \
         -n "evm_mlir_${program}" "target/release/evm_mlir_${program} 500000 1000" \
         -n "revm_${program}" "target/release/revm_${program} 500000 1000"
 
