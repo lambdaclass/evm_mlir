@@ -399,8 +399,8 @@ impl<'c> SyscallContext<'c> {
 
         // Compute the gas refund
         let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
-        let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
         let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
+        let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
         let reset_back_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
         let reset_to_original = (current != value) && (original == value);
 
