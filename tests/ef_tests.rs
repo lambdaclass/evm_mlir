@@ -167,12 +167,16 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
             env.block.timestamp = unit.env.current_timestamp;
-            // TODO: set env.block.blob_base_fee
+            env.block.set_blob_base_fee(
+                unit.env
+                    .current_excess_blob_gas
+                    .unwrap_or_default()
+                    .as_u64(),
+            );
+
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-
-            // TODO: load access list items
             let mut db = Db::new().with_bytecode(to, account.code.clone());
 
             // Load pre storage into db

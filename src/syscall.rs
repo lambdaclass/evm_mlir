@@ -235,10 +235,8 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
-    pub extern "C" fn store_in_blobbasefee_ptr(&self, value: &mut U256) {
-        let aux = &self.env.block.blob_base_fee;
-        value.lo = aux.low_u128();
-        value.hi = (aux >> 128).low_u128();
+    pub extern "C" fn store_in_blobbasefee_ptr(&self, value: &mut u128) {
+        *value = self.env.block.blob_gasprice.unwrap_or_default();
     }
 
     pub extern "C" fn get_gaslimit(&self) -> u64 {
@@ -603,7 +601,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_BLOBBASEFEE_PTR,
             SyscallContext::store_in_blobbasefee_ptr
-                as *const extern "C" fn(&SyscallContext, *mut U256) -> () as *mut (),
+                as *const extern "C" fn(&SyscallContext, *mut u128) -> () as *mut (),
         );
         engine.register_symbol(
             symbols::GET_COINBASE_PTR,

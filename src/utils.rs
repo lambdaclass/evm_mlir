@@ -17,6 +17,7 @@ use melior::{
 
 use crate::{
     codegen::context::OperationCtx,
+    constants::gas_cost,
     constants::{
         CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
@@ -1479,6 +1480,49 @@ pub(crate) fn get_basefee<'a>(
         .into();
 
     Ok(basefee)
+}
+
+/// Calculates the blob gas price from the header's excess blob gas field.
+///
+/// See also [the EIP-4844 helpers](https://eips.ethereum.org/EIPS/eip-4844#helpers)
+/// (`get_blob_gasprice`).
+#[inline]
+pub fn calc_blob_gasprice(excess_blob_gas: u64) -> u128 {
+    fake_exponential(
+        gas_cost::MIN_BLOB_GASPRICE,
+        excess_blob_gas,
+        gas_cost::BLOB_GASPRICE_UPDATE_FRACTION,
+    )
+}
+
+/// Approximates `factor * e ** (numerator / denominator)` using Taylor expansion.
+///
+/// This is used to calculate the blob price.
+///
+/// See also [the EIP-4844 helpers](https://eips.ethereum.org/EIPS/eip-4844#helpers)
+/// (`fake_exponential`).
+///
+/// # Panics
+///
+/// This function panics if `denominator` is zero.
+#[inline]
+pub fn fake_exponential(factor: u64, numerator: u64, denominator: u64) -> u128 {
+    assert_ne!(denominator, 0, "attempt to divide by zero");
+    let factor = factor as u128;
+    let numerator = numerator as u128;
+    let denominator = denominator as u128;
+
+    let mut i = 1;
+    let mut output = 0;
+    let mut numerator_accum = factor * denominator;
+    while numerator_accum > 0 {
+        output += numerator_accum;
+
+        // Denominator is asserted as not zero at the start of the function.
+        numerator_accum = (numerator_accum * numerator) / (denominator * i);
+        i += 1;
+    }
+    output / denominator
 }
 
 pub mod llvm_mlir {

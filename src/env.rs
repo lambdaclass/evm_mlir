@@ -1,4 +1,7 @@
-use crate::primitives::{Address, Bytes, U256};
+use crate::{
+    primitives::{Address, Bytes, U256},
+    utils::calc_blob_gasprice,
+};
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
@@ -41,8 +44,6 @@ pub struct BlockEnv {
     pub timestamp: U256,
     // The gas limit of the block.
     //pub gas_limit: U256,
-    // The base fee per blob, added in [EIP-4844]
-    pub blob_base_fee: U256,
     //
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
@@ -67,7 +68,15 @@ pub struct BlockEnv {
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
     //
     // [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844
-    //pub blob_excess_gas_and_price: Option<BlobExcessGasAndPrice>,
+    pub excess_blob_gas: Option<u64>,
+    pub blob_gasprice: Option<u128>,
+}
+
+impl BlockEnv {
+    pub fn set_blob_base_fee(&mut self, excess_blob_gas: u64) {
+        self.excess_blob_gas = Some(excess_blob_gas);
+        self.blob_gasprice = Some(calc_blob_gasprice(excess_blob_gas));
+    }
 }
 
 /// The transaction environment.

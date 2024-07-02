@@ -1308,12 +1308,12 @@ fn selfbalance_gas_check() {
 
 #[test]
 fn blobbasefee_happy_path() {
-    let blob_base_fee: u32 = 1500;
+    let excess_blob_gas: u64 = 1500;
     let mut operations = vec![Operation::BlobBaseFee];
     append_return_result_operations(&mut operations);
     let (mut env, db) = default_env_and_db_setup(operations);
-    env.block.blob_base_fee = EU256::from(blob_base_fee);
-    let expected_result = BigUint::from(blob_base_fee);
+    env.block.set_blob_base_fee(excess_blob_gas);
+    let expected_result = BigUint::from(env.block.blob_gasprice.unwrap());
     run_program_assert_num_result(env, db, expected_result);
 }
 
