@@ -384,9 +384,9 @@ impl<'c> SyscallContext<'c> {
         };
 
         // Compute the gas cost
-        let mut gas_cost: i64 = if original.is_zero() && current.is_zero() {
+        let mut gas_cost: i64 = if original.is_zero() && current.is_zero() && current != value {
             20_000
-        } else if original == current {
+        } else if original == current && current != value {
             2_900
         } else {
             100
