@@ -463,14 +463,15 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
-        *blobhash = usize::try_from(index.lo).map_or(U256::default(), |idx| {
-            self.env
-                .tx
-                .blob_hashes
-                .get(idx)
-                .cloned()
-                .map_or(U256::default(), |x| U256::from_fixed_be_bytes(x.into()))
-        });
+        if index.hi != 0 {
+            *blobhash = U256::default();
+            return;
+        }
+        *blobhash = usize::try_from(index.lo)
+            .ok()
+            .and_then(|idx| self.env.tx.blob_hashes.get(idx).cloned())
+            .map(|x| U256::from_fixed_be_bytes(x.into()))
+            .unwrap_or_default();
     }
 
     pub extern "C" fn copy_ext_code_to_memory(
