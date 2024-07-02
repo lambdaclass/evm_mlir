@@ -192,7 +192,12 @@ impl<'c> SyscallContext<'c> {
             },
         };
 
-        let state = self.db.clone().into_state(); // TODO: update the state with the journaled_storage entries
+        let mut state = self.db.clone().into_state();
+
+        let caller_account = state.entry(self.env.tx.caller).or_default();
+        caller_account
+            .storage
+            .extend(self.inner_context.journaled_storage.clone());
 
         Ok(ResultAndState { result, state })
     }
@@ -336,7 +341,7 @@ impl<'c> SyscallContext<'c> {
 
         let key = u256_from_u128(stg_key.hi, stg_key.lo);
 
-        let result = self.db.read_storage(address, key);
+        let result = self.db.read_storage(address, key); // TODO: cambiar para leer del journaled state primero
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
@@ -416,10 +421,9 @@ impl<'c> SyscallContext<'c> {
         if gas_refund > 0 {
             self.inner_context.gas_refund += gas_refund as u64;
         } else {
-            self.inner_context.gas_refund -= gas_refund.abs() as u64;
+            self.inner_context.gas_refund -= gas_refund.unsigned_abs();
         };
 
-        self.db.write_storage(self.env.tx.caller, key, value); // TODO: commit into db only at end of tx
         gas_cost
     }
 

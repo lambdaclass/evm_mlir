@@ -949,10 +949,16 @@ fn sstore_happy_path() {
     env.tx.caller = caller_address;
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
-    assert!(&result.is_success());
+    let res = evm.transact().unwrap();
+    assert!(&res.result.is_success());
 
-    let stored_value = evm.db.read_storage(caller_address, EU256::from(key));
+    let stored_value = res
+        .state
+        .get(&caller_address)
+        .and_then(|account| account.storage.get(&EU256::from(key)))
+        .map(|slot| slot.present_value)
+        .unwrap_or(EU256::zero());
+
     assert_eq!(stored_value, EU256::from(value));
 }
 
