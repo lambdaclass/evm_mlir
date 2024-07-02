@@ -1554,7 +1554,6 @@ fn prevrandao_when_randao_is_not_set() {
     run_program_assert_num_result(env, db, expected_result.into());
 }
 
-
 #[test]
 fn extcodesize() {
     let address = 40_u8;
