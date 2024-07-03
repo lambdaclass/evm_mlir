@@ -55,7 +55,7 @@ fn run_program_assert_halt(env: Env, db: Db) {
     assert!(result.is_halt());
 }
 
-fn run_program_assert_gas_exact_aux(mut env: Env, db: Db, needed_gas: u64) {
+fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
     env.tx.gas_limit = needed_gas;
     let mut evm = Evm::new(env.clone(), db.clone());
@@ -1888,7 +1888,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     let mut db = db.with_bytecode(caller_address, bytecode);
     db.update_account(caller_address, 0, caller_balance.into());
 
-    run_program_assert_gas_exact_aux(env, db, needed_gas as _);
+    run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }
 
 #[test]
@@ -1941,5 +1941,5 @@ fn call_gas_check_with_value_and_empty_account() {
     let mut db = db.with_bytecode(caller_address, bytecode);
     db.update_account(caller_address, 0, caller_balance.into());
 
-    run_program_assert_gas_exact_aux(env, db, needed_gas as _);
+    run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }
