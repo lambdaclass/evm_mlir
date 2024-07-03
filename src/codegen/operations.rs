@@ -22,12 +22,11 @@ use crate::{
     utils::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
-        constant_value_from_i64, consume_gas, consume_gas_as_value,
-        expand_memory_from_offset_and_size, extend_memory, get_basefee, get_block_number,
-        get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack,
-        get_prevrandao, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
+        get_block_number, get_calldata_ptr, get_calldata_size, get_memory_pointer,
+        get_nth_from_stack, get_prevrandao, get_remaining_gas, get_stack_pointer,
+        inc_stack_pointer, integer_constant_from_i64, llvm_mlir, return_empty_result,
+        return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -4770,18 +4769,11 @@ fn codegen_call<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
 
     let flag = check_stack_has_at_least(context, &start_block, 7)?;
-    let gas_flag = consume_gas(context, &start_block, 0)?; //TODO: Change this
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -4819,30 +4811,33 @@ fn codegen_call<'c, 'r>(
         .result(0)?
         .into();
 
-    let args_block = region.append_block(Block::new(&[]));
-    let ret_block = region.append_block(Block::new(&[]));
-    expand_memory_from_offset_and_size(
+    // Alloc required memory size for both arguments and return value
+    let mem_ext_block = region.append_block(Block::new(&[]));
+    let req_arg_mem_size = ok_block
+        .append_operation(arith::addi(args_offset, args_size, location))
+        .result(0)?
+        .into();
+    let req_ret_mem_size = ok_block
+        .append_operation(arith::addi(ret_offset, ret_size, location))
+        .result(0)?
+        .into();
+    let req_mem_size = ok_block
+        .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
+        .result(0)?
+        .into();
+    extend_memory(
         op_ctx,
         &ok_block,
-        &args_block,
+        &mem_ext_block,
         region,
-        args_offset,
-        args_size,
-        gas_cost::CALL,
-    )?;
-    expand_memory_from_offset_and_size(
-        op_ctx,
-        &args_block,
-        &ret_block,
-        region,
-        ret_offset,
-        ret_size,
+        req_mem_size,
         gas_cost::CALL,
     )?;
 
+    // Invoke call syscall
     let finish_block = region.append_block(Block::new(&[]));
     let call_result = op_ctx.call_syscall(
-        &ret_block,
+        &mem_ext_block,
         &finish_block,
         location,
         gas,
@@ -4854,6 +4849,7 @@ fn codegen_call<'c, 'r>(
         ret_size,
     )?;
 
+    // Push return value into stack
     stack_push(context, &finish_block, call_result)?;
 
     Ok((start_block, finish_block))
