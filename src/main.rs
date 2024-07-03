@@ -22,17 +22,12 @@ fn main() {
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
-    if let Err(err) = program {
-        eprintln!("{:#?}", err);
-        return;
-    }
-
     // This is for intermediate files
     let output_file = PathBuf::from("output");
 
     let context = Context::new();
     let module = context
-        .compile(&program.unwrap(), &output_file)
+        .compile(&program, &output_file)
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, opt_level);

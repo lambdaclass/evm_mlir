@@ -18,10 +18,11 @@ use melior::{
 use crate::{
     codegen::context::OperationCtx,
     constants::{
-        GAS_COUNTER_GLOBAL, MAX_STACK_SIZE, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
-        STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
+    primitives::U256,
     syscall::ExitStatusCode,
 };
 
@@ -807,6 +808,10 @@ pub fn check_if_zero<'ctx>(
     Ok(flag.into())
 }
 
+pub fn u256_from_u128(hi: u128, lo: u128) -> U256 {
+    (U256::from(hi) << 128) + lo
+}
+
 pub(crate) fn round_up_32<'c>(
     op_ctx: &'c OperationCtx,
     block: &'c Block,
@@ -1018,6 +1023,68 @@ pub(crate) fn compute_memory_cost<'c>(
         .into();
 
     Ok(memory_cost)
+}
+
+pub(crate) fn get_calldata_ptr<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let calldata_ptr_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_PTR_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let calldata_ptr = block
+        .append_operation(llvm::load(
+            context,
+            calldata_ptr_ptr.into(),
+            ptr_type,
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldata_ptr)
+}
+
+pub(crate) fn get_calldata_size<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+    location: Location<'c>,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let ptr_type = pointer(context, 0);
+
+    let calldata_size_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CALLDATA_SIZE_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?;
+
+    let calldata_size = block
+        .append_operation(llvm::load(
+            context,
+            calldata_size_ptr.into(),
+            IntegerType::new(context, 32).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(calldata_size)
 }
 
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
@@ -1321,6 +1388,83 @@ pub(crate) fn get_block_number<'a>(
     Ok(block_number)
 }
 
+pub(crate) fn get_prevrandao<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let prevrandao_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.get_prevrandao_syscall(block, prevrandao_ptr, location);
+
+    // get the value from the pointer
+    let prevrandao = block
+        .append_operation(llvm::load(
+            context,
+            prevrandao_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(prevrandao)
+}
+
+pub(crate) fn get_blob_hash_at_index<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+    index_ptr: Value<'a, 'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let blobhash_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.get_blob_hash_at_index_syscall(block, index_ptr, blobhash_ptr, location);
+
+    // get the value from the pointer
+    let blobhash = block
+        .append_operation(llvm::load(
+            context,
+            blobhash_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(blobhash)
+}
+
 pub fn integer_constant_from_i64(context: &MeliorContext, value: i64) -> IntegerAttribute {
     let uint256 = IntegerType::new(context, 256);
     IntegerAttribute::new(uint256.into(), value)
@@ -1373,6 +1517,45 @@ pub(crate) fn allocate_and_store_value<'a>(
     ));
 
     Ok(value_ptr)
+}
+
+/// Returns the basefee
+pub(crate) fn get_basefee<'a>(
+    op_ctx: &'a OperationCtx<'a>,
+    block: &'a Block<'a>,
+) -> Result<Value<'a, 'a>, CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = constant_value_from_i64(context, block, 1_i64)?;
+    let uint256 = IntegerType::new(context, 256);
+
+    let basefee_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.store_in_basefee_ptr_syscall(basefee_ptr, block, location);
+
+    // get the value from the pointer
+    let basefee = block
+        .append_operation(llvm::load(
+            context,
+            basefee_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(basefee)
 }
 
 pub mod llvm_mlir {
