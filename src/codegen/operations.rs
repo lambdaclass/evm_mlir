@@ -15,7 +15,7 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{gas_cost, GAS_COUNTER_GLOBAL, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -2267,11 +2267,10 @@ fn codegen_sstore<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64).into();
     let ptr_type = pointer(context, 0);
-    let uint256 = IntegerType::new(context, 256);
 
     let flag = check_stack_has_at_least(context, &start_block, 2)?;
-    // TODO: add gas consumption and check gas_left > 2300 + gas_needed
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -2287,51 +2286,83 @@ fn codegen_sstore<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    let pointer_size = constant_value_from_i64(context, &ok_block, 1_i64)?;
+    let key_ptr = allocate_and_store_value(op_ctx, &ok_block, key, location)?;
+    let value_ptr = allocate_and_store_value(op_ctx, &ok_block, value, location)?;
 
-    let key_ptr = ok_block
-        .append_operation(llvm::alloca(
+    // Write storage and get the gas cost
+    let gas_cost = op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location)?;
+
+    let min_remaining_gas = ok_block
+        .append_operation(arith::constant(
             context,
-            pointer_size,
-            ptr_type,
+            IntegerAttribute::new(uint64, gas_cost::SSTORE_MIN_REMAINING_GAS).into(),
             location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
         ))
         .result(0)?
         .into();
 
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        key,
-        key_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
-
-    let value_ptr = ok_block
-        .append_operation(llvm::alloca(
+    // Get address of gas counter global
+    let gas_counter_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
             context,
-            pointer_size,
+            GAS_COUNTER_GLOBAL,
             ptr_type,
             location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?;
+
+    // Load gas counter
+    let gas_counter = ok_block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr.into(),
+            uint64,
+            location,
+            LoadStoreOptions::default(),
         ))
         .result(0)?
         .into();
 
-    let res = ok_block.append_operation(llvm::store(
+    // Substract from gas counter
+    let remaining_gas = ok_block
+        .append_operation(arith::subi(gas_counter, gas_cost, location))
+        .result(0)?
+        .into();
+
+    // Check that (gas_counter - needed_gas) >= SSTORE_MIN_REMAINING_GAS
+    let flag = ok_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Sge,
+            remaining_gas,
+            min_remaining_gas,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let end_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
         context,
-        value,
-        value_ptr,
+        flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Store new gas counter
+    end_block.append_operation(llvm::store(
+        context,
+        remaining_gas,
+        gas_counter_ptr.into(),
         location,
         LoadStoreOptions::default(),
     ));
-    assert!(res.verify());
 
-    op_ctx.storage_write_syscall(&ok_block, key_ptr, value_ptr, location);
-
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_codesize<'c, 'r>(
