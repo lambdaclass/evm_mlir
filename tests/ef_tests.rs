@@ -141,15 +141,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(account) = unit.pre.get(&to) else {
             return Err("Callee doesn't exist".into());
         };
-        let Some(gas_price) = unit.transaction.gas_price else {
-            // do we need to raise error here?
-            return Err("`gas_price` field is None".into());
-        };
-        let Some(sender) = unit.transaction.sender else {
-            // do we need to raise error here?
-            return Err("`sender` field is None".into());
-        };
-        // Each TestUnit contains multiple tests (with different outcomes depending on the spec)
+        let sender = unit.transaction.sender.unwrap_or_default();
+        let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         // NOTE: currently we only support Cancun spec
         let Some(tests) = unit.post.get("Cancun") else {
@@ -167,12 +160,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
             env.block.timestamp = unit.env.current_timestamp;
-            env.block.set_blob_base_fee(
-                unit.env
+            let excess_blob_gas = unit
+                .env
                     .current_excess_blob_gas
                     .unwrap_or_default()
-                    .as_u64(),
-            );
+                .as_u64();
+            env.block.set_blob_base_fee(excess_blob_gas);
 
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
@@ -200,6 +193,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             assert!(res.result.is_success());
             assert_eq!(res.result.output().cloned(), unit.out);
+
             // TODO: check logs
 
             // Test the resulting storage is the same as the expected storage
