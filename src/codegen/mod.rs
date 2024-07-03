@@ -5,9 +5,9 @@ use std::{
     ptr::{addr_of_mut, null_mut},
 };
 
-use crate::errors::CodegenError;
 use crate::module::MLIRModule;
 use crate::program::Program;
+use crate::{context::ContextConfig, errors::CodegenError};
 use llvm_sys::{
     core::{
         LLVMContextCreate, LLVMContextDispose, LLVMDisposeMessage, LLVMDisposeModule,
@@ -35,7 +35,9 @@ pub use pass_manager::run_pass_manager;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
     let context = Context::new();
-    let mlir_module = context.compile(program, &output_file)?;
+    let mut config = ContextConfig::default();
+    config.output_file = Some(output_file.as_ref().to_path_buf());
+    let mlir_module = context.compile(program, config)?;
     compile_to_object(&mlir_module, output_file)
 }
 

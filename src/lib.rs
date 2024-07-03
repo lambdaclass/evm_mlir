@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use builder::EvmBuilder;
+use context::ContextConfig;
 use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
@@ -48,9 +49,9 @@ impl<DB: Database + Default> Evm<DB> {
 impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
-        let output_file = PathBuf::from("output");
-
         let context = Context::new();
+        let mut config = ContextConfig::default();
+        config.output_file = Some(PathBuf::from("output"));
 
         let code_address = match self.env.tx.transact_to {
             TransactTo::Call(code_address) => code_address,
@@ -61,7 +62,7 @@ impl Evm<Db> {
         let program = Program::from_bytecode(&bytecode);
 
         let module = context
-            .compile(&program, &output_file)
+            .compile(&program, config)
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);

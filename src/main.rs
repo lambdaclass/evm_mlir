@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::path::{PathBuf};
 
 use evm_mlir::{
-    context::Context,
+    context::{Context, ContextConfig},
     db::Db,
     env::Env,
     executor::{Executor, OptLevel},
@@ -22,12 +22,12 @@ fn main() {
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
-    // This is for intermediate files
-    let output_file = PathBuf::from("output");
+    let mut config = ContextConfig::default();
+    config.output_file = Some(PathBuf::from("output"));
 
     let context = Context::new();
     let module = context
-        .compile(&program, &output_file)
+        .compile(&program, config)
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, opt_level);

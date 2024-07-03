@@ -24,7 +24,7 @@ use melior::{
 use std::{
     ffi::CStr,
     mem::MaybeUninit,
-    path::Path,
+    path::PathBuf,
     ptr::{addr_of_mut, null_mut},
     sync::OnceLock,
 };
@@ -53,6 +53,16 @@ impl Default for Context {
     }
 }
 
+/// Information provided to Context about where to write output and intermediate files
+#[derive(Debug, Clone, Default)]
+pub struct ContextConfig {
+    /// The path for the output binary file.
+    /// Other intermediate outputs will extend the this path with their corresponding names
+    pub output_file: Option<PathBuf>,
+    /// An intermediate after-pass mlir file will be generated.
+    pub after_pass_mlir: bool,
+}
+
 impl Context {
     pub fn new() -> Self {
         let melior_context = initialize_mlir();
@@ -62,7 +72,7 @@ impl Context {
     pub fn compile(
         &self,
         program: &Program,
-        output_file: impl AsRef<Path>,
+        config: ContextConfig,
     ) -> Result<MLIRModule, CodegenError> {
         static INITIALIZED: OnceLock<()> = OnceLock::new();
         INITIALIZED.get_or_init(|| unsafe {
@@ -105,8 +115,10 @@ impl Context {
         compile_program(context, &melior_module, program)?;
         assert!(melior_module.as_operation().verify());
 
-        let filename = output_file.as_ref().with_extension("mlir");
-        std::fs::write(filename, melior_module.as_operation().to_string())?;
+        if let Some(path) = &config.output_file {
+            let filename = path.with_extension("mlir");
+            std::fs::write(filename, melior_module.as_operation().to_string())?;
+        }
 
         // TODO: Add proper error handling.
         run_pass_manager(context, &mut melior_module)?;
@@ -121,9 +133,12 @@ impl Context {
             );
         }
 
-        // Output MLIR
-        let filename = output_file.as_ref().with_extension("after-pass.mlir");
-        std::fs::write(filename, melior_module.as_operation().to_string())?;
+        if let Some(path) = &config.output_file {
+            if config.after_pass_mlir {
+                let filename = path.with_extension("after-pass.mlir");
+                std::fs::write(filename, melior_module.as_operation().to_string())?;
+            }
+        }
 
         Ok(MLIRModule::new(melior_module))
     }
