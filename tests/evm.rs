@@ -1633,6 +1633,62 @@ fn extcodesize_with_invalid_address() {
 }
 
 #[test]
+fn blobhash() {
+    // set 2 blobhashes in env.tx.blob_hashes and retrieve the one at index 1.
+    let index = 1_u8;
+    let mut program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (mut env, db) = default_env_and_db_setup(program);
+    let blobhash_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let blobhash = B256::from_str(blobhash_str).expect("Error while converting str to B256");
+    env.tx.blob_hashes = vec![B256::default(), blobhash];
+
+    let expected_result = blobhash.to_fixed_bytes();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn blobhash_check_gas() {
+    let program = vec![Operation::Push((1_u8, 0_u8.into())), Operation::BlobHash];
+    let mut env = Env::default();
+    env.tx.blob_hashes = vec![B256::default()];
+    let gas_needed = gas_cost::PUSHN + gas_cost::BLOBHASH;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn blobhash_with_stack_underflow() {
+    let program = vec![Operation::BlobHash];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn blobhash_with_index_out_of_bounds() {
+    // when index >= len(blob_hashes) the result must be a 32-byte-zero.
+    let index = 2_u8;
+    let mut program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (env, db) = default_env_and_db_setup(program);
+
+    let expected_result = [0x00; 32];
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn blobhash_with_index_too_big() {
+    // when index > usize::MAX the result must be a 32-byte-zero.
+    let index: u128 = usize::MAX as u128 + 1;
+    let mut program = vec![Operation::Push((32_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (env, db) = default_env_and_db_setup(program);
+
+    let expected_result = [0x00; 32];
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
 fn call_returns_addition_from_arguments() {
     let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
     let db = Db::new();

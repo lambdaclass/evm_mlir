@@ -62,6 +62,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x46) CHAINID
 1. (0x47) SELFBALANCE
 1. (0x48) BASEFEE
+1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
 1. (0x50) POP
 1. (0x51) MLOAD
@@ -160,7 +161,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x3E) RETURNDATACOPY
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
-1. (0x49) BLOBHASH
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
 1. (0xF0) CREATE
