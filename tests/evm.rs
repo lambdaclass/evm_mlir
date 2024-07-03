@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use evm_mlir::{
-    constants::gas_cost,
+    constants::{call_opcode, gas_cost},
     db::{Bytecode, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -2145,8 +2145,10 @@ fn call_gas_check_with_value_and_empty_account() {
     ];
 
     //address_access_cost + positive_value_cost + value_to_empty_account_cost
-    let caller_call_cost = 100 + 9000 + 25000;
-    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost;
+    let caller_call_cost = call_opcode::WARM_MEMORY_ACCESS_COST
+        + call_opcode::NOT_ZERO_VALUE_COST
+        + call_opcode::EMPTY_CALLEE_COST;
+    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost as i64;
 
     let caller_balance: u8 = 5;
     let program = Program::from(caller_ops);

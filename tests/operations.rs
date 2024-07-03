@@ -38,7 +38,7 @@ fn run_program_get_result_with_gas(
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let mut context = SyscallContext::new(env, &mut db, Default::default());
 
     let _result = executor.execute(&mut context, initial_gas);
 

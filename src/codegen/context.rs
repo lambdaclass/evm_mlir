@@ -1045,7 +1045,7 @@ impl<'c> OperationCtx<'c> {
             location,
         ));
 
-        // Extend the 32 bits result to 256 bits
+        // Extend the 8 bits result to 256 bits
         let uint256 = IntegerType::new(context, 256);
 
         let result = finish_block

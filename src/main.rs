@@ -34,7 +34,7 @@ fn main() {
 
     let env = Env::default();
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let mut context = SyscallContext::new(env, &mut db, Default::default());
 
     let initial_gas = 1000;
 

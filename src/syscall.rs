@@ -128,11 +128,18 @@ pub struct InnerContext {
     journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
 }
 
+/// Information about current call frame
+#[derive(Debug, Default)]
+pub struct CallFrame {
+    pub caller: Address,
+}
+
 /// The context passed to syscalls
 #[derive(Debug)]
 pub struct SyscallContext<'c> {
     pub env: Env,
     pub db: &'c mut Db,
+    pub call_frame: CallFrame,
     pub inner_context: InnerContext,
 }
 
@@ -150,10 +157,11 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, db: &'c mut Db) -> Self {
+    pub fn new(env: Env, db: &'c mut Db, call_frame: CallFrame) -> Self {
         Self {
             env,
             db,
+            call_frame,
             inner_context: Default::default(),
         }
     }
@@ -312,8 +320,9 @@ impl<'c> SyscallContext<'c> {
 
         let mut env = self.env.clone();
         env.tx.transact_to = TransactTo::Call(callee_address);
+
         //TODO: Check if this is ok
-        env.tx.caller = match self.env.tx.transact_to {
+        let new_frame_caller = match self.env.tx.transact_to {
             TransactTo::Call(a) => a,
             TransactTo::Create => Address::zero(),
         };
@@ -342,7 +351,10 @@ impl<'c> SyscallContext<'c> {
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
-        let mut context = SyscallContext::new(env.clone(), self.db);
+        let call_frame = CallFrame {
+            caller: new_frame_caller,
+        };
+        let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
 
         executor.execute(&mut context, env.tx.gas_limit);
 

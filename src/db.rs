@@ -1,10 +1,12 @@
 #![allow(unused)]
 use crate::{
+    constants::EMPTY_CODE_HASH_STR,
     primitives::{Address, Bytes, B256, U256},
     state::{Account, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
+use std::str::FromStr;
 use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
@@ -114,7 +116,7 @@ impl AccountInfo {
     pub fn is_empty(&self) -> bool {
         self.balance.is_zero()
             && self.nonce == 0
-            && self.code.clone().unwrap_or_default().is_empty()
+            && self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap()
     }
 }
 

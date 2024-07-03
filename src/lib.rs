@@ -6,7 +6,7 @@ use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
 use result::{EVMError, ResultAndState};
-use syscall::SyscallContext;
+use syscall::{CallFrame, SyscallContext};
 
 use crate::context::Context;
 
@@ -65,7 +65,10 @@ impl Evm<Db> {
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
-        let mut context = SyscallContext::new(self.env.clone(), &mut self.db);
+        let call_frame = CallFrame {
+            caller: self.env.tx.caller,
+        };
+        let mut context = SyscallContext::new(self.env.clone(), &mut self.db, call_frame);
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
