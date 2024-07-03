@@ -1805,12 +1805,8 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     let db = Db::new();
 
     // Calee
-    let a = BigUint::from(15_u8);
-    let b = BigUint::from(10_u8);
     let callee_ops = vec![
-        Operation::Push((32_u8, b)), //Operand B
-        Operation::Push((32_u8, a)), //Operand A
-        Operation::Add,
+        Operation::Push0,
         Operation::Push0,
         Operation::Mstore,
         Operation::Push((1, 32_u8.into())),
@@ -1819,8 +1815,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     ];
 
     let callee_memory_expansion_cost = 6; //Memory expansion of size 32
-    let callee_gas_cost =
-        gas_cost::PUSHN * 3 + gas_cost::ADD + gas_cost::PUSH0 * 2 + callee_memory_expansion_cost;
+    let callee_gas_cost = gas_cost::PUSHN + gas_cost::PUSH0 * 3 + callee_memory_expansion_cost;
 
     let program = Program::from(callee_ops);
     let (callee_address, bytecode) = (
@@ -1829,15 +1824,34 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     );
     let db = db.with_bytecode(callee_address, bytecode);
 
-    let gas = 255_u8;
+    let gas = callee_gas_cost as u8;
     let value = 0_u8;
     let args_offset = 0_u8;
     let args_size = 64_u8;
     let ret_offset = 0_u8;
     let ret_size = 32_u8;
 
+    /*
+    This test will check for the exact ammount of gas needed to perform a successful call without a value transfer
+    Since the gas sent to the callee has to be 1/64 th of the remaining gas, we have to add operations to
+    the caller to burn the extra gas that we have to add in order for the calle to receive the needed ammount
+
+    (needed_gas - caller_gas_cost) * 1/64 >= callee_gas_cost
+    needed_gas = caller_gas_cost + added_caller_gas_cost + callee_gas_cost
+
+    For the proposed set of operations, we have that:
+
+    callee_gas_cost = 15
+    caller_gas_cost = 144
+
+    => needed_gas >= 945
+    => added_caller_gas_cost >= 472.5
+
+    So, we have to add extra operations to caller in order to burn at least 473 of gas
+    */
+
     let caller_address = Address::from_low_u64_be(4040);
-    let caller_ops = vec![
+    let mut caller_ops = vec![
         Operation::Push((32_u8, BigUint::default())), //Operand B
         Operation::Push0,                             //
         Operation::Mstore,                            //Store in mem address 0
@@ -1854,12 +1868,16 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
         Operation::Call,
     ];
 
+    let additional_caller_ops = 473;
+    caller_ops.extend(vec![Operation::Push0; additional_caller_ops]);
+
     let caller_memory_expansion_cost = 6 * 2; // Memory expansion of size 64
     let caller_call_cost = 100; //EVM Codes gas calculator (memory already expanded)
     let caller_gas_cost =
         gas_cost::PUSHN * 10 + gas_cost::PUSH0 + caller_memory_expansion_cost + caller_call_cost;
-    //Calle gas cost multiplied by 64 because of Tangerine Whistle fork
-    let needed_gas = caller_gas_cost + callee_gas_cost * 64;
+    let added_caller_gas_cost = gas_cost::PUSH0 * additional_caller_ops as i64;
+
+    let needed_gas = caller_gas_cost + added_caller_gas_cost + callee_gas_cost;
 
     let caller_balance: u8 = 0;
     let program = Program::from(caller_ops);

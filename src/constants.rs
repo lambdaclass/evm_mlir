@@ -109,9 +109,8 @@ pub mod gas_cost {
 
 pub mod call_opcode {
     // Return codes
-    pub const SUCCESS_RETURN_CODE: u32 = 1;
-    pub const REVERT_RETURN_CODE: u32 = 0;
-    pub const HALT_RETURN_CODE: u32 = 2;
+    pub const SUCCESS_RETURN_CODE: u8 = 1;
+    pub const REVERT_RETURN_CODE: u8 = 0;
 
     // Gas related constants
     pub const WARM_MEMORY_ACCESS_COST: u64 = 100;

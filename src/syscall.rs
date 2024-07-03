@@ -239,7 +239,7 @@ impl<'c> SyscallContext<'c> {
         ret_size: u32,
         available_gas: u64,
         consumed_gas: &mut u64,
-    ) -> u32 {
+    ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = call_to_address.to_address();
@@ -354,7 +354,7 @@ impl<'c> SyscallContext<'c> {
             }
             ExecutionResult::Halt { gas_used, .. } => {
                 *consumed_gas -= gas_to_send - gas_used;
-                call_opcode::HALT_RETURN_CODE
+                call_opcode::REVERT_RETURN_CODE
             }
         }
     }
@@ -1170,7 +1170,7 @@ pub(crate) mod mlir {
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
                         uint64, ptr_type,
                     ],
-                    &[uint32],
+                    &[uint8],
                 )
                 .into(),
             ),
@@ -1714,7 +1714,7 @@ pub(crate) mod mlir {
         available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint32 = IntegerType::new(mlir_ctx, 32).into();
+        let uint8 = IntegerType::new(mlir_ctx, 8).into();
         let result = block
             .append_operation(func::call(
                 mlir_ctx,
@@ -1731,7 +1731,7 @@ pub(crate) mod mlir {
                     available_gas,
                     remaining_gas_ptr,
                 ],
-                &[uint32],
+                &[uint8],
                 location,
             ))
             .result(0)?;

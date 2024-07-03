@@ -15,7 +15,7 @@ use melior::{
 
 use crate::{
     constants::{
-        call_opcode, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
@@ -968,7 +968,6 @@ impl<'c> OperationCtx<'c> {
         ret_size: Value<'c, 'c>,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
-        let uint32 = IntegerType::new(context, 32);
         let uint64 = IntegerType::new(context, 64);
         let ptr_type = pointer(context, 0);
 
@@ -1019,35 +1018,9 @@ impl<'c> OperationCtx<'c> {
             .into();
         let gas_flag = consume_gas_as_value(context, start_block, consumed_gas)?;
 
-        // Compare the result value to see if its an error
-        // return_value == return_error_code -> HALT
-        let return_error_code = start_block
-            .append_operation(arith::constant(
-                context,
-                IntegerAttribute::new(uint32.into(), call_opcode::HALT_RETURN_CODE.into()).into(),
-                location,
-            ))
-            .result(0)?
-            .into();
-        let return_ok_flag = start_block
-            .append_operation(arith::cmpi(
-                context,
-                arith::CmpiPredicate::Ne,
-                return_value,
-                return_error_code,
-                location,
-            ))
-            .result(0)?
-            .into();
-
-        let condition = start_block
-            .append_operation(arith::andi(gas_flag, return_ok_flag, location))
-            .result(0)?
-            .into();
-
         start_block.append_operation(cf::cond_br(
             context,
-            condition,
+            gas_flag,
             finish_block,
             &self.revert_block,
             &[],
