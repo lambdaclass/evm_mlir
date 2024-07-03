@@ -162,8 +162,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.block.timestamp = unit.env.current_timestamp;
             let excess_blob_gas = unit
                 .env
-                    .current_excess_blob_gas
-                    .unwrap_or_default()
+                .current_excess_blob_gas
+                .unwrap_or_default()
                 .as_u64();
             env.block.set_blob_base_fee(excess_blob_gas);
 
