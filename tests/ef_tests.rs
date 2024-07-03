@@ -183,7 +183,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
 
-            if let Some(_) = &test.expect_exception {
+            if &test.expect_exception.is_some() {
                 assert!(!res.result.is_success());
                 return Ok(());
             }
