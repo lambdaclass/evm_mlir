@@ -16,7 +16,7 @@ pub const FACTORIAL_BYTECODE: &str =
 
 pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) {
     let bytes = hex::decode(program).unwrap();
-    let program = Program::from_bytecode(&bytes).unwrap();
+    let program = Program::from_bytecode(&bytes);
 
     // This is for intermediate files
     let output_file = PathBuf::from("output");

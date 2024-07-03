@@ -4,7 +4,7 @@ use evm_mlir::{
     constants::gas_cost,
     db::{Bytecode, Db},
     env::TransactTo,
-    primitives::{Address, Bytes, U256 as EU256},
+    primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
     Env, Evm,
@@ -1512,5 +1512,164 @@ fn extcodecopy_with_wrong_address() {
     ]
     .concat();
 
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn prevrandao() {
+    let mut program = vec![Operation::Prevrandao];
+    append_return_result_operations(&mut program);
+    let (mut env, db) = default_env_and_db_setup(program);
+    let randao_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let randao = B256::from_str(randao_str).expect("Error while converting str to B256");
+    env.block.prevrandao = Some(randao);
+
+    let expected_result = randao.as_bytes();
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn prevrandao_check_gas() {
+    let program = vec![Operation::Prevrandao];
+    let env = Env::default();
+    let gas_needed = gas_cost::PREVRANDAO;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn prevrandao_with_stack_overflow() {
+    let mut program = vec![Operation::Push0; 1024];
+    program.push(Operation::Prevrandao);
+    let (env, db) = default_env_and_db_setup(program);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn prevrandao_when_randao_is_not_set() {
+    let program = vec![Operation::Prevrandao];
+    let (env, db) = default_env_and_db_setup(program);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into());
+}
+
+#[test]
+fn extcodesize() {
+    let address = 40_u8;
+    let mut operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    append_return_result_operations(&mut operations);
+
+    let mut env = Env::default();
+    let program = Program::from(operations);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address as _),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_bytecode(address, bytecode);
+    let expected_result = program.to_bytecode().len();
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_stack_underflow() {
+    let program = vec![Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn extcodesize_gas_check() {
+    // in this case we are not considering cold and warm accesses
+    // we assume every access is warm
+    let address = 40_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn extcodesize_with_wrong_address() {
+    let address = 0_u8;
+    let operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodesize_with_invalid_address() {
+    // Address with upper 12 bytes filled with 1s is invalid
+    let address = BigUint::from_bytes_be(&[0xff; 32]);
+    let operations = vec![Operation::Push((32_u8, address)), Operation::ExtcodeSize];
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 0_u8;
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn blobhash() {
+    // set 2 blobhashes in env.tx.blob_hashes and retrieve the one at index 1.
+    let index = 1_u8;
+    let mut program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (mut env, db) = default_env_and_db_setup(program);
+    let blobhash_str = "0xce124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+    let blobhash = B256::from_str(blobhash_str).expect("Error while converting str to B256");
+    env.tx.blob_hashes = vec![B256::default(), blobhash];
+
+    let expected_result = blobhash.to_fixed_bytes();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn blobhash_check_gas() {
+    let program = vec![Operation::Push((1_u8, 0_u8.into())), Operation::BlobHash];
+    let mut env = Env::default();
+    env.tx.blob_hashes = vec![B256::default()];
+    let gas_needed = gas_cost::PUSHN + gas_cost::BLOBHASH;
+
+    run_program_assert_gas_exact(program, env, gas_needed as _);
+}
+
+#[test]
+fn blobhash_with_stack_underflow() {
+    let program = vec![Operation::BlobHash];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn blobhash_with_index_out_of_bounds() {
+    // when index >= len(blob_hashes) the result must be a 32-byte-zero.
+    let index = 2_u8;
+    let mut program = vec![Operation::Push((1_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (env, db) = default_env_and_db_setup(program);
+
+    let expected_result = [0x00; 32];
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn blobhash_with_index_too_big() {
+    // when index > usize::MAX the result must be a 32-byte-zero.
+    let index: u128 = usize::MAX as u128 + 1;
+    let mut program = vec![Operation::Push((32_u8, index.into())), Operation::BlobHash];
+    append_return_result_operations(&mut program);
+    let (env, db) = default_env_and_db_setup(program);
+
+    let expected_result = [0x00; 32];
     run_program_assert_bytes_result(env, db, &expected_result);
 }

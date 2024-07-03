@@ -23,10 +23,10 @@ use crate::{
         allocate_and_store_value, check_if_zero, check_stack_has_at_least,
         check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
         constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_block_number, get_calldata_ptr, get_calldata_size, get_memory_pointer,
-        get_nth_from_stack, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        get_blob_hash_at_index, get_block_number, get_calldata_ptr, get_calldata_size,
+        get_memory_pointer, get_nth_from_stack, get_prevrandao, get_remaining_gas,
+        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
+        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -78,14 +78,17 @@ pub fn generate_code_for_op<'c>(
         Operation::Codesize => codegen_codesize(op_ctx, region),
         Operation::Codecopy => codegen_codecopy(op_ctx, region),
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
+        Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
+        Operation::Prevrandao => codegen_prevrandao(op_ctx, region),
         Operation::Gaslimit => codegen_gaslimit(op_ctx, region),
         Operation::Chainid => codegen_chaind(op_ctx, region),
         Operation::SelfBalance => codegen_selfbalance(op_ctx, region),
         Operation::Basefee => codegen_basefee(op_ctx, region),
+        Operation::BlobHash => codegen_blobhash(op_ctx, region),
         Operation::BlobBaseFee => codegen_blobbasefee(op_ctx, region),
         Operation::Pop => codegen_pop(op_ctx, region),
         Operation::Mload => codegen_mload(op_ctx, region),
@@ -107,6 +110,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
+        Operation::Invalid => codegen_invalid(op_ctx, region),
     }
 }
 
@@ -4056,6 +4060,48 @@ fn codegen_gasprice<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
+fn codegen_extcodesize<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256).into();
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    // TODO: handle cold and warm accesses for dynamic gas computation
+    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE_WARM)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
+    let codesize = op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, location)?;
+    let codesize = ok_block
+        .append_operation(arith::extui(codesize, uint256, location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, codesize)?;
+
+    Ok((start_block, ok_block))
+}
+
 fn codegen_chaind<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -4394,6 +4440,20 @@ fn codegen_codecopy<'c, 'r>(
     Ok((start_block, copy_block))
 }
 
+fn codegen_invalid<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let context = op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let start_block = region.append_block(Block::new(&[]));
+    let empty_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::br(&op_ctx.revert_block, &[], location));
+
+    Ok((start_block, empty_block))
+}
+
 fn codegen_selfbalance<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -4665,4 +4725,76 @@ fn codegen_extcodecopy<'c, 'r>(
     );
 
     Ok((start_block, end_block))
+}
+
+fn codegen_prevrandao<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough space for 1 element in stack
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+
+    let gas_flag = consume_gas(context, &start_block, gas_cost::PREVRANDAO)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let prevrandao = get_prevrandao(op_ctx, &ok_block)?;
+
+    stack_push(context, &ok_block, prevrandao)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_blobhash<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's enough elements in stack
+    let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::BLOBHASH)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let index = stack_pop(context, &ok_block)?;
+    let index_ptr = allocate_and_store_value(op_ctx, &ok_block, index, location)?;
+    let blobhash = get_blob_hash_at_index(op_ctx, &ok_block, index_ptr)?;
+    stack_push(context, &ok_block, blobhash)?;
+
+    Ok((start_block, ok_block))
 }
