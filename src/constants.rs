@@ -79,6 +79,7 @@ pub mod gas_cost {
     pub const EXTCODECOPY_WARM: i64 = 100;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
+    pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
@@ -110,7 +111,6 @@ pub mod gas_cost {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

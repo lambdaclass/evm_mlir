@@ -57,10 +57,8 @@ fn run_program_assert_halt(env: Env, db: Db) {
 }
 
 fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
-    let address = match env.tx.transact_to {
-        TransactTo::Call(a) => a,
-        TransactTo::Create => Address::zero(),
-    };
+    let address = env.tx.get_address();
+
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
@@ -80,6 +78,22 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
 
     let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
+}
+
+fn run_program_assert_gas_and_refund(
+    mut env: Env,
+    db: Db,
+    needed_gas: u64,
+    used_gas: u64,
+    refunded_gas: u64,
+) {
+    env.tx.gas_limit = needed_gas;
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+    assert_eq!(result.gas_used(), used_gas);
+    assert_eq!(result.gas_refunded(), refunded_gas);
 }
 
 fn get_fibonacci_program(n: u64) -> Vec<Operation> {
@@ -962,11 +976,35 @@ fn sstore_happy_path() {
     env.tx.caller = caller_address;
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
-    assert!(&result.is_success());
+    let res = evm.transact().unwrap();
+    assert!(&res.result.is_success());
 
-    let stored_value = evm.db.read_storage(caller_address, EU256::from(key));
+    let stored_value = res
+        .state
+        .get(&caller_address)
+        .and_then(|account| account.storage.get(&EU256::from(key)))
+        .map(|slot| slot.present_value)
+        .unwrap_or(EU256::zero());
+
     assert_eq!(stored_value, EU256::from(value));
+}
+
+#[test]
+fn sstore_sload_happy_path() {
+    let key = 80_u8;
+    let value = 11_u8;
+    let mut operations = vec![
+        // sstore
+        Operation::Push((1_u8, BigUint::from(value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        // sload
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sload,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    run_program_assert_num_result(env, db, BigUint::from(value));
 }
 
 #[test]
@@ -1385,6 +1423,128 @@ fn gaslimit_stack_overflow() {
     program.push(Operation::Gaslimit);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
+}
+
+#[test]
+fn sstore_gas_cost_on_cold_zero_value() {
+    let new_value = 10_u8;
+
+    let used_gas = 22_100 + 2 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 0;
+
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(80_u8))),
+        Operation::Sstore,
+    ];
+    let (env, db) = default_env_and_db_setup(program);
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
+    let new_value: u8 = 0;
+    let original_value = 10;
+
+    let used_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 4_800;
+
+    let key = 80_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn sstore_gas_cost_update_warm_value() {
+    let new_value: u8 = 20;
+    let present_value: u8 = 10;
+
+    let used_gas = 22_200 + 4 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 0;
+
+    let key = 80_u8;
+    let program = vec![
+        // first sstore: gas_cost = 22_100, gas_refund = 0
+        Operation::Push((1_u8, BigUint::from(present_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        // second sstore: gas_cost = 100, gas_refund = 0
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, db) = default_env_and_db_setup(program);
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn sstore_gas_cost_restore_warm_from_zero() {
+    let new_value: u8 = 10;
+    let present_value: u8 = 0;
+    let original_value: u8 = 10;
+
+    let used_gas = 5_100 + 4 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 2_800;
+
+    let key = 80_u8;
+    let program = vec![
+        // first sstore: gas_cost = 5_000, gas_refund = 4_800
+        Operation::Push((1_u8, BigUint::from(present_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        // second sstore: gas_cost = 100, gas_refund = -2_000
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn sstore_gas_cost_update_warm_from_zero() {
+    let new_value: u8 = 20;
+    let present_value: u8 = 0;
+    let original_value: u8 = 10;
+
+    let used_gas = 5_100 + 4 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 0;
+
+    let key = 80_u8;
+    let program = vec![
+        // first sstore: gas_cost = 5_000, gas_refund = 4_800
+        Operation::Push((1_u8, BigUint::from(present_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        // second sstore: gas_cost = 100, gas_refund = -4_800
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
 
 #[test]

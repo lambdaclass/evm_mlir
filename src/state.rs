@@ -64,11 +64,10 @@ pub struct EvmStorageSlot {
 
 impl From<U256> for EvmStorageSlot {
     fn from(value: U256) -> Self {
-        // TODO: implement EvmStorageSlot in our Db. Using default values here
         Self {
             present_value: value,
             original_value: value,
-            is_cold: false,
+            is_cold: true,
         }
     }
 }
