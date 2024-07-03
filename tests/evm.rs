@@ -1637,7 +1637,7 @@ fn call_returns_addition_from_arguments() {
     let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
     let db = Db::new();
 
-    // Calee
+    // Callee
     let mut callee_ops = vec![
         Operation::Push0,
         Operation::CalldataLoad,
@@ -1725,7 +1725,7 @@ fn call_returns_addition_from_arguments() {
 fn call_without_enough_balance() {
     let db = Db::new();
 
-    // Calee
+    // Callee
     let mut callee_ops = vec![Operation::Push0];
     append_return_result_operations(&mut callee_ops);
 
@@ -1804,7 +1804,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     */
     let db = Db::new();
 
-    // Calee
+    // Callee
     let callee_ops = vec![
         Operation::Push0,
         Operation::Push0,
@@ -1905,7 +1905,7 @@ fn call_gas_check_with_value_and_empty_account() {
     */
     let db = Db::new();
 
-    // Calee
+    // Callee
     let (callee_address, bytecode) = (Address::from_low_u64_be(8080), Bytecode::default());
     let db = db.with_bytecode(callee_address, bytecode);
 

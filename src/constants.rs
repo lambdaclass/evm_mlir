@@ -115,7 +115,7 @@ pub mod call_opcode {
     // Gas related constants
     pub const WARM_MEMORY_ACCESS_COST: u64 = 100;
     pub const NOT_ZERO_VALUE_COST: u64 = 9000;
-    pub const EMPTY_CALLE_COST: u64 = 25000;
+    pub const EMPTY_CALLEE_COST: u64 = 25000;
     pub const STIPEND_GAS_ADDITION: u64 = 2300;
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }

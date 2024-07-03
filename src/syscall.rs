@@ -273,7 +273,7 @@ impl<'c> SyscallContext<'c> {
             }
             *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
             if callee_account.is_empty() {
-                *consumed_gas += call_opcode::EMPTY_CALLE_COST;
+                *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
             }
             if available_gas < *consumed_gas {
                 return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
