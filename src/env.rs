@@ -1,4 +1,4 @@
-use crate::primitives::{Address, Bytes, U256};
+use crate::primitives::{Address, Bytes, B256, U256};
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
@@ -59,7 +59,7 @@ pub struct BlockEnv {
     // NOTE: `prevrandao` can be found in a block in place of `mix_hash`.
     //
     // [EIP-4399]: https://eips.ethereum.org/EIPS/eip-4399
-    //pub prevrandao: Option<B256>,
+    pub prevrandao: Option<B256>,
     // Excess blob gas and blob gasprice.
     // See also [`crate::calc_excess_blob_gas`]
     // and [`calc_blob_gasprice`].
@@ -117,8 +117,7 @@ pub struct TxEnv {
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
     //
     // [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844
-    // pub blob_hashes: Vec<B256>,
-
+    pub blob_hashes: Vec<B256>,
     // The max fee per blob gas.
     //
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
@@ -141,7 +140,7 @@ impl Default for TxEnv {
             // chain_id: None,
             // nonce: None,
             // access_list: Vec::new(),
-            // blob_hashes: Vec::new(),
+            blob_hashes: Vec::new(),
             // max_fee_per_blob_gas: None,
         }
     }

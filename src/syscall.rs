@@ -40,7 +40,7 @@ pub struct U256 {
 }
 
 impl U256 {
-    pub fn from_be_bytes(bytes: [u8; 32]) -> Self {
+    pub fn from_fixed_be_bytes(bytes: [u8; 32]) -> Self {
         let hi = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
         let lo = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
         U256 { hi, lo }
@@ -236,7 +236,7 @@ impl<'c> SyscallContext<'c> {
         let mut hasher = Keccak256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        *hash_ptr = U256::from_be_bytes(result.into());
+        *hash_ptr = U256::from_fixed_be_bytes(result.into());
     }
 
     pub extern "C" fn store_in_callvalue_ptr(&self, value: &mut U256) {
@@ -487,8 +487,19 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
+    pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+        Address::try_from(address)
+            .map(|a| self.db.code_by_address(a).len())
+            .unwrap_or(0) as _
+    }
+
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
         self.env.tx.get_address().to_fixed_bytes().as_ptr()
+    }
+
+    pub extern "C" fn get_prevrandao(&self, prevrandao: &mut U256) {
+        let randao = self.env.block.prevrandao.unwrap_or_default();
+        *prevrandao = U256::from_fixed_be_bytes(randao.into());
     }
 
     pub extern "C" fn get_coinbase_ptr(&self) -> *const u8 {
@@ -532,6 +543,18 @@ impl<'c> SyscallContext<'c> {
         }
     }
 
+    pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
+        if index.hi != 0 {
+            *blobhash = U256::default();
+            return;
+        }
+        *blobhash = usize::try_from(index.lo)
+            .ok()
+            .and_then(|idx| self.env.tx.blob_hashes.get(idx).cloned())
+            .map(|x| U256::from_fixed_be_bytes(x.into()))
+            .unwrap_or_default();
+    }
+
     pub extern "C" fn copy_ext_code_to_memory(
         &mut self,
         address_value: &U256,
@@ -573,11 +596,13 @@ pub mod symbols {
     pub const APPEND_LOG_FOUR_TOPICS: &str = "evm_mlir__append_log_with_four_topics";
     pub const GET_CALLDATA_PTR: &str = "evm_mlir__get_calldata_ptr";
     pub const GET_CALLDATA_SIZE: &str = "evm_mlir__get_calldata_size";
+    pub const GET_CODESIZE_FROM_ADDRESS: &str = "evm_mlir__get_codesize_from_address";
     pub const COPY_CODE_TO_MEMORY: &str = "evm_mlir__copy_code_to_memory";
     pub const GET_ADDRESS_PTR: &str = "evm_mlir__get_address_ptr";
     pub const GET_GASLIMIT: &str = "evm_mlir__get_gaslimit";
     pub const STORE_IN_CALLVALUE_PTR: &str = "evm_mlir__store_in_callvalue_ptr";
     pub const STORE_IN_BLOBBASEFEE_PTR: &str = "evm_mlir__store_in_blobbasefee_ptr";
+    pub const GET_BLOB_HASH_AT_INDEX: &str = "evm_mlir__get_blob_hash_at_index";
     pub const STORE_IN_BALANCE: &str = "evm_mlir__store_in_balance";
     pub const GET_COINBASE_PTR: &str = "evm_mlir__get_coinbase_ptr";
     pub const STORE_IN_TIMESTAMP_PTR: &str = "evm_mlir__store_in_timestamp_ptr";
@@ -589,6 +614,7 @@ pub mod symbols {
     pub const GET_BLOCK_NUMBER: &str = "evm_mlir__get_block_number";
     pub const STORE_IN_SELFBALANCE_PTR: &str = "evm_mlir__store_in_selfbalance_ptr";
     pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
+    pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -687,6 +713,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                 as *const extern "C" fn(&SyscallContext, *mut U256) -> () as *mut (),
         );
         engine.register_symbol(
+            symbols::GET_CODESIZE_FROM_ADDRESS,
+            SyscallContext::get_codesize_from_address as *const fn(*mut c_void, *mut U256)
+                as *mut (),
+        );
+        engine.register_symbol(
             symbols::GET_COINBASE_PTR,
             SyscallContext::get_coinbase_ptr as *const fn(*mut c_void) as *mut (),
         );
@@ -713,6 +744,15 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_BLOCK_NUMBER,
             SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_PREVRANDAO,
+            SyscallContext::get_prevrandao as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::GET_BLOB_HASH_AT_INDEX,
+            SyscallContext::get_blob_hash_at_index as *const fn(*mut c_void, *mut U256, *mut U256)
+                as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CHAINID,
@@ -1004,11 +1044,28 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CODESIZE_FROM_ADDRESS),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
 
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_ADDRESS_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[ptr_type]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_PREVRANDAO),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -1049,6 +1106,17 @@ pub(crate) mod mlir {
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, ptr_type, uint32, uint32, uint32], &[])
                     .into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_BLOB_HASH_AT_INDEX),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
             ),
             Region::new(),
             attributes,
@@ -1591,6 +1659,59 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_EXT_CODE_TO_MEMORY),
             &[syscall_ctx, address_ptr, offset, size, dest_offset],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn get_prevrandao_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        prevrandao_ptr: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_PREVRANDAO),
+            &[syscall_ctx, prevrandao_ptr],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn get_codesize_from_address_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODESIZE_FROM_ADDRESS),
+                &[syscall_ctx, address],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
+    }
+
+    pub(crate) fn get_blob_hash_at_index_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        index: Value<'c, 'c>,
+        blobhash: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOB_HASH_AT_INDEX),
+            &[syscall_ctx, index, blobhash],
             &[],
             location,
         ));

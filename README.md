@@ -53,13 +53,16 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x39) CODECOPY
 1. (0x3A) GASPRICE
 1. (0x3B) EXTCODESIZE
+1. (0x3C) EXTCODECOPY
 1. (0x41) COINBASE
 1. (0x42) TIMESTAMP
 1. (0x43) NUMBER
+1. (0x44) PREVRANDAO
 1. (0x45) GASLIMIT
 1. (0x46) CHAINID
 1. (0x47) SELFBALANCE
 1. (0x48) BASEFEE
+1. (0x49) BLOBHASH
 1. (0x4A) BLOBBASEFEE
 1. (0x50) POP
 1. (0x51) MLOAD
@@ -146,19 +149,17 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xA4) LOG4
 1. (0xF3) RETURN
 1. (0xFD) REVERT
+1. (0xFE) INVALID
 
 </details>
 
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x3B) EXTCODESIZE
 1. (0x3D) RETURNDATASIZE
 1. (0x3E) RETURNDATACOPY
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
-1. (0x44) DIFFICULTY
-1. (0x49) BLOBHASH
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
 1. (0xF0) CREATE
@@ -167,7 +168,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xF4) DELEGATECALL
 1. (0xF5) CREATE2
 1. (0xFA) STATICCALL
-1. (0xFE) INVALID
 1. (0xFF) SELFDESTRUCT
 
 </details>
