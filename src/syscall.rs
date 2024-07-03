@@ -63,10 +63,10 @@ impl U256 {
     }
 
     pub fn to_primitive_u256(&self) -> EU256 {
-        let hi_bytes = self.hi.to_be_bytes();
-        let lo_bytes = self.lo.to_be_bytes();
-        let bytes = [&hi_bytes[..], &lo_bytes[..]].concat();
-        EU256::from_big_endian(&bytes)
+        let mut value = EU256::from(self.hi);
+        value <<= 128;
+        value += self.lo.into();
+        value
     }
 }
 
