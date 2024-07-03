@@ -319,7 +319,13 @@ impl<'c> SyscallContext<'c> {
             size
         };
 
-        let code_slice = &self.inner_context.program[code_offset..code_offset + size];
+        let Some(code_slice) = &self
+            .inner_context
+            .program
+            .get(code_offset..code_offset + size)
+        else {
+            return; // TODO: fix bug with code indexes
+        };
         // copy the program into memory
         self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
