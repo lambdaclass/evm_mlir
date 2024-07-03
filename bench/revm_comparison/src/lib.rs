@@ -1,11 +1,6 @@
 use evm_mlir::{
-    context::{Context, ContextConfig},
-    db::Db,
-    executor::Executor,
-    primitives::Bytes,
-    program::Program,
-    syscall::SyscallContext,
-    Env,
+    context::Context, db::Db, executor::Executor, primitives::Bytes, program::Program,
+    syscall::SyscallContext, Env,
 };
 use revm::{
     db::BenchmarkDB,
@@ -24,9 +19,8 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     let program = Program::from_bytecode(&bytes);
 
     let context = Context::new();
-    let config = ContextConfig::default();
     let module = context
-        .compile(&program, config)
+        .compile(&program, Default::default())
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, Default::default());

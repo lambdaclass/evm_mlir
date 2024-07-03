@@ -7,7 +7,7 @@ use std::{
 
 use crate::module::MLIRModule;
 use crate::program::Program;
-use crate::{context::ContextConfig, errors::CodegenError};
+use crate::{context::Session, errors::CodegenError};
 use llvm_sys::{
     core::{
         LLVMContextCreate, LLVMContextDispose, LLVMDisposeMessage, LLVMDisposeModule,
@@ -35,8 +35,11 @@ pub use pass_manager::run_pass_manager;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
     let context = Context::new();
-    let config = ContextConfig::new(output_file.as_ref().to_path_buf());
-    let mlir_module = context.compile(program, config)?;
+    let session = Session {
+        raw_mlir_path: Some(output_file.as_ref().to_path_buf()),
+        ..Default::default()
+    };
+    let mlir_module = context.compile(program, session)?;
     compile_to_object(&mlir_module, output_file)
 }
 

@@ -4,7 +4,7 @@
 //! may not work properly.
 use evm_mlir::{
     constants::gas_cost::{self, log_dynamic_gas_cost},
-    context::{Context, ContextConfig},
+    context::Context,
     db::Db,
     env::Env,
     executor::Executor,
@@ -25,9 +25,8 @@ fn run_program_get_result_with_gas(
     let program = Program::from(operations);
 
     let context = Context::new();
-    let config = ContextConfig::default();
     let module = context
-        .compile(&program, config)
+        .compile(&program, Default::default())
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, Default::default());

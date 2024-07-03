@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
 use builder::EvmBuilder;
-use context::ContextConfig;
 use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
@@ -50,8 +47,6 @@ impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
-        let config = ContextConfig::new(PathBuf::from("output"));
-
         let code_address = match self.env.tx.transact_to {
             TransactTo::Call(code_address) => code_address,
             TransactTo::Create => unimplemented!(), // TODO: implement creation
@@ -61,7 +56,7 @@ impl Evm<Db> {
         let program = Program::from_bytecode(&bytecode);
 
         let module = context
-            .compile(&program, config)
+            .compile(&program, Default::default())
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);

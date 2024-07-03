@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use evm_mlir::{
-    context::{Context, ContextConfig},
+    context::{Context, Session},
     db::Db,
     env::Env,
     executor::{Executor, OptLevel},
@@ -22,11 +22,14 @@ fn main() {
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
-    let config = ContextConfig::new(PathBuf::from("output"));
+    let session = Session {
+        raw_mlir_path: Some(PathBuf::from("output")),
+        ..Default::default()
+    };
 
     let context = Context::new();
     let module = context
-        .compile(&program, config)
+        .compile(&program, session)
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, opt_level);
