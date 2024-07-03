@@ -50,8 +50,7 @@ impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
-        let mut config = ContextConfig::default();
-        config.output_file = Some(PathBuf::from("output"));
+        let config = ContextConfig::new(PathBuf::from("output"));
 
         let code_address = match self.env.tx.transact_to {
             TransactTo::Call(code_address) => code_address,

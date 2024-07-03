@@ -1,4 +1,4 @@
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 use evm_mlir::{
     context::{Context, ContextConfig},
@@ -22,8 +22,7 @@ fn main() {
     let bytecode = std::fs::read(path).expect("Could not read file");
     let program = Program::from_bytecode(&bytecode);
 
-    let mut config = ContextConfig::default();
-    config.output_file = Some(PathBuf::from("output"));
+    let config = ContextConfig::new(PathBuf::from("output"));
 
     let context = Context::new();
     let module = context

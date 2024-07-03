@@ -63,6 +63,15 @@ pub struct ContextConfig {
     pub after_pass_mlir: bool,
 }
 
+impl ContextConfig {
+    pub fn new(output: PathBuf) -> Self {
+        Self {
+            output_file: Some(output),
+            after_pass_mlir: false,
+        }
+    }
+}
+
 impl Context {
     pub fn new() -> Self {
         let melior_context = initialize_mlir();

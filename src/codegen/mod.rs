@@ -35,8 +35,7 @@ pub use pass_manager::run_pass_manager;
 
 pub fn compile(program: &Program, output_file: impl AsRef<Path>) -> Result<PathBuf, CodegenError> {
     let context = Context::new();
-    let mut config = ContextConfig::default();
-    config.output_file = Some(output_file.as_ref().to_path_buf());
+    let config = ContextConfig::new(output_file.as_ref().to_path_buf());
     let mlir_module = context.compile(program, config)?;
     compile_to_object(&mlir_module, output_file)
 }
