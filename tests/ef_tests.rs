@@ -117,6 +117,7 @@ fn get_ignored_suites() -> HashSet<String> {
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     let group_name = get_group_name_from_path(path);
+
     if get_ignored_groups().contains(&group_name) {
         return Ok(());
     }
@@ -143,6 +144,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             return Ok(());
         };
+
         for test in tests {
             let mut env = Env::default();
             env.tx.transact_to = TransactTo::Call(to);
@@ -181,15 +183,15 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
 
-            if let Some(_e) = &test.expect_exception {
+            if let Some(_) = &test.expect_exception {
                 assert!(!res.result.is_success());
-                // TODO: check if returned error is the same?
+                return Ok(());
             }
 
             assert!(res.result.is_success());
             assert_eq!(res.result.output().cloned(), unit.out);
 
-            // TODO: check logs
+            // TODO: use rlp and hash to check logs
 
             // Test the resulting storage is the same as the expected storage
             let mut result_state = HashMap::new();
