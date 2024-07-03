@@ -38,7 +38,7 @@ fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
-    let result_data = BigUint::from_bytes_be(result.output().unwrap());
+    let result_data = BigUint::from_bytes_be(result.output().unwrap_or(&Bytes::new()));
     assert_eq!(result_data, expected_result);
 }
 
