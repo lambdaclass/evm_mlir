@@ -1208,7 +1208,7 @@ fn balance_with_invalid_address() {
     env.tx.transact_to = TransactTo::Call(address);
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.update_account(address, 0, balance, HashMap::new());
+    db.set_account(address, 0, balance, HashMap::new());
 
     let mut evm = Evm::new(env, db);
 
@@ -1256,7 +1256,7 @@ fn balance_with_existing_account() {
     env.tx.transact_to = TransactTo::Call(address);
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.update_account(address, 0, balance, HashMap::new());
+    db.set_account(address, 0, balance, HashMap::new());
 
     let mut evm = Evm::new(env, db);
 
@@ -1296,7 +1296,7 @@ fn selfbalance_with_existing_account() {
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
     let mut db = Db::new().with_bytecode(contract_address, bytecode);
-    db.update_account(contract_address, 0, contract_balance.into(), HashMap::new());
+    db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
     env.tx.gas_limit = 999_999;
@@ -1318,7 +1318,7 @@ fn selfbalance_and_balance_with_address_check() {
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
     let mut db = Db::new().with_bytecode(contract_address, bytecode);
-    db.update_account(contract_address, 0, contract_balance.into(), HashMap::new());
+    db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
     env.tx.gas_limit = 999_999;

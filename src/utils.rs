@@ -1563,7 +1563,6 @@ pub(crate) fn get_basefee<'a>(
 ///
 /// See also [the EIP-4844 helpers](https://eips.ethereum.org/EIPS/eip-4844#helpers)
 /// (`get_blob_gasprice`).
-#[inline]
 pub fn calc_blob_gasprice(excess_blob_gas: u64) -> u128 {
     fake_exponential(
         gas_cost::MIN_BLOB_GASPRICE,
@@ -1582,7 +1581,6 @@ pub fn calc_blob_gasprice(excess_blob_gas: u64) -> u128 {
 /// # Panics
 ///
 /// This function panics if `denominator` is zero.
-#[inline]
 pub fn fake_exponential(factor: u64, numerator: u64, denominator: u64) -> u128 {
     assert_ne!(denominator, 0, "attempt to divide by zero");
     let factor = factor as u128;

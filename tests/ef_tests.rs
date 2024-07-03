@@ -131,6 +131,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
 
     for (_name, unit) in test_suite.0 {
+        // NOTE: currently we only support Cancun spec
+        let Some(tests) = unit.post.get("Cancun") else {
+            continue;
+        };
         let Some(to) = unit.transaction.to else {
             return Err("`to` field is None".into());
         };
@@ -139,11 +143,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
         let sender = unit.transaction.sender.unwrap_or_default();
         let gas_price = unit.transaction.gas_price.unwrap_or_default();
-
-        // NOTE: currently we only support Cancun spec
-        let Some(tests) = unit.post.get("Cancun") else {
-            return Ok(());
-        };
 
         for test in tests {
             let mut env = Env::default();
@@ -172,7 +171,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
                 db = db.with_bytecode(address.to_owned(), account_info.code.clone());
-                db.update_account(
+                db.set_account(
                     address.to_owned(),
                     account_info.nonce,
                     account_info.balance,
@@ -185,7 +184,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             if test.expect_exception.is_some() {
                 assert!(!res.result.is_success());
-                return Ok(());
+                // NOTE: the expect_exception string is an error description, we don't check the expected error
+                continue;
             }
 
             assert!(res.result.is_success());

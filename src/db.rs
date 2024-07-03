@@ -29,7 +29,7 @@ impl Db {
         Self::default()
     }
 
-    pub fn update_account(
+    pub fn set_account(
         &mut self,
         address: Address,
         nonce: u64,

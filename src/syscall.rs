@@ -334,6 +334,7 @@ impl<'c> SyscallContext<'c> {
             .program
             .get(code_offset..code_offset + size)
         else {
+            eprintln!("Error on copy_code_to_memory");
             return; // TODO: fix bug with code indexes
         };
         // copy the program into memory
