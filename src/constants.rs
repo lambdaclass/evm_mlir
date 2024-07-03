@@ -78,6 +78,7 @@ pub mod gas_cost {
     pub const EXTCODECOPY_WARM: i64 = 100;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
+    pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;
 
     pub const MIN_BLOB_GASPRICE: u64 = 1;
     pub const BLOB_GASPRICE_UPDATE_FRACTION: u64 = 3338477;
@@ -112,7 +113,6 @@ pub mod gas_cost {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
