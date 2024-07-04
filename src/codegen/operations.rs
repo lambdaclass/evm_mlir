@@ -80,6 +80,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
+        Operation::ReturnDataSize => codegen_returndatasize(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
@@ -4979,4 +4980,11 @@ fn codegen_call<'c, 'r>(
     stack_push(context, &finish_block, call_result)?;
 
     Ok((start_block, finish_block))
+}
+
+fn codegen_returndatasize<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
