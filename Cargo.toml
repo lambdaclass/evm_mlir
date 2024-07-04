@@ -16,7 +16,6 @@ melior = { version = "0.18.4", features = ["ods-dialects"] }
 mlir-sys = "0.2.2"
 num-bigint = "0.4.5"
 sha3 = "0.10.8"
-tempfile = "3.10.1"
 thiserror = "1.0.57"
 ethereum-types = "0.14.1"
 bytes = { version = "1.6.0", features = ["serde"] }
