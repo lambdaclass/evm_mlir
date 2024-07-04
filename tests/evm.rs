@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
     constants::{call_opcode, gas_cost},
@@ -38,7 +38,7 @@ fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
-    let result_data = BigUint::from_bytes_be(result.output().unwrap());
+    let result_data = BigUint::from_bytes_be(result.output().unwrap_or(&Bytes::new()));
     assert_eq!(result_data, expected_result);
 }
 
@@ -1222,7 +1222,7 @@ fn balance_with_invalid_address() {
     env.tx.transact_to = TransactTo::Call(address);
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.update_account(address, 0, balance);
+    db.set_account(address, 0, balance, HashMap::new());
 
     let mut evm = Evm::new(env, db);
 
@@ -1270,7 +1270,7 @@ fn balance_with_existing_account() {
     env.tx.transact_to = TransactTo::Call(address);
     let mut db = Db::new().with_bytecode(address, bytecode);
 
-    db.update_account(address, 0, balance);
+    db.set_account(address, 0, balance, HashMap::new());
 
     let mut evm = Evm::new(env, db);
 
@@ -1310,7 +1310,7 @@ fn selfbalance_with_existing_account() {
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
     let mut db = Db::new().with_bytecode(contract_address, bytecode);
-    db.update_account(contract_address, 0, contract_balance.into());
+    db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
     env.tx.gas_limit = 999_999;
@@ -1332,7 +1332,7 @@ fn selfbalance_and_balance_with_address_check() {
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
     let mut db = Db::new().with_bytecode(contract_address, bytecode);
-    db.update_account(contract_address, 0, contract_balance.into());
+    db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
     env.tx.gas_limit = 999_999;
@@ -1360,12 +1360,12 @@ fn selfbalance_gas_check() {
 
 #[test]
 fn blobbasefee_happy_path() {
-    let blob_base_fee: u32 = 1500;
+    let excess_blob_gas: u64 = 1500;
     let mut operations = vec![Operation::BlobBaseFee];
     append_return_result_operations(&mut operations);
     let (mut env, db) = default_env_and_db_setup(operations);
-    env.block.blob_base_fee = EU256::from(blob_base_fee);
-    let expected_result = BigUint::from(blob_base_fee);
+    env.block.set_blob_base_fee(excess_blob_gas);
+    let expected_result = BigUint::from(env.block.blob_gasprice.unwrap());
     run_program_assert_num_result(env, db, expected_result);
 }
 

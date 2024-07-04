@@ -4579,6 +4579,7 @@ fn codegen_blobbasefee<'c, 'r>(
     ));
 
     let uint256 = IntegerType::new(context, 256);
+    let uint128 = IntegerType::new(context, 128);
     let ptr_type = pointer(context, 0);
 
     //This may be refactored to use constant_value_from_i64 util function
@@ -4608,14 +4609,19 @@ fn codegen_blobbasefee<'c, 'r>(
         .append_operation(llvm::load(
             context,
             blob_base_fee_ptr,
-            uint256.into(),
+            uint128.into(),
             location,
             LoadStoreOptions::default(),
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, blob_base_fee)?;
+    let blob_base_fee_extended = ok_block
+        .append_operation(arith::extui(blob_base_fee, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, blob_base_fee_extended)?;
 
     Ok((start_block, ok_block))
 }
