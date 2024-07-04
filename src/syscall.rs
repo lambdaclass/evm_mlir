@@ -483,7 +483,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_block_hash(&mut self, number: &mut U256) {
         let number_as_u256 = u256_from_u128(number.hi, number.lo);
 
-        // If number is not in the valid range (last 256 blocks), zero should be returned.
+        // If number is not in the valid range (last 256 blocks), return zero.
         let hash = if number_as_u256 < self.env.block.number.saturating_sub(EU256::from(256))
             || number_as_u256 >= self.env.block.number
         {
