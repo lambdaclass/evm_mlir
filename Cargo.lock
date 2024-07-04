@@ -856,7 +856,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
- "tempfile",
  "thiserror",
  "walkdir",
 ]
