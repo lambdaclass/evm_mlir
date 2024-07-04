@@ -108,6 +108,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Log(x) => codegen_log(op_ctx, region, x),
+        Operation::Call => codegen_call(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Invalid => codegen_invalid(op_ctx, region),
@@ -4578,6 +4579,7 @@ fn codegen_blobbasefee<'c, 'r>(
     ));
 
     let uint256 = IntegerType::new(context, 256);
+    let uint128 = IntegerType::new(context, 128);
     let ptr_type = pointer(context, 0);
 
     //This may be refactored to use constant_value_from_i64 util function
@@ -4607,14 +4609,19 @@ fn codegen_blobbasefee<'c, 'r>(
         .append_operation(llvm::load(
             context,
             blob_base_fee_ptr,
-            uint256.into(),
+            uint128.into(),
             location,
             LoadStoreOptions::default(),
         ))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, blob_base_fee)?;
+    let blob_base_fee_extended = ok_block
+        .append_operation(arith::extui(blob_base_fee, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, blob_base_fee_extended)?;
 
     Ok((start_block, ok_block))
 }
@@ -4822,4 +4829,101 @@ fn codegen_blobhash<'c, 'r>(
     stack_push(context, &ok_block, blobhash)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_call<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 7)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gas = stack_pop(context, &ok_block)?;
+    let address = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+    let args_offset = stack_pop(context, &ok_block)?;
+    let args_size = stack_pop(context, &ok_block)?;
+    let ret_offset = stack_pop(context, &ok_block)?;
+    let ret_size = stack_pop(context, &ok_block)?;
+
+    // Truncate arguments to their corresponding sizes
+    let gas = ok_block
+        .append_operation(arith::trunci(gas, uint64.into(), location))
+        .result(0)?
+        .into();
+    let args_offset = ok_block
+        .append_operation(arith::trunci(args_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let args_size = ok_block
+        .append_operation(arith::trunci(args_size, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_offset = ok_block
+        .append_operation(arith::trunci(ret_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_size = ok_block
+        .append_operation(arith::trunci(ret_size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    // Alloc required memory size for both arguments and return value
+    let mem_ext_block = region.append_block(Block::new(&[]));
+    let req_arg_mem_size = ok_block
+        .append_operation(arith::addi(args_offset, args_size, location))
+        .result(0)?
+        .into();
+    let req_ret_mem_size = ok_block
+        .append_operation(arith::addi(ret_offset, ret_size, location))
+        .result(0)?
+        .into();
+    let req_mem_size = ok_block
+        .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
+        .result(0)?
+        .into();
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &mem_ext_block,
+        region,
+        req_mem_size,
+        gas_cost::CALL,
+    )?;
+
+    // Invoke call syscall
+    let finish_block = region.append_block(Block::new(&[]));
+    let call_result = op_ctx.call_syscall(
+        &mem_ext_block,
+        &finish_block,
+        location,
+        gas,
+        address,
+        value,
+        args_offset,
+        args_size,
+        ret_offset,
+        ret_size,
+    )?;
+
+    // Push return value into stack
+    stack_push(context, &finish_block, call_result)?;
+
+    Ok((start_block, finish_block))
 }

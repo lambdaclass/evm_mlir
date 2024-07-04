@@ -9,6 +9,10 @@ pub const CALLDATA_PTR_GLOBAL: &str = "evm_mlir__calldata_ptr";
 pub const CALLDATA_SIZE_GLOBAL: &str = "evm_mlir__calldata_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
 
+// An empty bytecode has the following Keccak256 hash
+pub const EMPTY_CODE_HASH_STR: &str =
+    "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
+
 //TODO: Add missing opcodes gas consumption costs
 //  -> This implies refactoring codegen/operations.rs
 /// Contains the gas costs of the EVM instructions
@@ -74,11 +78,15 @@ pub mod gas_cost {
     pub const KECCAK256: i64 = 30;
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
+    pub const CALL: i64 = 0;
     pub const EXTCODESIZE_WARM: i64 = 100;
     pub const EXTCODECOPY_WARM: i64 = 100;
     pub const ADDRESS: i64 = 2;
     pub const GASLIMIT: i64 = 2;
     pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;
+
+    pub const MIN_BLOB_GASPRICE: u64 = 1;
+    pub const BLOB_GASPRICE_UPDATE_FRACTION: u64 = 3338477;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
@@ -106,6 +114,19 @@ pub mod gas_cost {
     pub fn exp_dynamic_cost(exponent: u64) -> i64 {
         10 + 50 * exponent_byte_size(exponent)
     }
+}
+
+pub mod call_opcode {
+    // Return codes
+    pub const SUCCESS_RETURN_CODE: u8 = 1;
+    pub const REVERT_RETURN_CODE: u8 = 0;
+
+    // Gas related constants
+    pub const WARM_MEMORY_ACCESS_COST: u64 = 100;
+    pub const NOT_ZERO_VALUE_COST: u64 = 9000;
+    pub const EMPTY_CALLEE_COST: u64 = 25000;
+    pub const STIPEND_GAS_ADDITION: u64 = 2300;
+    pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }
 
 #[cfg(test)]

@@ -15,12 +15,16 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{ffi::c_void, path::PathBuf};
 
 use crate::{
+    constants::call_opcode,
+    context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
-    primitives::{Address, U256 as EU256},
+    executor::{Executor, OptLevel},
+    primitives::{Address, Bytes, U256 as EU256},
+    program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
     utils::u256_from_u128,
@@ -51,6 +55,20 @@ impl U256 {
         buffer[12..32].copy_from_slice(&value.0);
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
+    }
+
+    pub fn to_address(&self) -> Address {
+        let hi_bytes = self.hi.to_be_bytes();
+        let lo_bytes = self.lo.to_be_bytes();
+        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
+        Address::from_slice(&address)
+    }
+
+    pub fn to_primitive_u256(&self) -> EU256 {
+        let mut value = EU256::from(self.hi);
+        value <<= 128;
+        value += self.lo.into();
+        value
     }
 }
 
@@ -110,11 +128,18 @@ pub struct InnerContext {
     journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
 }
 
+/// Information about current call frame
+#[derive(Debug, Default)]
+pub struct CallFrame {
+    pub caller: Address,
+}
+
 /// The context passed to syscalls
 #[derive(Debug)]
 pub struct SyscallContext<'c> {
     pub env: Env,
     pub db: &'c mut Db,
+    pub call_frame: CallFrame,
     pub inner_context: InnerContext,
 }
 
@@ -132,10 +157,11 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, db: &'c mut Db) -> Self {
+    pub fn new(env: Env, db: &'c mut Db, call_frame: CallFrame) -> Self {
         Self {
             env,
             db,
+            call_frame,
             inner_context: Default::default(),
         }
     }
@@ -220,6 +246,157 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
+    pub extern "C" fn call(
+        &mut self,
+        mut gas_to_send: u64,
+        call_to_address: &U256,
+        value_to_transfer: &U256,
+        args_offset: u32,
+        args_size: u32,
+        ret_offset: u32,
+        ret_size: u32,
+        available_gas: u64,
+        consumed_gas: &mut u64,
+    ) -> u8 {
+        //TODO: Add call depth check
+        //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
+        let callee_address = call_to_address.to_address();
+        let value = value_to_transfer.to_primitive_u256();
+
+        //TODO: This should instead add the account fetch (warm or cold) cost
+        //For the moment we consider warm access
+        let callee_account = match self.db.basic(callee_address) {
+            Ok(maybe_account) => {
+                *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
+                maybe_account.unwrap_or_default()
+            }
+            Err(_) => {
+                *consumed_gas = 0;
+                return call_opcode::REVERT_RETURN_CODE;
+            }
+        };
+
+        let caller_address = self.env.tx.caller;
+        let caller_account = self
+            .db
+            .basic(caller_address)
+            .unwrap() //We are sure it exists
+            .unwrap_or_default();
+
+        let mut stipend = 0;
+        if !value.is_zero() {
+            if caller_account.balance < value {
+                //There isn't enough balance to send
+                return call_opcode::REVERT_RETURN_CODE;
+            }
+            *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
+            if callee_account.is_empty() {
+                *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
+            }
+            if available_gas < *consumed_gas {
+                return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
+            }
+            stipend = call_opcode::STIPEND_GAS_ADDITION;
+
+            //TODO: Maybe we should increment the nonce too
+            let caller_balance = caller_account.balance;
+            let caller_nonce = caller_account.nonce;
+            self.db.set_account(
+                caller_address,
+                caller_nonce,
+                caller_balance - value,
+                Default::default(),
+            );
+
+            let callee_balance = callee_account.balance;
+            let callee_nonce = callee_account.nonce;
+            self.db.set_account(
+                callee_address,
+                callee_nonce,
+                callee_balance + value,
+                Default::default(),
+            );
+        }
+
+        let remaining_gas = available_gas - *consumed_gas;
+        gas_to_send = std::cmp::min(
+            remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+            gas_to_send,
+        );
+        *consumed_gas += gas_to_send;
+        gas_to_send += stipend;
+
+        let mut env = self.env.clone();
+        env.tx.transact_to = TransactTo::Call(callee_address);
+
+        //TODO: Check if this is ok
+        let new_frame_caller = match self.env.tx.transact_to {
+            TransactTo::Call(a) => a,
+            TransactTo::Create => Address::zero(),
+        };
+        env.tx.value = value;
+        env.tx.gas_limit = gas_to_send;
+
+        //Copy the calldata from memory
+        let off = args_offset as usize;
+        let size = args_size as usize;
+        env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+
+        //NOTE: We could optimize this by not making the call if the bytecode is zero.
+        //We would have to refund the stipend here
+        //TODO: Check if returning REVERT because of database fail is ok
+        let Ok(bytecode) = self.db.code_by_address(callee_address) else {
+            *consumed_gas = 0;
+            return call_opcode::REVERT_RETURN_CODE;
+        };
+        let program = Program::from_bytecode(&bytecode);
+
+        //TODO: REMOVE THIS -> For the moment we don't need the output, so we just write to a
+        //fixed output file.
+        //In the future we will probably fetch the disk to search for the requested contract
+        //bytecode. Then, if it is not present, we will compile it and store it in the disk
+        let output_file = PathBuf::from("output2");
+
+        let context = Context::new();
+        let module = context
+            .compile(&program, &output_file)
+            .expect("failed to compile program");
+
+        let executor = Executor::new(&module, OptLevel::Aggressive);
+        let call_frame = CallFrame {
+            caller: new_frame_caller,
+        };
+        let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
+
+        executor.execute(&mut context, env.tx.gas_limit);
+
+        match context.get_result().unwrap().result {
+            ExecutionResult::Success {
+                gas_used, output, ..
+            } => {
+                self.write_to_memory(ret_offset as _, ret_size as _, output.data());
+                *consumed_gas -= gas_to_send - gas_used;
+                call_opcode::SUCCESS_RETURN_CODE
+            }
+            //TODO: If we revert, should we still send the value to the called contract?
+            ExecutionResult::Revert {
+                gas_used, output, ..
+            } => {
+                self.write_to_memory(ret_offset as _, ret_size as _, &output);
+                *consumed_gas -= gas_to_send - gas_used;
+                call_opcode::REVERT_RETURN_CODE
+            }
+            ExecutionResult::Halt { gas_used, .. } => {
+                *consumed_gas -= gas_to_send - gas_used;
+                call_opcode::REVERT_RETURN_CODE
+            }
+        }
+    }
+
+    fn write_to_memory(&mut self, offset: usize, size: usize, data: &[u8]) {
+        self.inner_context.memory[offset..offset + size].copy_from_slice(data);
+    }
+
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
             TransactTo::Call(address) => self.db.basic(address).unwrap().unwrap_or_default(),
@@ -245,10 +422,8 @@ impl<'c> SyscallContext<'c> {
         value.hi = (aux >> 128).low_u128();
     }
 
-    pub extern "C" fn store_in_blobbasefee_ptr(&self, value: &mut U256) {
-        let aux = &self.env.block.blob_base_fee;
-        value.lo = aux.low_u128();
-        value.hi = (aux >> 128).low_u128();
+    pub extern "C" fn store_in_blobbasefee_ptr(&self, value: &mut u128) {
+        *value = self.env.block.blob_gasprice.unwrap_or_default();
     }
 
     pub extern "C" fn get_gaslimit(&self) -> u64 {
@@ -331,7 +506,14 @@ impl<'c> SyscallContext<'c> {
             size
         };
 
-        let code_slice = &self.inner_context.program[code_offset..code_offset + size];
+        let Some(code_slice) = &self
+            .inner_context
+            .program
+            .get(code_offset..code_offset + size)
+        else {
+            eprintln!("Error on copy_code_to_memory");
+            return; // TODO: fix bug with code indexes
+        };
         // copy the program into memory
         self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
@@ -488,8 +670,18 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+        //TODO: Here we are returning 0 if a Database error occurs. Check this
         Address::try_from(address)
-            .map(|a| self.db.code_by_address(a).len())
+            .map(|a| {
+                self.db
+                    .code_by_address(a)
+                    .map_err(|e| {
+                        eprintln!("{e}");
+                        e
+                    })
+                    .unwrap_or_default()
+                    .len()
+            })
             .unwrap_or(0) as _
     }
 
@@ -569,7 +761,16 @@ impl<'c> SyscallContext<'c> {
             self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
             return;
         };
-        let code = self.db.code_by_address(address);
+        // TODO: Check if returning default bytecode on database failure is ok
+        // A silenced error like this may produce unexpected code behaviour
+        let code = self
+            .db
+            .code_by_address(address)
+            .map_err(|e| {
+                eprintln!("{e}");
+                e
+            })
+            .unwrap_or_default();
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];
@@ -615,6 +816,7 @@ pub mod symbols {
     pub const STORE_IN_SELFBALANCE_PTR: &str = "evm_mlir__store_in_selfbalance_ptr";
     pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
     pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
+    pub const CALL: &str = "evm_mlir__call";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -680,6 +882,22 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                 ) as *mut (),
         );
         engine.register_symbol(
+            symbols::CALL,
+            SyscallContext::call
+                as *const fn(
+                    *mut c_void,
+                    u64,
+                    *const U256,
+                    *const U256,
+                    u32,
+                    u32,
+                    u32,
+                    u32,
+                    u64,
+                    *mut u64,
+                ) as *mut (),
+        );
+        engine.register_symbol(
             symbols::GET_CALLDATA_PTR,
             SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
         );
@@ -710,7 +928,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::STORE_IN_BLOBBASEFEE_PTR,
             SyscallContext::store_in_blobbasefee_ptr
-                as *const extern "C" fn(&SyscallContext, *mut U256) -> () as *mut (),
+                as *const extern "C" fn(&SyscallContext, *mut u128) -> () as *mut (),
         );
         engine.register_symbol(
             symbols::GET_CODESIZE_FROM_ADDRESS,
@@ -1084,6 +1302,25 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORE_IN_BASEFEE_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::CALL),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[
+                        ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
+                        uint64, ptr_type,
+                    ],
+                    &[uint8],
+                )
+                .into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -1621,6 +1858,47 @@ pub(crate) mod mlir {
                 location,
             ))
             .result(0);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        value_ptr: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+        available_gas: Value<'c, 'c>,
+        remaining_gas_ptr: Value<'c, 'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint8 = IntegerType::new(mlir_ctx, 8).into();
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::CALL),
+                &[
+                    syscall_ctx,
+                    gas,
+                    address,
+                    value_ptr,
+                    args_offset,
+                    args_size,
+                    ret_offset,
+                    ret_size,
+                    available_gas,
+                    remaining_gas_ptr,
+                ],
+                &[uint8],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 
     #[allow(unused)]

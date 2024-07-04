@@ -34,7 +34,7 @@ fn run_program_get_result_with_gas(
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let mut context = SyscallContext::new(env, &mut db, Default::default());
 
     let _result = executor.execute(&mut context, initial_gas);
 
@@ -44,7 +44,7 @@ fn run_program_get_result_with_gas(
 fn run_program_assert_result(operations: Vec<Operation>, expected_result: &[u8]) {
     let result = run_program_get_result_with_gas(operations, 1e7 as _);
     assert!(result.is_success());
-    assert_eq!(result.output().unwrap(), expected_result);
+    assert_eq!(result.output().unwrap_or(&Bytes::new()), expected_result);
 }
 
 fn run_program_assert_stack_top(operations: Vec<Operation>, expected_result: BigUint) {
