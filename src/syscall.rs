@@ -604,6 +604,21 @@ impl<'c> SyscallContext<'c> {
         // pad the left part with zero
         self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
     }
+
+    pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
+        // TODO: check if address is cold
+
+        // todo: evitar clone en address:try_from
+        let hash =
+            match Address::try_from(&address.clone()).map(|addr| self.db.basic(addr).unwrap()) {
+                Ok(Some(account_info)) => account_info.code_hash,
+                _ => B256::zero(),
+            };
+
+        let (hi, lo) = hash.as_bytes().split_at(16);
+        address.lo = u128::from_be_bytes(lo.try_into().unwrap());
+        address.hi = u128::from_be_bytes(hi.try_into().unwrap());
+    }
 }
 
 pub mod symbols {
@@ -639,6 +654,7 @@ pub mod symbols {
     pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
     pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
     pub const GET_BLOCK_HASH: &str = "evm_mlir__get_block_hash";
+    pub const GET_CODE_HASH: &str = "evm_mlir__get_code_hash";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -801,6 +817,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_BLOCK_HASH,
             SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+
+        engine.register_symbol(
+            symbols::GET_CODE_HASH,
+            SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -1155,6 +1176,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_HASH),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CODE_HASH),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -1766,6 +1796,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_HASH),
             &[syscall_ctx, block_number],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn get_code_hash_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODE_HASH),
+            &[syscall_ctx, address],
             &[],
             location,
         ));

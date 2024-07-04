@@ -112,7 +112,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
-        Operation::ExtcodeHash => todo!(),
+        Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
     }
 }
 
@@ -4880,6 +4880,49 @@ fn codegen_blobhash<'c, 'r>(
     let index_ptr = allocate_and_store_value(op_ctx, &ok_block, index, location)?;
     let blobhash = get_blob_hash_at_index(op_ctx, &ok_block, index_ptr)?;
     stack_push(context, &ok_block, blobhash)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_extcodehash<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
+    op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location);
+
+    let code_hash_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            address_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, code_hash_value)?;
 
     Ok((start_block, ok_block))
 }

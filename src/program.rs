@@ -927,6 +927,7 @@ impl Program {
             Opcode::REVERT => Operation::Revert,
             Opcode::INVALID => Operation::Invalid,
             Opcode::BLOCKHASH => Operation::BlockHash,
+            Opcode::EXTCODEHASH => Operation::ExtcodeHash,
         };
         pc += 1;
 

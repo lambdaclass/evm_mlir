@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
     constants::gas_cost,
-    db::{Bytecode, Db},
+    db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
@@ -1877,4 +1877,80 @@ fn blobhash_with_index_too_big() {
 
     let expected_result = [0x00; 32];
     run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn extcodehash_happy_path() {
+    let address_number: u8 = 10;
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(address_number))),
+        Operation::ExtcodeHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let bytecode = Bytecode::from_static(b"60806040");
+    let address = Address::from_low_u64_be(address_number.into());
+    db = db.with_bytecode(address, bytecode);
+
+    let code_hash = db.basic(address).unwrap().unwrap().code_hash;
+    let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
+
+    run_program_assert_num_result(env, db, expected_code_hash);
+}
+
+#[test]
+fn extcodehash_with_stack_underflow() {
+    let operations = vec![Operation::ExtcodeHash];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn extcodehash_with_invalid_address() {
+    let invalid_address = [0xff_u8; 32];
+    let mut operations = vec![
+        Operation::Push((32, BigUint::from_bytes_be(&invalid_address))),
+        Operation::ExtcodeHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_code_hash = BigUint::ZERO;
+
+    run_program_assert_num_result(env, db, expected_code_hash);
+}
+
+#[test]
+fn extcodehash_with_non_existent_address() {
+    let address_number: u8 = 10;
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(address_number))),
+        Operation::ExtcodeHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_code_hash = BigUint::ZERO;
+
+    run_program_assert_num_result(env, db, expected_code_hash);
+}
+
+#[test]
+fn extcodehash_address_with_no_code() {
+    let address_number: u8 = 10;
+    let empty_keccak =
+        hex::decode("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").unwrap();
+
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(address_number))),
+        Operation::ExtcodeHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, mut db) = default_env_and_db_setup(operations);
+
+    let bytecode = Bytecode::from_static(b"");
+    let address = Address::from_low_u64_be(address_number.into());
+    db = db.with_bytecode(address, bytecode);
+    let expected_code_hash = BigUint::from_bytes_be(&empty_keccak);
+
+    run_program_assert_num_result(env, db, expected_code_hash);
 }
