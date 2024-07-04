@@ -606,14 +606,14 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
-        // TODO: check if address is cold
+        let hi_bytes = address.hi.to_be_bytes();
+        let lo_bytes = address.lo.to_be_bytes();
+        let address_bytes = [&hi_bytes[12..16], &lo_bytes[..]].concat();
 
-        // todo: evitar clone en address:try_from
-        let hash =
-            match Address::try_from(&address.clone()).map(|addr| self.db.basic(addr).unwrap()) {
-                Ok(Some(account_info)) => account_info.code_hash,
-                _ => B256::zero(),
-            };
+        let hash = match self.db.basic(Address::from_slice(&address_bytes)) {
+            Ok(Some(account_info)) => account_info.code_hash,
+            _ => B256::zero(),
+        };
 
         let (hi, lo) = hash.as_bytes().split_at(16);
         address.lo = u128::from_be_bytes(lo.try_into().unwrap());

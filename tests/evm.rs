@@ -1881,7 +1881,7 @@ fn blobhash_with_index_too_big() {
 
 #[test]
 fn extcodehash_happy_path() {
-    let address_number: u8 = 10;
+    let address_number = 10;
     let mut operations = vec![
         Operation::Push((1, BigUint::from(address_number))),
         Operation::ExtcodeHash,
@@ -1889,7 +1889,7 @@ fn extcodehash_happy_path() {
     append_return_result_operations(&mut operations);
     let (env, mut db) = default_env_and_db_setup(operations);
     let bytecode = Bytecode::from_static(b"60806040");
-    let address = Address::from_low_u64_be(address_number.into());
+    let address = Address::from_low_u64_be(address_number);
     db = db.with_bytecode(address, bytecode);
 
     let code_hash = db.basic(address).unwrap().unwrap().code_hash;
@@ -1907,15 +1907,23 @@ fn extcodehash_with_stack_underflow() {
 }
 
 #[test]
-fn extcodehash_with_invalid_address() {
-    let invalid_address = [0xff_u8; 32];
+fn extcodehash_with_32_byte_address() {
+    // When the address is pushed as a 32 byte value, only the last 20 bytes should be used to load the address.
+    let address_number = 10;
+    let mut address_bytes = [0xff; 32];
+    address_bytes[12..].copy_from_slice(Address::from_low_u64_be(address_number).as_bytes());
     let mut operations = vec![
-        Operation::Push((32, BigUint::from_bytes_be(&invalid_address))),
+        Operation::Push((32, BigUint::from_bytes_be(&address_bytes))),
         Operation::ExtcodeHash,
     ];
     append_return_result_operations(&mut operations);
-    let (env, db) = default_env_and_db_setup(operations);
-    let expected_code_hash = BigUint::ZERO;
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let bytecode = Bytecode::from_static(b"60806040");
+    let address = Address::from_low_u64_be(address_number);
+    db = db.with_bytecode(address, bytecode);
+
+    let code_hash = db.basic(address).unwrap().unwrap().code_hash;
+    let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
 
     run_program_assert_num_result(env, db, expected_code_hash);
 }
@@ -1936,7 +1944,7 @@ fn extcodehash_with_non_existent_address() {
 
 #[test]
 fn extcodehash_address_with_no_code() {
-    let address_number: u8 = 10;
+    let address_number = 10;
     let empty_keccak =
         hex::decode("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").unwrap();
 
@@ -1948,7 +1956,7 @@ fn extcodehash_address_with_no_code() {
     let (env, mut db) = default_env_and_db_setup(operations);
 
     let bytecode = Bytecode::from_static(b"");
-    let address = Address::from_low_u64_be(address_number.into());
+    let address = Address::from_low_u64_be(address_number);
     db = db.with_bytecode(address, bytecode);
     let expected_code_hash = BigUint::from_bytes_be(&empty_keccak);
 
