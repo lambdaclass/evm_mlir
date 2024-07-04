@@ -2290,3 +2290,25 @@ fn extcodehash_address_with_no_code() {
 
     run_program_assert_num_result(env, db, expected_code_hash);
 }
+
+#[test]
+fn create_happy_path() {
+    let value = 10;
+    let offset = 10;
+    let size = 10;
+
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, mut db) = default_env_and_db_setup(operations);
+
+    // TODO: check that contract is created in the returned address
+
+    let expected_address = BigUint::ZERO;
+
+    run_program_assert_num_result(env, db, expected_address);
+}

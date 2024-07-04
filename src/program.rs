@@ -148,7 +148,7 @@ pub enum Opcode {
     LOG3 = 0xA3,
     LOG4 = 0xA4,
     // unused 0xA5-0xEF
-    // CREATE = 0xF0,
+    CREATE = 0xF0,
     CALL = 0xF1,
     // CALLCODE = 0xF2,
     RETURN = 0xF3,
@@ -320,6 +320,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::BLOCKHASH as u8 => Opcode::BLOCKHASH,
             x if x == Opcode::EXTCODEHASH as u8 => Opcode::EXTCODEHASH,
+            x if x == Opcode::CREATE as u8 => Opcode::CREATE,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -403,6 +404,7 @@ pub enum Operation {
     Invalid,
     BlockHash,
     ExtcodeHash,
+    Create,
 }
 
 impl Operation {
@@ -489,6 +491,7 @@ impl Operation {
             Operation::Invalid => vec![Opcode::INVALID as u8],
             Operation::BlockHash => vec![Opcode::BLOCKHASH as u8],
             Operation::ExtcodeHash => vec![Opcode::EXTCODEHASH as u8],
+            Operation::Create => vec![Opcode::CREATE as u8],
         }
     }
 }
@@ -932,6 +935,7 @@ impl Program {
             Opcode::INVALID => Operation::Invalid,
             Opcode::BLOCKHASH => Operation::BlockHash,
             Opcode::EXTCODEHASH => Operation::ExtcodeHash,
+            Opcode::CREATE => Operation::Create,
         };
         pc += 1;
 
