@@ -20,7 +20,7 @@ use std::ffi::c_void;
 use crate::{
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
-    primitives::{Address, ToByteSlice, U256 as EU256},
+    primitives::{Address, ToByteSlice, B256, U256 as EU256},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
     utils::u256_from_u128,
@@ -476,12 +476,22 @@ impl<'c> SyscallContext<'c> {
         number.lo = block_number.low_u128();
     }
 
-    pub extern "C" fn get_block_hash(&mut self, number: &U256, hash: &mut U256) {
-        let number_asu256 = ethereum_types::U256::from_big_endian(
-            &[number.hi.to_be_bytes(), number.lo.to_be_bytes()].concat(),
-        );
-        let block_hash = self.db.block_hash(number_asu256).unwrap_or_default();
-        hash.copy_from(&block_hash);
+    pub extern "C" fn get_block_hash(&mut self, number: &mut U256) {
+        let number_as_u256 = u256_from_u128(number.hi, number.lo);
+
+        // If number is not in the valid range (last 256 blocks), zero should be returned.
+        let hash = if number_as_u256 < self.env.block.number.saturating_sub(EU256::from(256))
+            || number_as_u256 >= self.env.block.number
+        {
+            // TODO: check if this is necessary. Db should only contain last 256 blocks, so number check would not be needed.
+            B256::zero()
+        } else {
+            self.db.block_hash(number_as_u256).unwrap_or(B256::zero())
+        };
+
+        let (hi, lo) = hash.as_bytes().split_at(16);
+        number.lo = u128::from_be_bytes(lo.try_into().unwrap());
+        number.hi = u128::from_be_bytes(hi.try_into().unwrap());
     }
 
     /// Receives a memory offset and size, and a vector of topics.
@@ -786,8 +796,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         );
         engine.register_symbol(
             symbols::GET_BLOCK_HASH,
-            SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256, *mut U256)
-                as *mut (),
+            SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -1142,9 +1151,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_HASH),
-            TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
-            ),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -1749,13 +1756,12 @@ pub(crate) mod mlir {
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         block_number: Value<'c, 'c>,
-        block_hash: Value<'c, 'c>,
         location: Location<'c>,
     ) {
         block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_HASH),
-            &[syscall_ctx, block_number, block_hash],
+            &[syscall_ctx, block_number],
             &[],
             location,
         ));

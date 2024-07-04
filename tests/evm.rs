@@ -164,29 +164,47 @@ fn fibonacci_example() {
 }
 
 #[test]
-fn test_block_hash() {
+fn block_hash_happy_path() {
     let block_number = 1_u8;
-    let block_hash = 2_u8;
+    let block_hash = 209433;
+    let current_block_number = 3_u8;
     let expected_block_hash = BigUint::from(block_hash);
     let mut operations = vec![
         Operation::Push((1, BigUint::from(block_number))),
         Operation::BlockHash,
     ];
     append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    env.block.number = EU256::from(current_block_number);
+    db.insert_block_hash(EU256::from(block_number), B256::from_low_u64_be(block_hash));
 
-    let mut result_bytes = [0_u8; 32];
-    if expected_block_hash != BigUint::ZERO {
-        let bytes = expected_block_hash.to_bytes_be();
-        result_bytes[32 - bytes.len()..].copy_from_slice(&bytes);
-    }
-    let mut block_hash_as_slice = [0u8; 32];
-    block_hash_as_slice[31] = block_hash;
-    let block_hash_number: B256 = B256::from_slice(&block_hash_as_slice);
-    let block_number = ethereum_types::U256::from(block_number);
-
-    let (env, mut db) = default_env_and_db_setup(operations);
-    db.insert_block_hash(block_number, block_hash_number);
     run_program_assert_num_result(env, db, expected_block_hash);
+}
+
+#[test]
+fn block_hash_with_current_block_number() {
+    let block_number = 1_u8;
+    let block_hash = 29293;
+    let current_block_number = block_number;
+    let expected_block_hash = BigUint::ZERO;
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(block_number))),
+        Operation::BlockHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    env.block.number = EU256::from(current_block_number);
+    db.insert_block_hash(EU256::from(block_number), B256::from_low_u64_be(block_hash));
+
+    run_program_assert_num_result(env, db, expected_block_hash);
+}
+
+#[test]
+fn block_hash_with_stack_underflow() {
+    let operations = vec![Operation::BlockHash];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
 }
 
 #[test]

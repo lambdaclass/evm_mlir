@@ -971,7 +971,6 @@ impl<'c> OperationCtx<'c> {
         &'c self,
         block: &'c Block,
         block_number: Value<'c, 'c>,
-        block_hash: Value<'c, 'c>,
         location: Location<'c>,
     ) {
         syscall::mlir::get_block_hash_syscall(
@@ -979,7 +978,6 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             block_number,
-            block_hash,
             location,
         )
     }

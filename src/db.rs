@@ -21,7 +21,7 @@ pub struct DbAccount {
 pub struct Db {
     accounts: HashMap<Address, DbAccount>,
     contracts: HashMap<B256, Bytecode>,
-    pub block_hashes: HashMap<U256, B256>,
+    block_hashes: HashMap<U256, B256>,
 }
 
 impl Db {
