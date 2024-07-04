@@ -1,7 +1,6 @@
 use melior::{
     dialect::{
-        arith,
-        arith::CmpiPredicate,
+        arith::{self, CmpiPredicate},
         cf, func,
         llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
         ods,

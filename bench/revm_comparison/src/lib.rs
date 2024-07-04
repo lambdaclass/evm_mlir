@@ -7,7 +7,7 @@ use revm::{
     primitives::{address, Bytecode, TransactTo},
     Evm,
 };
-use std::{hint::black_box, path::PathBuf};
+use std::hint::black_box;
 
 pub const FIBONACCI_BYTECODE: &str =
     "5f355f60015b8215601a578181019150909160019003916005565b9150505f5260205ff3";
@@ -18,12 +18,9 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     let bytes = hex::decode(program).unwrap();
     let program = Program::from_bytecode(&bytes);
 
-    // This is for intermediate files
-    let output_file = PathBuf::from("output");
-
     let context = Context::new();
     let module = context
-        .compile(&program, &output_file)
+        .compile(&program, Default::default())
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, Default::default());
@@ -33,7 +30,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
     env.tx.data = Bytes::from(calldata);
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let mut context = SyscallContext::new(env, &mut db, Default::default());
     let initial_gas = 999_999_999;
 
     for _ in 0..runs - 1 {

@@ -21,7 +21,10 @@ use crate::{
     errors::CodegenError,
     program::{Operation, Program},
     syscall::{self, ExitStatusCode},
-    utils::{consume_gas_as_value, get_remaining_gas, integer_constant_from_u8, llvm_mlir},
+    utils::{
+        allocate_and_store_value, constant_value_from_i64, consume_gas_as_value, get_remaining_gas,
+        integer_constant_from_u8, llvm_mlir,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -980,6 +983,92 @@ impl<'c> OperationCtx<'c> {
             block_number,
             location,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn call_syscall(
+        &'c self,
+        start_block: &'c Block,
+        finish_block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+    ) -> Result<Value, CodegenError> {
+        let context = self.mlir_context;
+        let uint64 = IntegerType::new(context, 64);
+        let ptr_type = pointer(context, 0);
+
+        let available_gas = get_remaining_gas(context, start_block)?;
+        // Alloc and store value argument
+        let value_ptr = allocate_and_store_value(self, start_block, value, location)?;
+        let address_ptr = allocate_and_store_value(self, start_block, address, location)?;
+
+        // Alloc pointer to return gas value
+        let gas_pointer_size = constant_value_from_i64(context, start_block, 1_i64)?;
+        let gas_return_ptr = start_block
+            .append_operation(llvm::alloca(
+                context,
+                gas_pointer_size,
+                ptr_type,
+                location,
+                AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint64.into()))),
+            ))
+            .result(0)?
+            .into();
+
+        let return_value = syscall::mlir::call_syscall(
+            context,
+            self.syscall_ctx,
+            start_block,
+            location,
+            gas,
+            address_ptr,
+            value_ptr,
+            args_offset,
+            args_size,
+            ret_offset,
+            ret_size,
+            available_gas,
+            gas_return_ptr,
+        )?;
+
+        // Update the available gas with the remaining gas after the call
+        let consumed_gas = start_block
+            .append_operation(llvm::load(
+                context,
+                gas_return_ptr,
+                uint64.into(),
+                location,
+                LoadStoreOptions::default(),
+            ))
+            .result(0)?
+            .into();
+        let gas_flag = consume_gas_as_value(context, start_block, consumed_gas)?;
+
+        start_block.append_operation(cf::cond_br(
+            context,
+            gas_flag,
+            finish_block,
+            &self.revert_block,
+            &[],
+            &[],
+            location,
+        ));
+
+        // Extend the 8 bits result to 256 bits
+        let uint256 = IntegerType::new(context, 256);
+
+        let result = finish_block
+            .append_operation(arith::extui(return_value, uint256.into(), location))
+            .result(0)?
+            .into();
+
+        Ok(result)
     }
 
     pub(crate) fn get_code_hash_syscall(

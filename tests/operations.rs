@@ -16,7 +16,6 @@ use evm_mlir::{
 use hex_literal::hex;
 use num_bigint::{BigInt, BigUint};
 use rstest::rstest;
-use tempfile::NamedTempFile;
 
 fn run_program_get_result_with_gas(
     operations: Vec<Operation>,
@@ -24,13 +23,10 @@ fn run_program_get_result_with_gas(
 ) -> ExecutionResult {
     // Insert a return operation at the end of the program to verify top of stack.
     let program = Program::from(operations);
-    let output_file = NamedTempFile::new()
-        .expect("failed to generate tempfile")
-        .into_temp_path();
 
     let context = Context::new();
     let module = context
-        .compile(&program, &output_file)
+        .compile(&program, Default::default())
         .expect("failed to compile program");
 
     let executor = Executor::new(&module, Default::default());
@@ -38,7 +34,7 @@ fn run_program_get_result_with_gas(
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db);
+    let mut context = SyscallContext::new(env, &mut db, Default::default());
 
     let _result = executor.execute(&mut context, initial_gas);
 
