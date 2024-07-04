@@ -33,10 +33,17 @@ impl Db {
         self.block_hashes.insert(number, hash);
     }
 
-    pub fn update_account(&mut self, address: Address, nonce: u64, balance: U256) {
+    pub fn set_account(
+        &mut self,
+        address: Address,
+        nonce: u64,
+        balance: U256,
+        storage: HashMap<U256, U256>,
+    ) {
         if let Some(a) = self.accounts.get_mut(&address) {
             a.nonce = nonce;
             a.balance = balance;
+            a.storage = storage;
         }
     }
 

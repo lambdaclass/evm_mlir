@@ -1,6 +1,9 @@
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 mod ef_tests_executor;
-use ef_tests_executor::models::TestSuite;
+use ef_tests_executor::models::{AccountInfo, TestSuite};
 use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
@@ -30,7 +33,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP1153-transientStorage".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stEIP3855-push0".into(),
         "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
         "stRevertTest".into(),
@@ -39,8 +41,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stZeroCallsRevert".into(),
         "stSStoreTest".into(),
         "stEIP2930".into(),
-        "stRecursiveCreate".into(),
-        "vmIOandFlowOperations".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
         "vmPerformance".into(),
@@ -58,8 +58,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCreate2".into(),
         "stSpecialTest".into(),
         "stEIP150Specific".into(),
-        "eip1344_chainid".into(),
-        "vmBitwiseLogicOperation".into(),
         "eip3651_warm_coinbase".into(),
         "stSLoadTest".into(),
         "stExtCodeHash".into(),
@@ -119,6 +117,7 @@ fn get_ignored_suites() -> HashSet<String> {
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     let group_name = get_group_name_from_path(path);
+
     if get_ignored_groups().contains(&group_name) {
         return Ok(());
     }
@@ -128,23 +127,93 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     if get_ignored_suites().contains(&suite_name) {
         return Ok(());
     }
-    let test: TestSuite = serde_json::from_reader(contents.as_bytes())
+    let test_suite: TestSuite = serde_json::from_reader(contents.as_bytes())
         .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
 
-    for (_name, unit) in test.0 {
+    for (_name, unit) in test_suite.0 {
+        // NOTE: currently we only support Cancun spec
+        let Some(tests) = unit.post.get("Cancun") else {
+            continue;
+        };
         let Some(to) = unit.transaction.to else {
             return Err("`to` field is None".into());
         };
         let Some(account) = unit.pre.get(&to) else {
             return Err("Callee doesn't exist".into());
         };
-        let mut env = Env::default();
-        env.tx.transact_to = TransactTo::Call(to);
+        let sender = unit.transaction.sender.unwrap_or_default();
+        let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
-        let db = Db::new().with_bytecode(to, account.code.clone());
-        let mut evm = Evm::new(env, db);
-        // TODO: check the result
-        let _result = evm.transact();
+        for test in tests {
+            let mut env = Env::default();
+            env.tx.transact_to = TransactTo::Call(to);
+            env.tx.gas_price = gas_price;
+            env.tx.caller = sender;
+            env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
+            env.tx.value = unit.transaction.value[test.indexes.value];
+            env.tx.data = unit.transaction.data[test.indexes.data].clone();
+
+            env.block.number = unit.env.current_number;
+            env.block.coinbase = unit.env.current_coinbase;
+            env.block.timestamp = unit.env.current_timestamp;
+            let excess_blob_gas = unit
+                .env
+                .current_excess_blob_gas
+                .unwrap_or_default()
+                .as_u64();
+            env.block.set_blob_base_fee(excess_blob_gas);
+
+            if let Some(basefee) = unit.env.current_base_fee {
+                env.block.basefee = basefee;
+            };
+            let mut db = Db::new().with_bytecode(to, account.code.clone());
+
+            // Load pre storage into db
+            for (address, account_info) in unit.pre.iter() {
+                db = db.with_bytecode(address.to_owned(), account_info.code.clone());
+                db.set_account(
+                    address.to_owned(),
+                    account_info.nonce,
+                    account_info.balance,
+                    account_info.storage.clone(),
+                );
+            }
+            let mut evm = Evm::new(env, db);
+
+            let res = evm.transact().unwrap();
+
+            if test.expect_exception.is_some() {
+                assert!(!res.result.is_success());
+                // NOTE: the expect_exception string is an error description, we don't check the expected error
+                continue;
+            }
+
+            assert!(res.result.is_success());
+            assert_eq!(res.result.output().cloned(), unit.out);
+
+            // TODO: use rlp and hash to check logs
+
+            // Test the resulting storage is the same as the expected storage
+            let mut result_state = HashMap::new();
+            for address in test.post_state.keys() {
+                let account = res.state.get(address).unwrap();
+                result_state.insert(
+                    address.to_owned(),
+                    AccountInfo {
+                        balance: account.info.balance,
+                        code: account.info.code.clone().unwrap(),
+                        nonce: account.info.nonce,
+                        storage: account
+                            .storage
+                            .clone()
+                            .into_iter()
+                            .map(|(addr, slot)| (addr, slot.present_value))
+                            .collect(),
+                    },
+                );
+            }
+            assert_eq!(test.post_state, result_state);
+        }
     }
     Ok(())
 }
