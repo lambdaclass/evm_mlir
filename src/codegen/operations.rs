@@ -112,6 +112,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
+        Operation::ExtcodeHash => todo!(),
     }
 }
 
