@@ -301,13 +301,21 @@ impl<'c> SyscallContext<'c> {
             //TODO: Maybe we should increment the nonce too
             let caller_balance = caller_account.balance;
             let caller_nonce = caller_account.nonce;
-            self.db
-                .update_account(caller_address, caller_nonce, caller_balance - value);
+            self.db.set_account(
+                caller_address,
+                caller_nonce,
+                caller_balance - value,
+                Default::default(),
+            );
 
             let callee_balance = callee_account.balance;
             let callee_nonce = callee_account.nonce;
-            self.db
-                .update_account(callee_address, callee_nonce, callee_balance + value);
+            self.db.set_account(
+                callee_address,
+                callee_nonce,
+                callee_balance + value,
+                Default::default(),
+            );
         }
 
         let remaining_gas = available_gas - *consumed_gas;

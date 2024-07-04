@@ -1916,7 +1916,7 @@ fn call_returns_addition_from_arguments() {
     env.tx.caller = caller_address;
     let caller_balance = 100_u8;
     let mut db = db.with_bytecode(caller_address, bytecode);
-    db.update_account(caller_address, 0, caller_balance.into());
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
@@ -1989,7 +1989,7 @@ fn call_without_enough_balance() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let mut db = db.with_bytecode(caller_address, bytecode);
-    db.update_account(caller_address, 0, caller_balance.into());
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let expected_contract_call_result = 0_u8.into(); //Call failed
 
@@ -2102,7 +2102,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let mut db = db.with_bytecode(caller_address, bytecode);
-    db.update_account(caller_address, 0, caller_balance.into());
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }
@@ -2157,7 +2157,7 @@ fn call_gas_check_with_value_and_empty_account() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let mut db = db.with_bytecode(caller_address, bytecode);
-    db.update_account(caller_address, 0, caller_balance.into());
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }
