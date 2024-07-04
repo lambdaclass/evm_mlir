@@ -672,7 +672,16 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
         Address::try_from(address)
-            .map(|a| self.db.code_by_address(a).unwrap_or_default().len())
+            .map(|a| {
+                self.db
+                    .code_by_address(a)
+                    .map_err(|e| {
+                        eprintln!("{e}");
+                        e
+                    })
+                    .unwrap_or_default()
+                    .len()
+            })
             .unwrap_or(0) as _
     }
 
@@ -754,7 +763,14 @@ impl<'c> SyscallContext<'c> {
         };
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
-        let code = self.db.code_by_address(address).unwrap_or_default();
+        let code = self
+            .db
+            .code_by_address(address)
+            .map_err(|e| {
+                eprintln!("{e}");
+                e
+            })
+            .unwrap_or_default();
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];

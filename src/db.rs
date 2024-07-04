@@ -143,7 +143,13 @@ pub trait Database {
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
 
     /// Get account code by its address.
-    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error>;
+    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error> {
+        let code = self
+            .basic(address)?
+            .and_then(|acc| acc.code.or_else(|| self.code_by_hash(acc.code_hash).ok()))
+            .unwrap_or_default();
+        Ok(code)
+    }
 }
 
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
@@ -169,19 +175,6 @@ impl Database for Db {
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
         Ok(self.block_hashes.get(&number).cloned().unwrap_or_default())
-    }
-
-    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error> {
-        let maybe_account = self.accounts.get(&address).cloned().map(AccountInfo::from);
-        let code = match maybe_account {
-            None => Bytecode::default(),
-            Some(acc) => acc
-                .code
-                .or(self.contracts.get(&acc.code_hash).cloned())
-                .unwrap_or(Bytecode::default()),
-        };
-
-        Ok(code)
     }
 }
 
