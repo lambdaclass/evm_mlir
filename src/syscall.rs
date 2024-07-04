@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::{ffi::c_void, path::PathBuf};
+use std::ffi::c_void;
 
 use crate::{
     constants::call_opcode,
@@ -350,16 +350,9 @@ impl<'c> SyscallContext<'c> {
             return call_opcode::REVERT_RETURN_CODE;
         };
         let program = Program::from_bytecode(&bytecode);
-
-        //TODO: REMOVE THIS -> For the moment we don't need the output, so we just write to a
-        //fixed output file.
-        //In the future we will probably fetch the disk to search for the requested contract
-        //bytecode. Then, if it is not present, we will compile it and store it in the disk
-        let output_file = PathBuf::from("output2");
-
         let context = Context::new();
         let module = context
-            .compile(&program, &output_file)
+            .compile(&program, Default::default())
             .expect("failed to compile program");
 
         let executor = Executor::new(&module, OptLevel::Aggressive);
