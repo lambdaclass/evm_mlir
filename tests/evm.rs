@@ -1,7 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::gas_cost,
+    constants::{call_opcode, gas_cost},
     db::{Bytecode, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -52,6 +52,20 @@ fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
 
 fn run_program_assert_halt(env: Env, db: Db) {
     let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_halt());
+}
+
+fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
+    // Ok run
+    env.tx.gas_limit = needed_gas;
+    let mut evm = Evm::new(env.clone(), db.clone());
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    // Halt run
+    env.tx.gas_limit = needed_gas - 1;
+    let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
 }
@@ -1877,4 +1891,318 @@ fn blobhash_with_index_too_big() {
 
     let expected_result = [0x00; 32];
     run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn call_returns_addition_from_arguments() {
+    let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
+    let db = Db::new();
+
+    // Callee
+    let mut callee_ops = vec![
+        Operation::Push0,
+        Operation::CalldataLoad,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::CalldataLoad,
+        Operation::Add,
+    ];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 100_u8;
+    let value = 1_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((32_u8, b.clone())),                 //Operand B
+        Operation::Push0,                                    //
+        Operation::Mstore,                                   //Store in mem address 0
+        Operation::Push((32_u8, a.clone())),                 //Operand A
+        Operation::Push((1_u8, BigUint::from(32_u8))),       //
+        Operation::Mstore,                                   //Store in mem address 32
+        Operation::Push((1_u8, BigUint::from(ret_size))),    //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))),  //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))),   //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),       //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),         //Gas
+        Operation::Call,
+        //This ops will return the value stored in memory, the call status and the caller balance
+        //call status
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Mstore,
+        //caller balance
+        Operation::Push((20_u8, BigUint::from_bytes_be(caller_address.as_bytes()))),
+        Operation::Balance,
+        Operation::Push((1_u8, 64_u8.into())),
+        Operation::Mstore,
+        //Return
+        Operation::Push((1_u8, 96_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let caller_balance = 100_u8;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let res_bytes: &[u8] = result.output().unwrap();
+
+    let expected_contract_data_result = a + b;
+    let expected_caller_balance_result = (caller_balance - value).into(); //TODO: Change
+    let expected_contract_status_result = 1_u8.into(); //Call failed
+
+    let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
+    let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..64]);
+    let caller_balance_result = BigUint::from_bytes_be(&res_bytes[64..]);
+
+    assert_eq!(contract_status_result, expected_contract_status_result);
+    assert_eq!(contract_data_result, expected_contract_data_result);
+    assert_eq!(caller_balance_result, expected_caller_balance_result);
+}
+
+#[test]
+fn call_without_enough_balance() {
+    let db = Db::new();
+
+    // Callee
+    let mut callee_ops = vec![Operation::Push0];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 100_u8;
+    let value = 1_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        // Return both syscall result and caller balance
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((20_u8, BigUint::from_bytes_be(caller_address.as_bytes()))),
+        Operation::Balance,
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, 64_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    let expected_contract_call_result = 0_u8.into(); //Call failed
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let res_bytes: &[u8] = result.output().unwrap();
+
+    let contract_call_result = BigUint::from_bytes_be(&res_bytes[..32]);
+    let caller_balance_result = BigUint::from_bytes_be(&res_bytes[32..]);
+
+    assert_eq!(contract_call_result, expected_contract_call_result);
+    assert_eq!(caller_balance_result, caller_balance.into());
+}
+
+#[test]
+fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
+    /*
+    This will test the gas consumption for a call with the following conditions:
+    Value: 0
+    Argument size: 64 bytes
+    Argument offset: 0 bytes
+    Return size: 32 bytes
+    Return offset: 0 bytes
+    Called account empty?: False
+    Address access is warm?: True
+    */
+    let db = Db::new();
+
+    // Callee
+    let callee_ops = vec![
+        Operation::Push0,
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let callee_memory_expansion_cost = 6; //Memory expansion of size 32
+    let callee_gas_cost = gas_cost::PUSHN + gas_cost::PUSH0 * 3 + callee_memory_expansion_cost;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = callee_gas_cost as u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    /*
+    This test will check for the exact ammount of gas needed to perform a successful call without a value transfer
+    Since the gas sent to the callee has to be 1/64 th of the remaining gas, we have to add operations to
+    the caller to burn the extra gas that we have to add in order for the calle to receive the needed ammount
+
+    (needed_gas - caller_gas_cost) * 1/64 >= callee_gas_cost
+    needed_gas = caller_gas_cost + added_caller_gas_cost + callee_gas_cost
+
+    For the proposed set of operations, we have that:
+
+    callee_gas_cost = 15
+    caller_gas_cost = 144
+
+    => needed_gas >= 945
+    => added_caller_gas_cost >= 472.5
+
+    So, we have to add extra operations to caller in order to burn at least 473 of gas
+    */
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let mut caller_ops = vec![
+        Operation::Push((32_u8, BigUint::default())), //Operand B
+        Operation::Push0,                             //
+        Operation::Mstore,                            //Store in mem address 0
+        Operation::Push((32_u8, BigUint::default())), //Operand A
+        Operation::Push((1_u8, BigUint::from(32_u8))), //
+        Operation::Mstore,                            //Store in mem address 32
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))), //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),  //Gas
+        Operation::Call,
+    ];
+
+    let additional_caller_ops = 473;
+    caller_ops.extend(vec![Operation::Push0; additional_caller_ops]);
+
+    let caller_memory_expansion_cost = 6 * 2; // Memory expansion of size 64
+    let caller_call_cost = 100; //EVM Codes gas calculator (memory already expanded)
+    let caller_gas_cost =
+        gas_cost::PUSHN * 10 + gas_cost::PUSH0 + caller_memory_expansion_cost + caller_call_cost;
+    let added_caller_gas_cost = gas_cost::PUSH0 * additional_caller_ops as i64;
+
+    let needed_gas = caller_gas_cost + added_caller_gas_cost + callee_gas_cost;
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
+}
+
+#[test]
+fn call_gas_check_with_value_and_empty_account() {
+    /*
+    This will test the gas consumption for a call with the following conditions:
+    Value: 3
+    Argument size: 0 bytes
+    Argument offset: 0 bytes
+    Return size: 0 bytes
+    Return offset: 0 bytes
+    Called account empty?: True
+    Address access is warm?: True
+    */
+    let db = Db::new();
+
+    // Callee
+    let (callee_address, bytecode) = (Address::from_low_u64_be(8080), Bytecode::default());
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 255_u8;
+    let value = 3_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+    ];
+
+    //address_access_cost + positive_value_cost + value_to_empty_account_cost
+    let caller_call_cost = call_opcode::WARM_MEMORY_ACCESS_COST
+        + call_opcode::NOT_ZERO_VALUE_COST
+        + call_opcode::EMPTY_CALLEE_COST;
+    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost as i64;
+
+    let caller_balance: u8 = 5;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }

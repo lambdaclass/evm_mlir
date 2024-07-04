@@ -1,10 +1,12 @@
 #![allow(unused)]
 use crate::{
+    constants::EMPTY_CODE_HASH_STR,
     primitives::{Address, Bytes, B256, U256},
     state::{Account, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
+use std::str::FromStr;
 use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
@@ -75,18 +77,6 @@ impl Db {
             .unwrap_or(U256::zero())
     }
 
-    pub fn code_by_address(&self, address: Address) -> Bytecode {
-        // Returns the bytecode of an address
-        match self.accounts.get(&address) {
-            Some(acc) => self
-                .contracts
-                .get(&acc.bytecode_hash)
-                .cloned()
-                .unwrap_or_default(),
-            None => Bytecode::default(),
-        }
-    }
-
     pub fn into_state(self) -> HashMap<Address, Account> {
         self.accounts
             .iter()
@@ -121,6 +111,14 @@ pub struct AccountInfo {
     pub code: Option<Bytecode>,
 }
 
+impl AccountInfo {
+    pub fn is_empty(&self) -> bool {
+        self.balance.is_zero()
+            && self.nonce == 0
+            && self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap()
+    }
+}
+
 impl From<DbAccount> for AccountInfo {
     fn from(db_account: DbAccount) -> Self {
         Self {
@@ -147,6 +145,15 @@ pub trait Database {
 
     /// Get block hash by block number.
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
+
+    /// Get account code by its address.
+    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error> {
+        let code = self
+            .basic(address)?
+            .and_then(|acc| acc.code.or_else(|| self.code_by_hash(acc.code_hash).ok()))
+            .unwrap_or_default();
+        Ok(code)
+    }
 }
 
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
