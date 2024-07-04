@@ -20,7 +20,7 @@ use std::ffi::c_void;
 use crate::{
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
-    primitives::{Address, ToByteSlice, B256, U256 as EU256},
+    primitives::{Address, B256, U256 as EU256},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
     utils::u256_from_u128,
@@ -46,10 +46,9 @@ impl U256 {
         U256 { hi, lo }
     }
 
-    pub fn copy_from<T: ToByteSlice>(&mut self, value: &T) {
+    pub fn copy_from(&mut self, value: &Address) {
         let mut buffer = [0u8; 32];
-        let slice = value.to_byte_slice();
-        buffer[32 - slice.len()..].copy_from_slice(slice);
+        buffer[12..32].copy_from_slice(&value.0);
         self.lo = u128::from_be_bytes(buffer[16..32].try_into().unwrap());
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
