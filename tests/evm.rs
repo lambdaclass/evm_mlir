@@ -2237,7 +2237,7 @@ fn returndatasize_happy_path() {
         Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
         Operation::Push((1_u8, BigUint::from(gas))),      //Gas
         Operation::Call,
-        Operation::CallDataSize,
+        Operation::ReturnDataSize,
     ];
 
     append_return_result_operations(&mut caller_ops);
@@ -2257,7 +2257,7 @@ fn returndatasize_happy_path() {
 #[test]
 fn returndatasize_no_return_data() {
     let caller_address = Address::from_low_u64_be(4040);
-    let mut caller_ops = vec![Operation::CallDataSize];
+    let mut caller_ops = vec![Operation::ReturnDataSize];
 
     append_return_result_operations(&mut caller_ops);
 
@@ -2275,7 +2275,7 @@ fn returndatasize_no_return_data() {
 
 #[test]
 fn returndatasize_gas_check() {
-    let operations = vec![Operation::CallDataSize];
+    let operations = vec![Operation::ReturnDataSize];
     let (env, db) = default_env_and_db_setup(operations);
     let needed_gas = gas_cost::RETURNDATASIZE as _;
 
