@@ -57,7 +57,11 @@ impl Evm<Db> {
             TransactTo::Create => unimplemented!(), // TODO: implement creation
         };
 
-        let bytecode = self.db.code_by_address(code_address);
+        //TODO: Improve error handling
+        let bytecode = self
+            .db
+            .code_by_address(code_address)
+            .expect("Failed to get code from address");
         let program = Program::from_bytecode(&bytecode);
 
         let module = context

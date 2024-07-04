@@ -66,18 +66,6 @@ impl Db {
             .unwrap_or(U256::zero())
     }
 
-    pub fn code_by_address(&self, address: Address) -> Bytecode {
-        // Returns the bytecode of an address
-        match self.accounts.get(&address) {
-            Some(acc) => self
-                .contracts
-                .get(&acc.bytecode_hash)
-                .cloned()
-                .unwrap_or_default(),
-            None => Bytecode::default(),
-        }
-    }
-
     pub fn into_state(self) -> HashMap<Address, Account> {
         self.accounts
             .iter()
@@ -146,6 +134,9 @@ pub trait Database {
 
     /// Get block hash by block number.
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error>;
+
+    /// Get account code by its address.
+    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error>;
 }
 
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
@@ -171,6 +162,19 @@ impl Database for Db {
 
     fn block_hash(&mut self, number: U256) -> Result<B256, Self::Error> {
         Ok(self.block_hashes.get(&number).cloned().unwrap_or_default())
+    }
+
+    fn code_by_address(&mut self, address: Address) -> Result<Bytecode, Self::Error> {
+        let maybe_account = self.accounts.get(&address).cloned().map(AccountInfo::from);
+        let code = match maybe_account {
+            None => Bytecode::default(),
+            Some(acc) => acc
+                .code
+                .or(self.contracts.get(&acc.code_hash).cloned())
+                .unwrap_or(Bytecode::default()),
+        };
+
+        Ok(code)
     }
 }
 

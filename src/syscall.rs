@@ -336,7 +336,11 @@ impl<'c> SyscallContext<'c> {
 
         //NOTE: We could optimize this by not making the call if the bytecode is zero.
         //We would have to refund the stipend here
-        let bytecode = self.db.code_by_address(callee_address);
+        //TODO: Check if returning REVERT because of database fail is ok
+        let Ok(bytecode) = self.db.code_by_address(callee_address) else {
+            *consumed_gas = 0;
+            return call_opcode::REVERT_RETURN_CODE;
+        };
         let program = Program::from_bytecode(&bytecode);
 
         //TODO: REMOVE THIS -> For the moment we don't need the output, so we just write to a
@@ -653,8 +657,9 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+        //TODO: Here we are returning 0 if a Database error occurs. Check this
         Address::try_from(address)
-            .map(|a| self.db.code_by_address(a).len())
+            .map(|a| self.db.code_by_address(a).unwrap_or_default().len())
             .unwrap_or(0) as _
     }
 
@@ -734,7 +739,9 @@ impl<'c> SyscallContext<'c> {
             self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
             return;
         };
-        let code = self.db.code_by_address(address);
+        // TODO: Check if returning default bytecode on database failure is ok
+        // A silenced error like this may produce unexpected code behaviour
+        let code = self.db.code_by_address(address).unwrap_or_default();
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];
