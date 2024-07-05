@@ -81,6 +81,7 @@ pub fn generate_code_for_op<'c>(
         Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
         Operation::ReturnDataSize => codegen_returndatasize(op_ctx, region),
+        Operation::ReturnDataCopy => codegen_returndatacopy(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
@@ -5017,4 +5018,11 @@ fn codegen_returndatasize<'c, 'r>(
     stack_push(context, &ok_block, data_size)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_returndatacopy<'c, 'r>(
+    _op_ctx: &mut OperationCtx<'c>,
+    _region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    todo!()
 }
