@@ -404,27 +404,36 @@ impl<'c> SyscallContext<'c> {
         self.call_frame
             .last_call_return_data
             .clone_from(&return_data.to_vec());
-        //BUG: If return_data size is not equal to ret_size, then this write will panic
-        //A safe and efficient copying from slice auiliary function should be made which
-        //handles various boundary conditions, like:
-        // 1. Return data slice > (ret_offset + ret_size)
-        //   - In this case, should we still write ret_size bytes? (Copy not completed) or should
-        //   we keep the memory without changes?
-        // 2. Return data slice < (ret_offset + ret_size)
-        //   - In this case, what happens with the underlying memory? Is it padded with zeros?
-        //   Is it kept as it was? Should the operation fail?
-        self.write_to_memory(ret_offset as _, ret_size as _, &return_data);
+        Self::copy_exact(
+            &mut self.inner_context.memory,
+            &return_data,
+            ret_offset,
+            ret_size,
+        );
         *consumed_gas -= refunded_gas;
 
         return_code
     }
 
-    fn write_to_memory(&mut self, offset: usize, size: usize, data: &[u8]) {
-        // TODO: Hot patch to memory write bug here. Should be improved
-        if size == 0 {
+    fn copy_exact(target: &mut [u8], source: &[u8], t_offset: u32, s_size: u32) {
+        let t_offset = t_offset as usize;
+        let s_size = s_size as usize;
+
+        // Check if the offset is within the target slice
+        if t_offset >= target.len() {
+            // Nothing to copy, offset is beyond target length
             return;
         }
-        self.inner_context.memory[offset..offset + size].copy_from_slice(data);
+
+        // Calculate the actual number of bytes we can copy
+        let available_target_space = target.len() - t_offset;
+        let available_source_bytes = source.len();
+        let bytes_to_copy = s_size
+            .min(available_target_space)
+            .min(available_source_bytes);
+
+        // Perform the copy
+        target[t_offset..t_offset + bytes_to_copy].copy_from_slice(&source[..bytes_to_copy]);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
