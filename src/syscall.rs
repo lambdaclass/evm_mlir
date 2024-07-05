@@ -27,7 +27,6 @@ use crate::{
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
-    utils::u256_from_u128,
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
@@ -58,10 +57,7 @@ impl U256 {
     }
 
     pub fn to_primitive_u256(&self) -> EU256 {
-        let mut value = EU256::from(self.hi);
-        value <<= 128;
-        value += self.lo.into();
-        value
+        (EU256::from(self.hi) << 128) + self.lo
     }
 }
 
@@ -501,7 +497,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let address = self.env.tx.caller;
 
-        let key = u256_from_u128(stg_key.hi, stg_key.lo);
+        let key = stg_key.to_primitive_u256();
 
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
@@ -516,8 +512,8 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
-        let key = u256_from_u128(stg_key.hi, stg_key.lo);
-        let value = u256_from_u128(stg_value.hi, stg_value.lo);
+        let key = stg_key.to_primitive_u256();
+        let value = stg_value.to_primitive_u256();
 
         // Update the journaled storage and retrieve the previous stored values.
         let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
@@ -638,7 +634,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_block_hash(&mut self, number: &mut U256) {
-        let number_as_u256 = u256_from_u128(number.hi, number.lo);
+        let number_as_u256 = number.to_primitive_u256();
 
         // If number is not in the valid range (last 256 blocks), return zero.
         let hash = if number_as_u256 < self.env.block.number.saturating_sub(EU256::from(256))
