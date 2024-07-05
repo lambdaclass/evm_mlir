@@ -57,13 +57,6 @@ impl U256 {
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
 
-    pub fn to_address(&self) -> Address {
-        let hi_bytes = self.hi.to_be_bytes();
-        let lo_bytes = self.lo.to_be_bytes();
-        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-        Address::from_slice(&address)
-    }
-
     pub fn to_primitive_u256(&self) -> EU256 {
         let mut value = EU256::from(self.hi);
         value <<= 128;
@@ -72,19 +65,13 @@ impl U256 {
     }
 }
 
-impl TryFrom<&U256> for Address {
-    type Error = ();
-
-    fn try_from(value: &U256) -> Result<Self, Self::Error> {
-        const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
+impl From<&U256> for Address {
+    fn from(value: &U256) -> Self {
+        // NOTE: return an address using the last 20 bytes, discarding the first 12 bytes.
         let hi_bytes = value.hi.to_be_bytes();
         let lo_bytes = value.lo.to_be_bytes();
-        // Address is valid only if first 12 bytes are set to zero
-        if value.hi & FIRST_12_BYTES_MASK != 0 {
-            return Err(());
-        }
         let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-        Ok(Address::from_slice(&address))
+        Address::from_slice(&address)
     }
 }
 
@@ -260,7 +247,7 @@ impl<'c> SyscallContext<'c> {
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-        let callee_address = call_to_address.to_address();
+        let callee_address = Address::from(call_to_address);
         let value = value_to_transfer.to_primitive_u256();
 
         //TODO: This should instead add the account fetch (warm or cold) cost
@@ -682,18 +669,14 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        Address::try_from(address)
-            .map(|a| {
-                self.db
-                    .code_by_address(a)
-                    .map_err(|e| {
-                        eprintln!("{e}");
-                        e
-                    })
-                    .unwrap_or_default()
-                    .len()
+        self.db
+            .code_by_address(Address::from(address))
+            .map_err(|e| {
+                eprintln!("{e}");
+                e
             })
-            .unwrap_or(0) as _
+            .unwrap_or_default()
+            .len() as _
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
@@ -768,10 +751,7 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
-        let Ok(address) = Address::try_from(address_value) else {
-            self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
-            return;
-        };
+        let address = Address::from(address_value);
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
         let code = self
@@ -795,11 +775,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
-        let hi_bytes = address.hi.to_be_bytes();
-        let lo_bytes = address.lo.to_be_bytes();
-        let address_bytes = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-
-        let hash = match self.db.basic(Address::from_slice(&address_bytes)) {
+        let hash = match self.db.basic(Address::from(address as &U256)) {
             Ok(Some(account_info)) => account_info.code_hash,
             _ => B256::zero(),
         };
