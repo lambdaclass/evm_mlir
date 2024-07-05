@@ -1,3 +1,4 @@
+use rstest::rstest;
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
@@ -2150,6 +2151,106 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
+}
+
+#[rstest]
+// Case with offset=0; size=0
+#[case(
+    0,
+    0,
+    // Final memory state
+    //ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    &[0xFF; 32])]
+// Case with offset=1; size=3
+#[case(
+    1,
+    3,
+    // Final memory state
+    //ff333333ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    &[
+    vec![0xFF_u8; 1],
+    vec![0x33_u8; 3],
+    vec![0xFF_u8; 28]
+].concat())]
+// Case with offset=3; size=4
+#[case(
+    3,
+    4,
+    //Final memory state
+    //0xffffff33333333ffffffffffffffffffffffffffffffffffffffffffffffffff
+    &[
+    vec![0xFF_u8; 3],
+    vec![0x33_u8; 4],
+    vec![0xFF_u8; 25]
+].concat())]
+fn call_return_with_offset_and_size(
+    #[case] offset: u8,
+    #[case] size: u8,
+    #[case] expected_result: &[u8],
+) {
+    let db = Db::new();
+    let return_data = [0x33_u8; 5];
+
+    // Callee
+    let callee_ops = vec![
+        Operation::Push((5_u8, BigUint::from_bytes_be(&return_data))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, 5_u8.into())),
+        Operation::Push((1_u8, 27_u8.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_bytecode(callee_address, bytecode);
+
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+
+    let initial_memory_state = [0xFF_u8; 32]; //All 1s
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        // Set up memory with all 1s
+        Operation::Push((32_u8, BigUint::from_bytes_be(&initial_memory_state))),
+        Operation::Push0,
+        Operation::Mstore,
+        // Make the Call
+        Operation::Push((1_u8, BigUint::from(size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))), //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),  //Gas
+        Operation::Call,
+        // Return 32 bytes of data
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_bytecode(caller_address, bytecode);
+
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn call_check_stack_underflow() {
+    let program = vec![Operation::Call];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
 }
 
 #[test]
