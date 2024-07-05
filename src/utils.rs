@@ -22,7 +22,6 @@ use crate::{
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
-    primitives::U256,
     syscall::ExitStatusCode,
 };
 
@@ -806,10 +805,6 @@ pub fn check_if_zero<'ctx>(
         .result(0)?;
 
     Ok(flag.into())
-}
-
-pub fn u256_from_u128(hi: u128, lo: u128) -> U256 {
-    (U256::from(hi) << 128) + lo
 }
 
 pub(crate) fn round_up_32<'c>(
