@@ -139,7 +139,7 @@ impl CallFrame {
     pub fn new(caller: Address) -> Self {
         Self {
             caller,
-            last_call_return_data: Default::default(),
+            ..Default::default()
         }
     }
 }
@@ -415,25 +415,26 @@ impl<'c> SyscallContext<'c> {
         return_code
     }
 
-    fn copy_exact(target: &mut [u8], source: &[u8], t_offset: u32, s_size: u32) {
-        let t_offset = t_offset as usize;
-        let s_size = s_size as usize;
+    fn copy_exact(target: &mut [u8], source: &[u8], target_offset: u32, source_size: u32) {
+        let target_offset = target_offset as usize;
+        let source_size = source_size as usize;
 
         // Check if the offset is within the target slice
-        if t_offset >= target.len() {
-            // Nothing to copy, offset is beyond target length
+        if target_offset >= target.len() {
+            eprintln!("ERROR: Specified target offset is bigger than target len");
             return;
         }
 
         // Calculate the actual number of bytes we can copy
-        let available_target_space = target.len() - t_offset;
+        let available_target_space = target.len() - target_offset;
         let available_source_bytes = source.len();
-        let bytes_to_copy = s_size
+        let bytes_to_copy = source_size
             .min(available_target_space)
             .min(available_source_bytes);
 
         // Perform the copy
-        target[t_offset..t_offset + bytes_to_copy].copy_from_slice(&source[..bytes_to_copy]);
+        target[target_offset..target_offset + bytes_to_copy]
+            .copy_from_slice(&source[..bytes_to_copy]);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
