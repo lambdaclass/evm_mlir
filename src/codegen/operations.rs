@@ -80,6 +80,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Gasprice => codegen_gasprice(op_ctx, region),
         Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
+        Operation::ReturnDataSize => codegen_returndatasize(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
@@ -5010,7 +5011,7 @@ fn codegen_extcodehash<'c, 'r>(
 
     op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location);
 
-    let code_hash_value: melior::ir::Value = ok_block
+    let code_hash_value = ok_block
         .append_operation(llvm::load(
             context,
             address_ptr,
@@ -5024,6 +5025,43 @@ fn codegen_extcodehash<'c, 'r>(
     // TODO: add gas consumption (once access lists are implemented)
 
     stack_push(context, &ok_block, code_hash_value)?;
+
+    Ok((start_block, ok_block))
+}
+
+fn codegen_returndatasize<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    // Check there's stack overflow
+    let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    // Check there's enough gas
+    let gas_flag = consume_gas(context, &start_block, gas_cost::RETURNDATASIZE)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let data_size = op_ctx.get_return_data_size(&ok_block, location)?;
+
+    stack_push(context, &ok_block, data_size)?;
 
     Ok((start_block, ok_block))
 }

@@ -54,6 +54,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x3A) GASPRICE
 1. (0x3B) EXTCODESIZE
 1. (0x3C) EXTCODECOPY
+1. (0x3D) RETURNDATASIZE
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
 1. (0x41) COINBASE
@@ -160,7 +161,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x3D) RETURNDATASIZE
 1. (0x3E) RETURNDATACOPY
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
