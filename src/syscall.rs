@@ -842,11 +842,11 @@ impl<'c> SyscallContext<'c> {
         let program = Program::from_bytecode(initialization_bytecode);
 
         // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
-        // TODO: replace the manual encoding once rlp is added
         let Some(sender_account) = self.db.basic(sender_address).unwrap() else {
             *value = U256::zero();
             return;
         };
+        // TODO: replace manual encoding once rlp is added
         let encoded_nonce = encode_rlp_u64(sender_account.nonce);
         let mut buf = Vec::<u8>::new();
         buf.push(0xd5);
@@ -857,6 +857,12 @@ impl<'c> SyscallContext<'c> {
         let mut hasher = Keccak256::new();
         hasher.update(&buf);
         let dest_addr = Address::from_slice(&hasher.finalize()[12..]);
+
+        // Check if there is already a contract stored in dest_address
+        if let Ok(Some(_)) = self.db.basic(dest_addr) {
+            *value = U256::zero();
+            return;
+        }
 
         // Create subcontext for the initialization code
         let mut new_env = self.env.clone();

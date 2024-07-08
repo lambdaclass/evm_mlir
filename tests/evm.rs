@@ -2522,3 +2522,93 @@ fn create_with_stack_underflow() {
 
     run_program_assert_halt(env, db);
 }
+
+#[test]
+fn create_with_balance_underflow() {
+    let value: u8 = 10;
+    let offset: u8 = 0;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::zero();
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+
+    // Check that the result is zero
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().to_vec(), [0_u8; 32].to_vec());
+
+    // Check that the sender account is not updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce);
+    assert_eq!(sender_account.balance, sender_balance);
+}
+
+#[test]
+fn create_with_invalid_initialization_code() {
+    let value: u8 = 10;
+    let offset: u8 = 0;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::zero();
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that halts
+    let initialization_code = hex::decode("63ffffffff526004601cf3").unwrap();
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+
+    // Check that the result is zero
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().to_vec(), [0_u8; 32].to_vec());
+
+    // Check that the sender account is not updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce);
+    assert_eq!(sender_account.balance, sender_balance);
+}
