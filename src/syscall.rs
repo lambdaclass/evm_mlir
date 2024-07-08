@@ -27,7 +27,6 @@ use crate::{
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
-    utils::u256_from_u128,
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
@@ -57,34 +56,18 @@ impl U256 {
         self.hi = u128::from_be_bytes(buffer[0..16].try_into().unwrap());
     }
 
-    pub fn to_address(&self) -> Address {
-        let hi_bytes = self.hi.to_be_bytes();
-        let lo_bytes = self.lo.to_be_bytes();
-        let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-        Address::from_slice(&address)
-    }
-
     pub fn to_primitive_u256(&self) -> EU256 {
-        let mut value = EU256::from(self.hi);
-        value <<= 128;
-        value += self.lo.into();
-        value
+        (EU256::from(self.hi) << 128) + self.lo
     }
 }
 
-impl TryFrom<&U256> for Address {
-    type Error = ();
-
-    fn try_from(value: &U256) -> Result<Self, Self::Error> {
-        const FIRST_12_BYTES_MASK: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFF00000000;
+impl From<&U256> for Address {
+    fn from(value: &U256) -> Self {
+        // NOTE: return an address using the last 20 bytes, discarding the first 12 bytes.
         let hi_bytes = value.hi.to_be_bytes();
         let lo_bytes = value.lo.to_be_bytes();
-        // Address is valid only if first 12 bytes are set to zero
-        if value.hi & FIRST_12_BYTES_MASK != 0 {
-            return Err(());
-        }
         let address = [&hi_bytes[12..16], &lo_bytes[..]].concat();
-        Ok(Address::from_slice(&address))
+        Address::from_slice(&address)
     }
 }
 
@@ -274,7 +257,7 @@ impl<'c> SyscallContext<'c> {
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-        let callee_address = call_to_address.to_address();
+        let callee_address = Address::from(call_to_address);
         let value = value_to_transfer.to_primitive_u256();
 
         //TODO: This should instead add the account fetch (warm or cold) cost
@@ -561,7 +544,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let address = self.env.tx.caller;
 
-        let key = u256_from_u128(stg_key.hi, stg_key.lo);
+        let key = stg_key.to_primitive_u256();
 
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
@@ -576,8 +559,8 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
-        let key = u256_from_u128(stg_key.hi, stg_key.lo);
-        let value = u256_from_u128(stg_value.hi, stg_value.lo);
+        let key = stg_key.to_primitive_u256();
+        let value = stg_value.to_primitive_u256();
 
         // Update the journaled storage and retrieve the previous stored values.
         let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
@@ -698,7 +681,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_block_hash(&mut self, number: &mut U256) {
-        let number_as_u256 = u256_from_u128(number.hi, number.lo);
+        let number_as_u256 = number.to_primitive_u256();
 
         // If number is not in the valid range (last 256 blocks), return zero.
         let hash = if number_as_u256 < self.env.block.number.saturating_sub(EU256::from(256))
@@ -729,18 +712,14 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        Address::try_from(address)
-            .map(|a| {
-                self.db
-                    .code_by_address(a)
-                    .map_err(|e| {
-                        eprintln!("{e}");
-                        e
-                    })
-                    .unwrap_or_default()
-                    .len()
+        self.db
+            .code_by_address(Address::from(address))
+            .map_err(|e| {
+                eprintln!("{e}");
+                e
             })
-            .unwrap_or(0) as _
+            .unwrap_or_default()
+            .len() as _
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
@@ -815,10 +794,7 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
-        let Ok(address) = Address::try_from(address_value) else {
-            self.inner_context.memory[dest_offset..dest_offset + size].fill(0);
-            return;
-        };
+        let address = Address::from(address_value);
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
         let code = self
@@ -839,6 +815,17 @@ impl<'c> SyscallContext<'c> {
             .copy_from_slice(code_slice);
         // pad the left part with zero
         self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
+    }
+
+    pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
+        let hash = match self.db.basic(Address::from(address as &U256)) {
+            Ok(Some(account_info)) => account_info.code_hash,
+            _ => B256::zero(),
+        };
+
+        let (hi, lo) = hash.as_bytes().split_at(16);
+        address.lo = u128::from_be_bytes(lo.try_into().unwrap());
+        address.hi = u128::from_be_bytes(hi.try_into().unwrap());
     }
 }
 
@@ -875,6 +862,7 @@ pub mod symbols {
     pub const COPY_EXT_CODE_TO_MEMORY: &str = "evm_mlir__copy_ext_code_to_memory";
     pub const GET_PREVRANDAO: &str = "evm_mlir__get_prevrandao";
     pub const GET_BLOCK_HASH: &str = "evm_mlir__get_block_hash";
+    pub const GET_CODE_HASH: &str = "evm_mlir__get_code_hash";
     pub const CALL: &str = "evm_mlir__call";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
 }
@@ -1056,6 +1044,12 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::GET_BLOCK_HASH,
             SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256) as *mut (),
         );
+
+        engine.register_symbol(
+            symbols::GET_CODE_HASH,
+            SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+
         engine.register_symbol(
             symbols::GET_RETURN_DATA_SIZE,
             SyscallContext::get_return_data_size as *const fn(*mut c_void) as *mut (),
@@ -1432,6 +1426,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_BLOCK_HASH),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CODE_HASH),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
@@ -2093,6 +2096,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_BLOCK_HASH),
             &[syscall_ctx, block_number],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn get_code_hash_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODE_HASH),
+            &[syscall_ctx, address],
             &[],
             location,
         ));
