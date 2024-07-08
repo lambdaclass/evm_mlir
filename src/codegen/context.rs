@@ -1090,4 +1090,24 @@ impl<'c> OperationCtx<'c> {
 
         Ok(result)
     }
+
+    pub(crate) fn copy_return_data_into_memory(
+        &'c self,
+        block: &'c Block,
+        dest_offset: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        let context = self.mlir_context;
+        syscall::mlir::copy_return_data_into_memory(
+            context,
+            self.syscall_ctx,
+            block,
+            dest_offset,
+            offset,
+            size,
+            location,
+        );
+    }
 }

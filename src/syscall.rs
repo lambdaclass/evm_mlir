@@ -260,6 +260,21 @@ impl<'c> SyscallContext<'c> {
         self.call_frame.last_call_return_data.len() as _
     }
 
+    pub extern "C" fn copy_return_data_into_memory(
+        &mut self,
+        dest_offset: u32,
+        offset: u32,
+        size: u32,
+    ) {
+        Self::copy_exact(
+            &mut self.inner_context.memory,
+            &self.call_frame.last_call_return_data,
+            dest_offset,
+            offset,
+            size,
+        );
+    }
+
     pub extern "C" fn call(
         &mut self,
         mut gas_to_send: u64,
@@ -408,6 +423,7 @@ impl<'c> SyscallContext<'c> {
             &mut self.inner_context.memory,
             &return_data,
             ret_offset,
+            0,
             ret_size,
         );
         *consumed_gas -= refunded_gas;
@@ -415,26 +431,49 @@ impl<'c> SyscallContext<'c> {
         return_code
     }
 
-    fn copy_exact(target: &mut [u8], source: &[u8], t_offset: u32, s_size: u32) {
+    fn copy_exact(target: &mut [u8], source: &[u8], t_offset: u32, s_offset: u32, s_size: u32) {
+        // Convert u32 to usize
         let t_offset = t_offset as usize;
+        let s_offset = s_offset as usize;
         let s_size = s_size as usize;
 
-        // Check if the offset is within the target slice
-        if t_offset >= target.len() {
-            // Nothing to copy, offset is beyond target length
-            return;
+        // Check if the offsets are within their respective slices
+        if t_offset >= target.len() || s_offset >= source.len() {
+            return; // Nothing to copy, one of the offsets is beyond slice length
         }
 
         // Calculate the actual number of bytes we can copy
         let available_target_space = target.len() - t_offset;
-        let available_source_bytes = source.len();
+        let available_source_bytes = source.len() - s_offset;
         let bytes_to_copy = s_size
             .min(available_target_space)
             .min(available_source_bytes);
 
         // Perform the copy
-        target[t_offset..t_offset + bytes_to_copy].copy_from_slice(&source[..bytes_to_copy]);
+        target[t_offset..t_offset + bytes_to_copy]
+            .copy_from_slice(&source[s_offset..s_offset + bytes_to_copy]);
     }
+
+    // fn copy_exact(target: &mut [u8], source: &[u8], t_offset: u32, s_size: u32) {
+    //     let t_offset = t_offset as usize;
+    //     let s_size = s_size as usize;
+    //
+    //     // Check if the offset is within the target slice
+    //     if t_offset >= target.len() {
+    //         // Nothing to copy, offset is beyond target length
+    //         return;
+    //     }
+    //
+    //     // Calculate the actual number of bytes we can copy
+    //     let available_target_space = target.len() - t_offset;
+    //     let available_source_bytes = source.len();
+    //     let bytes_to_copy = s_size
+    //         .min(available_target_space)
+    //         .min(available_source_bytes);
+    //
+    //     // Perform the copy
+    //     target[t_offset..t_offset + bytes_to_copy].copy_from_slice(&source[..bytes_to_copy]);
+    // }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
@@ -876,6 +915,7 @@ pub mod symbols {
     pub const GET_BLOCK_HASH: &str = "evm_mlir__get_block_hash";
     pub const CALL: &str = "evm_mlir__call";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
+    pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -1058,6 +1098,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_RETURN_DATA_SIZE,
             SyscallContext::get_return_data_size as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::COPY_RETURN_DATA_INTO_MEMORY,
+            SyscallContext::copy_return_data_into_memory as *const fn(*mut c_void, u32, u32, u32)
+                as *mut (),
         );
     };
 }
@@ -1441,6 +1486,17 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_RETURN_DATA_SIZE),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_RETURN_DATA_INTO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -2115,5 +2171,23 @@ pub(crate) mod mlir {
             .result(0)?;
 
         Ok(result.into())
+    }
+
+    pub(crate) fn copy_return_data_into_memory<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        dest_offset: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_RETURN_DATA_INTO_MEMORY),
+            &[syscall_ctx, dest_offset, offset, size],
+            &[],
+            location,
+        ));
     }
 }
