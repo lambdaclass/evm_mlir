@@ -239,7 +239,7 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    pub extern "C" fn get_return_data_size(&mut self) -> u64 {
+    pub extern "C" fn get_return_data_size(&mut self) -> u32 {
         self.call_frame.last_call_return_data.len() as _
     }
 
@@ -428,12 +428,12 @@ impl<'c> SyscallContext<'c> {
 
         // Check if the offsets are within their respective slices
         if size + target_offset > target.len() {
-            eprintln!("ERROR: Specified target offset is bigger than target len");
+            eprintln!("ERROR: Specified target offset and size are bigger than target len");
             return;
         }
 
-        if source_offset > source.len() {
-            // Nothing to copy
+        if size + source_offset > source.len() {
+            eprintln!("ERROR: Specified source offset and size are bigger than source len");
             return;
         }
 
@@ -1477,7 +1477,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_RETURN_DATA_SIZE),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
             Region::new(),
             attributes,
             location,
@@ -2167,13 +2167,13 @@ pub(crate) mod mlir {
         block: &'c Block,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
         let result = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_RETURN_DATA_SIZE),
                 &[syscall_ctx],
-                &[uint64],
+                &[uint32],
                 location,
             ))
             .result(0)?;

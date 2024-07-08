@@ -5153,7 +5153,7 @@ fn codegen_returndatacopy<'c, 'r>(
     let req_mem_size_ok = ext_mem_block
         .append_operation(arith::cmpi(
             context,
-            arith::CmpiPredicate::Sle,
+            arith::CmpiPredicate::Ule,
             req_return_data_size,
             return_data_size,
             location,
