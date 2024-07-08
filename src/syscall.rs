@@ -27,6 +27,7 @@ use crate::{
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
+    utils::encode_rlp_u64,
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
@@ -58,6 +59,10 @@ impl U256 {
 
     pub fn to_primitive_u256(&self) -> EU256 {
         (EU256::from(self.hi) << 128) + self.lo
+    }
+
+    pub fn zero() -> U256 {
+        U256::from_fixed_be_bytes([0; 32])
     }
 }
 
@@ -776,9 +781,74 @@ impl<'c> SyscallContext<'c> {
             _ => B256::zero(),
         };
 
-        let (hi, lo) = hash.as_bytes().split_at(16);
-        address.lo = u128::from_be_bytes(lo.try_into().unwrap());
-        address.hi = u128::from_be_bytes(hi.try_into().unwrap());
+        *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
+    }
+
+    pub extern "C" fn create(&mut self, size: u32, offset: u32, value: &mut U256) {
+        let value_as_u256 = value.to_primitive_u256();
+        let offset = offset as usize;
+        let size = size as usize;
+        let sender_address = self.env.tx.get_address();
+
+        // Read initialization code from memory
+        let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
+        let program = Program::from_bytecode(initialization_bytecode);
+
+        // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
+        // TODO: replace the manual encoding once rlp is added
+        let Some(sender_account) = self.db.basic(sender_address).unwrap() else {
+            *value = U256::zero();
+            return;
+        };
+        let encoded_nonce = encode_rlp_u64(sender_account.nonce);
+        let mut buf = Vec::<u8>::new();
+        buf.push(0xd5);
+        buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
+        buf.push(0x94);
+        buf.extend_from_slice(self.env.tx.caller.as_bytes());
+        buf.extend_from_slice(&encoded_nonce);
+        let mut hasher = Keccak256::new();
+        hasher.update(&buf);
+        let dest_addr = Address::from_slice(&hasher.finalize()[12..]);
+
+        // Create subcontext for the initialization code
+        let mut new_env = self.env.clone();
+        new_env.tx.transact_to = TransactTo::Call(dest_addr);
+        new_env.tx.gas_limit = self.env.tx.gas_limit; // TODO: usar contador de gas actualizado
+        new_env.tx.caller = sender_address;
+        let call_frame = CallFrame {
+            caller: sender_address,
+        };
+
+        // Execute initialization code
+        let context = Context::new();
+        let module = context
+            .compile(&program, Default::default())
+            .expect("failed to compile program");
+        let executor = Executor::new(&module, OptLevel::Aggressive);
+        let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
+        executor.execute(&mut context, new_env.tx.gas_limit);
+
+        // Check the result
+        let result = context.get_result().unwrap().result;
+        let bytecode = result.output().cloned().unwrap_or_default();
+
+        // Create the new contract and update the sender account
+        let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
+            *value = U256::zero();
+            return;
+        };
+        self.db.create_contract(dest_addr, bytecode, value_as_u256);
+        self.db.set_account(
+            sender_address,
+            sender_account.nonce + 1,
+            sender_balance,
+            Default::default(), // TODO: refactorizar set_account para no instanciar un nuevo hashmap
+        );
+
+        value.copy_from(&dest_addr);
+
+        // TODO: add dest_addr as warm in the access list
     }
 }
 
@@ -817,6 +887,7 @@ pub mod symbols {
     pub const GET_BLOCK_HASH: &str = "evm_mlir__get_block_hash";
     pub const GET_CODE_HASH: &str = "evm_mlir__get_code_hash";
     pub const CALL: &str = "evm_mlir__call";
+    pub const CREATE: &str = "evm_mlir__create";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -1000,6 +1071,12 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_CODE_HASH,
             SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+        );
+
+        engine.register_symbol(
+            symbols::CREATE,
+            SyscallContext::create as *const extern "C" fn(*mut c_void, u32, u32, *mut U256)
+                as *mut (),
         );
     };
 }
@@ -1383,6 +1460,17 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CODE_HASH),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::CREATE),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -2050,6 +2138,24 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODE_HASH),
             &[syscall_ctx, address],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn create_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        size: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
+            &[syscall_ctx, size, offset, value],
             &[],
             location,
         ));

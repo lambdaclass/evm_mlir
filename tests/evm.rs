@@ -2293,22 +2293,56 @@ fn extcodehash_address_with_no_code() {
 
 #[test]
 fn create_happy_path() {
-    let value = 10;
-    let offset = 10;
-    let size = 10;
+    let value: u8 = 10;
+    let offset: u8 = 0;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::from(25);
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
 
     let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
         Operation::Push((1, BigUint::from(value))),
         Operation::Push((1, BigUint::from(offset))),
         Operation::Push((1, BigUint::from(size))),
         Operation::Create,
     ];
     append_return_result_operations(&mut operations);
-    let (env, mut db) = default_env_and_db_setup(operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
 
-    // TODO: check that contract is created in the returned address
+    // Check that contract is created correctly in the returned address
+    let returned_addr = Address::from_slice(&result.output().unwrap()[12..]);
+    let new_account = evm.db.basic(returned_addr).unwrap().unwrap();
+    assert_eq!(new_account.balance, EU256::from(value));
+    assert_eq!(new_account.nonce, 1);
 
-    let expected_address = BigUint::ZERO;
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+    assert_eq!(sender_account.balance, sender_balance - value);
+}
 
-    run_program_assert_num_result(env, db, expected_address);
+#[test]
+fn create_with_stack_underflow() {
+    let operations = vec![Operation::Create];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
 }

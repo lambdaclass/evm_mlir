@@ -64,6 +64,21 @@ impl Db {
         self
     }
 
+    pub fn create_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
+        let mut hasher = Keccak256::new();
+        hasher.update(&bytecode);
+        let hash = B256::from_slice(&hasher.finalize());
+        let account = DbAccount {
+            bytecode_hash: hash,
+            nonce: 1,
+            balance,
+            ..Default::default()
+        };
+
+        self.accounts.insert(address, account);
+        self.contracts.insert(hash, bytecode);
+    }
+
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
         let account = self.accounts.entry(address).or_default();
         account.storage.insert(key, value);

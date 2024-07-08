@@ -5036,6 +5036,7 @@ fn codegen_create<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
+    let uint32 = IntegerType::new(context, 32);
 
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -5054,9 +5055,50 @@ fn codegen_create<'c, 'r>(
     let offset = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
 
-    // TODO
+    let offset_as_u32 = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)?
+        .into();
 
-    stack_push(context, &ok_block, address)?;
+    let size_as_u32 = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)?
+        .into();
 
-    Ok((start_block, ok_block))
+    let req_mem_size = ok_block
+        .append_operation(arith::addi(offset_as_u32, size_as_u32, location))
+        .result(0)?
+        .into();
+
+    let end_block = region.append_block(Block::new(&[]));
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &end_block,
+        region,
+        req_mem_size,
+        gas_cost::CREATE,
+    )?;
+
+    // TODO: also consume gas for init_code_cost + code_deposit_cost
+
+    let value_ptr = allocate_and_store_value(op_ctx, &end_block, value, location)?;
+
+    // Create the contract and store it in memory. The value pointer is set to the new contract address
+    op_ctx.create_syscall(&end_block, size_as_u32, offset_as_u32, value_ptr, location);
+
+    let code_address: melior::ir::Value = end_block
+        .append_operation(llvm::load(
+            context,
+            value_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &end_block, code_address)?;
+
+    Ok((start_block, end_block))
 }
