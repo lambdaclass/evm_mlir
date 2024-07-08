@@ -5061,6 +5061,13 @@ fn codegen_returndatasize<'c, 'r>(
 
     let data_size = op_ctx.get_return_data_size(&ok_block, location)?;
 
+    // Extend the 32 bits result to 256 bits
+    let uint256 = IntegerType::new(context, 256);
+    let data_size = ok_block
+        .append_operation(arith::extui(data_size, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, data_size)?;
 
     Ok((start_block, ok_block))
@@ -5146,10 +5153,6 @@ fn codegen_returndatacopy<'c, 'r>(
     //Check that offset + size < return_data_size
     let end_block = region.append_block(Block::new(&[]));
     let return_data_size = op_ctx.get_return_data_size(&ext_mem_block, location)?;
-    let return_data_size = ext_mem_block
-        .append_operation(arith::trunci(return_data_size, uint32.into(), location))
-        .result(0)?
-        .into();
     let req_mem_size_ok = ext_mem_block
         .append_operation(arith::cmpi(
             context,

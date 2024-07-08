@@ -1092,18 +1092,7 @@ impl<'c> OperationCtx<'c> {
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
-        let return_value =
-            syscall::mlir::get_return_data_size(context, self.syscall_ctx, block, location)?;
-
-        // Extend the 32 bits result to 256 bits
-        let uint256 = IntegerType::new(context, 256);
-
-        let result = block
-            .append_operation(arith::extui(return_value, uint256.into(), location))
-            .result(0)?
-            .into();
-
-        Ok(result)
+        syscall::mlir::get_return_data_size(context, self.syscall_ctx, block, location)
     }
 
     pub(crate) fn copy_return_data_into_memory(
