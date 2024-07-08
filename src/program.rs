@@ -49,7 +49,7 @@ pub enum Opcode {
     EXTCODECOPY = 0x3C,
     // RETURNDATASIZE = 0x3D,
     // RETURNDATACOPY = 0x3E,
-    // EXTCODEHASH = 0x3F,
+    EXTCODEHASH = 0x3F,
     BLOCKHASH = 0x40,
     COINBASE = 0x41,
     TIMESTAMP = 0x42,
@@ -319,6 +319,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::BLOCKHASH as u8 => Opcode::BLOCKHASH,
+            x if x == Opcode::EXTCODEHASH as u8 => Opcode::EXTCODEHASH,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -401,6 +402,7 @@ pub enum Operation {
     Revert,
     Invalid,
     BlockHash,
+    ExtcodeHash,
 }
 
 impl Operation {
@@ -486,6 +488,7 @@ impl Operation {
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Invalid => vec![Opcode::INVALID as u8],
             Operation::BlockHash => vec![Opcode::BLOCKHASH as u8],
+            Operation::ExtcodeHash => vec![Opcode::EXTCODEHASH as u8],
         }
     }
 }
@@ -928,6 +931,7 @@ impl Program {
             Opcode::REVERT => Operation::Revert,
             Opcode::INVALID => Operation::Invalid,
             Opcode::BLOCKHASH => Operation::BlockHash,
+            Opcode::EXTCODEHASH => Operation::ExtcodeHash,
         };
         pc += 1;
 

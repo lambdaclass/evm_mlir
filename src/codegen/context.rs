@@ -1070,4 +1070,19 @@ impl<'c> OperationCtx<'c> {
 
         Ok(result)
     }
+
+    pub(crate) fn get_code_hash_syscall(
+        &'c self,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::get_code_hash_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            address,
+            location,
+        )
+    }
 }
