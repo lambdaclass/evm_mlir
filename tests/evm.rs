@@ -2269,7 +2269,8 @@ fn call_gas_check_with_value_and_empty_account() {
 
     // Callee
     let (callee_address, bytecode) = (Address::from_low_u64_be(8080), Bytecode::default());
-    let db = db.with_bytecode(callee_address, bytecode);
+    let mut db = db.with_bytecode(callee_address, bytecode);
+    db.set_account(callee_address, 0, EU256::zero(), Default::default());
 
     let gas = 255_u8;
     let value = 3_u8;

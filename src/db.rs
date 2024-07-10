@@ -50,21 +50,11 @@ impl Db {
     }
 
     pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
-        let mut hasher = Keccak256::new();
-        hasher.update(&bytecode);
-        let hash = B256::from_slice(&hasher.finalize());
-        let account = DbAccount {
-            bytecode_hash: hash,
-            ..Default::default()
-        };
-
-        self.accounts.insert(address, account);
-        self.contracts.insert(hash, bytecode);
-
+        self.insert_contract(address, bytecode, U256::zero());
         self
     }
 
-    pub fn create_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
+    pub fn insert_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
         let hash = B256::from_slice(&hasher.finalize());

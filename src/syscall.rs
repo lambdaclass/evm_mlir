@@ -890,7 +890,7 @@ impl<'c> SyscallContext<'c> {
             *value = U256::zero();
             return;
         };
-        self.db.create_contract(dest_addr, bytecode, value_as_u256);
+        self.db.insert_contract(dest_addr, bytecode, value_as_u256);
         self.db.set_account(
             sender_address,
             sender_account.nonce + 1,

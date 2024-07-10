@@ -5118,11 +5118,10 @@ fn codegen_create<'c, 'r>(
         gas_cost::CREATE,
     )?;
 
-    // TODO: also consume gas for init_code_cost + code_deposit_cost
+    // TODO: add gas consumption for init_code_cost + code_deposit_cost
 
     let value_ptr = allocate_and_store_value(op_ctx, &end_block, value, location)?;
 
-    // Create the contract and store it in memory. The value pointer is set to the new contract address
     op_ctx.create_syscall(&end_block, size_as_u32, offset_as_u32, value_ptr, location);
 
     let code_address: melior::ir::Value = end_block
