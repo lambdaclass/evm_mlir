@@ -11,7 +11,7 @@ use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct DbAccount {
     pub nonce: u64,
     pub balance: U256,
@@ -42,26 +42,31 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        if let Some(a) = self.accounts.get_mut(&address) {
-            a.nonce = nonce;
-            a.balance = balance;
-            a.storage = storage;
-        }
+        // We should make `DbAccount::default` have an empty code hash
+        let a = self.accounts.entry(address).or_default();
+        a.nonce = nonce;
+        a.balance = balance;
+        a.storage = storage;
     }
 
-    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
+    pub fn with_contract(mut self, address: Address, bytecode: Bytecode) -> Self {
+        self.insert_contract(address, bytecode, U256::zero());
+        self
+    }
+
+    pub fn insert_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);
         let hash = B256::from_slice(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,
+            nonce: 1,
+            balance,
             ..Default::default()
         };
 
         self.accounts.insert(address, account);
         self.contracts.insert(hash, bytecode);
-
-        self
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
@@ -98,7 +103,7 @@ impl Db {
     }
 }
 
-#[derive(Default, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,
