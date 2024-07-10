@@ -11,23 +11,12 @@ use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct DbAccount {
     pub nonce: u64,
     pub balance: U256,
     pub storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
-}
-
-impl Default for DbAccount {
-    fn default() -> Self {
-        DbAccount {
-            nonce: 0,
-            balance: U256::zero(),
-            storage: HashMap::new(),
-            bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -53,6 +42,7 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
+        // We should make `DbAccount::default` have an empty code hash
         let a = self.accounts.entry(address).or_default();
         a.nonce = nonce;
         a.balance = balance;
@@ -113,7 +103,7 @@ impl Db {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,
@@ -124,17 +114,6 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
-}
-
-impl Default for AccountInfo {
-    fn default() -> Self {
-        AccountInfo {
-            balance: U256::zero(),
-            nonce: 0,
-            code_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
-            code: None,
-        }
-    }
 }
 
 impl AccountInfo {
