@@ -867,7 +867,7 @@ impl<'c> SyscallContext<'c> {
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
-        let Some(sender_account) = self.db.basic(current_address).unwrap() else {
+        let Some(sender_account) = self.db.basic(sender_address).unwrap() else {
             *value = U256::zero();
             return;
         };

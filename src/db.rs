@@ -42,10 +42,23 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        if let Some(a) = self.accounts.get_mut(&address) {
-            a.nonce = nonce;
-            a.balance = balance;
-            a.storage = storage;
+        match self.accounts.get_mut(&address) {
+            Some(a) => {
+                a.nonce = nonce;
+                a.balance = balance;
+                a.storage = storage;
+            }
+            None => {
+                self.accounts.insert(
+                    address,
+                    DbAccount {
+                        nonce,
+                        balance,
+                        storage,
+                        bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
+                    },
+                );
+            }
         }
     }
 
