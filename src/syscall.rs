@@ -212,9 +212,11 @@ impl<'c> SyscallContext<'c> {
         };
 
         let mut state = self.db.clone().into_state();
+        let callee_address = self.env.tx.get_address();
 
-        let caller_account = state.entry(self.env.tx.caller).or_default();
-        caller_account
+        state
+            .entry(callee_address)
+            .or_default()
             .storage
             .extend(self.inner_context.journaled_storage.clone());
 
@@ -569,7 +571,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
-        let address = self.env.tx.caller;
+        let address = self.env.tx.get_address();
 
         let key = stg_key.to_primitive_u256();
 
@@ -588,6 +590,10 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
         let key = stg_key.to_primitive_u256();
         let value = stg_value.to_primitive_u256();
+        // TODO: Check if this case is ok. Can storage be written on Create?
+        let TransactTo::Call(address) = self.env.tx.transact_to else {
+            return 0;
+        };
 
         // Update the journaled storage and retrieve the previous stored values.
         let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
@@ -602,7 +608,7 @@ impl<'c> SyscallContext<'c> {
                 (slot.original_value, current_value, is_cold)
             }
             None => {
-                let original_value = self.db.read_storage(self.env.tx.caller, key);
+                let original_value = self.db.read_storage(address, key);
                 self.inner_context.journaled_storage.insert(
                     key,
                     EvmStorageSlot {
