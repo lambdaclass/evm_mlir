@@ -62,7 +62,7 @@ impl U256 {
     }
 
     pub fn zero() -> U256 {
-        U256::from_fixed_be_bytes([0; 32])
+        U256 { hi: 0, lo: 0 }
     }
 }
 
