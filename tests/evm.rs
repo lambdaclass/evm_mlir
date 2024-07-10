@@ -2469,6 +2469,317 @@ fn returndatasize_gas_check() {
 }
 
 #[test]
+fn returndatacopy_happy_path() {
+    // Callee
+    let return_value = 15_u8;
+    let mut callee_ops = vec![Operation::Push((1_u8, return_value.into()))];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = Db::default().with_bytecode(callee_address, bytecode);
+
+    // Call arguments
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    // ReturnDataCopy arguments
+    let dest_offset = 0_u8;
+    let offset = 0_u8;
+    let size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::ReturnDataCopy,
+        // Return 32 bytes of data
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_bytecode(caller_address, bytecode);
+
+    let expected_result = return_value.into();
+
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn returndatacopy_no_return_data() {
+    let caller_address = Address::from_low_u64_be(4040);
+
+    // ReturnDataCopy arguments
+    let dest_offset = 0_u8;
+    let offset = 0_u8;
+    let size = 0_u8;
+
+    let initial_memory_state = [0xFF_u8; 32]; //All 1s
+    let caller_ops = vec![
+        // Set up memory with all 1s
+        Operation::Push((32_u8, BigUint::from_bytes_be(&initial_memory_state))),
+        Operation::Push0,
+        Operation::Mstore,
+        // ReturnDataCopy operation
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::ReturnDataCopy,
+        // Return 0 bytes of data
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = Db::default().with_bytecode(caller_address, bytecode);
+
+    // There was no return data, so memory stays the same
+    let expected_result = &initial_memory_state;
+
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn returndatacopy_size_smaller_than_data() {
+    // Callee
+    let return_data: &[u8] = &[0x33, 0x44, 0x55, 0x66, 0x77];
+
+    // Callee
+    let callee_ops = vec![
+        Operation::Push((5_u8, BigUint::from_bytes_be(return_data))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1_u8, 5_u8.into())),
+        Operation::Push((1_u8, 27_u8.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = Db::default().with_bytecode(callee_address, bytecode);
+
+    // Call arguments
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    // ReturnDataCopy arguments
+    let dest_offset = 1_u8;
+    let offset = 1_u8;
+    let size = 3_u8;
+
+    let initial_memory_state = [0xFF_u8; 32]; //All 1s
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        // Set up memory with all 1s
+        Operation::Push((32_u8, BigUint::from_bytes_be(&initial_memory_state))),
+        Operation::Push0,
+        Operation::Mstore,
+        // Make the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        // Use ReturnDataCopy
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::ReturnDataCopy,
+        // Return 32 bytes of data
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_bytecode(caller_address, bytecode);
+
+    let expected_result = &[
+        vec![0xFF_u8; 1], // <No collapse>
+        vec![0x44, 0x55, 0x66],
+        vec![0xFF_u8; 28],
+    ]
+    .concat();
+
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn returndatacopy_with_offset_and_size_bigger_than_data() {
+    // Callee
+    let return_value = 15_u8;
+    let mut callee_ops = vec![Operation::Push((1_u8, return_value.into()))];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = Db::default().with_bytecode(callee_address, bytecode);
+
+    // Call arguments
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    // ReturnDataCopy arguments
+    let dest_offset = 0_u8;
+    let offset = 10_u8;
+    let size = 23_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::ReturnDataCopy,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_bytecode(caller_address, bytecode);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn returndatacopy_check_stack_underflow() {
+    let program = vec![Operation::ReturnDataCopy];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn returndatacopy_gas_check() {
+    // Callee
+    let return_value = 15_u8;
+    let callee_ops = vec![
+        Operation::Push((1_u8, return_value.into())),
+        // Return value
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = Db::default().with_bytecode(callee_address, bytecode);
+
+    // Call arguments
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    // ReturnDataCopy arguments
+    let dest_offset = 32_u8;
+    let offset = 0_u8;
+    let size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((1_u8, BigUint::from(gas))),      //Gas
+        Operation::Call,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::ReturnDataCopy,
+    ];
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_bytecode(caller_address, bytecode);
+
+    let callee_gas_cost = gas_cost::PUSHN * 2
+        + gas_cost::PUSH0 * 2
+        + gas_cost::MSTORE
+        + gas_cost::memory_expansion_cost(0, 32_u32); // Return data
+    let caller_gas_cost = gas_cost::PUSHN * 10
+        + gas_cost::CALL
+        + call_opcode::WARM_MEMORY_ACCESS_COST as i64
+        + gas_cost::memory_copy_cost(size.into())
+        + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
+        + gas_cost::RETURNDATACOPY;
+
+    let initial_gas = 1e5;
+    let consumed_gas = caller_gas_cost + callee_gas_cost;
+
+    run_program_assert_gas_and_refund(env, db, initial_gas as _, consumed_gas as _, 0);
+}
+
+#[test]
 fn create_happy_path() {
     let value: u8 = 10;
     let offset: u8 = 0;

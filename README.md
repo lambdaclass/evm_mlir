@@ -55,6 +55,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x3B) EXTCODESIZE
 1. (0x3C) EXTCODECOPY
 1. (0x3D) RETURNDATASIZE
+1. (0x3E) RETURNDATACOPY
 1. (0x3F) EXTCODEHASH
 1. (0x40) BLOCKHASH
 1. (0x41) COINBASE
@@ -161,7 +162,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x3E) RETURNDATACOPY
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
 1. (0xF2) CALLCODE
@@ -312,6 +312,9 @@ The other generated artifacts are:
 - Executable (`<name>`)
 
 ### Running with a debugger
+
+> [!NOTE]  
+> This may not be up-to-date since contracts are no longer compiled into an executable.
 
 Once we have the executable, we can run it with a debugger (here we use `lldb`, but you can use others). To run with `lldb`, use `lldb <name>`.
 

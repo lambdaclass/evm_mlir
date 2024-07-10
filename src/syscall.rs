@@ -244,8 +244,23 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.exit_status = Some(ExitStatusCode::from_u8(execution_result));
     }
 
-    pub extern "C" fn get_return_data_size(&mut self) -> u64 {
+    pub extern "C" fn get_return_data_size(&mut self) -> u32 {
         self.call_frame.last_call_return_data.len() as _
+    }
+
+    pub extern "C" fn copy_return_data_into_memory(
+        &mut self,
+        dest_offset: u32,
+        offset: u32,
+        size: u32,
+    ) {
+        Self::copy_exact(
+            &mut self.inner_context.memory,
+            &self.call_frame.last_call_return_data,
+            dest_offset,
+            offset,
+            size,
+        );
     }
 
     pub extern "C" fn call(
@@ -396,6 +411,7 @@ impl<'c> SyscallContext<'c> {
             &mut self.inner_context.memory,
             &return_data,
             ret_offset,
+            0,
             ret_size,
         );
         *consumed_gas -= refunded_gas;
@@ -403,26 +419,37 @@ impl<'c> SyscallContext<'c> {
         return_code
     }
 
-    fn copy_exact(target: &mut [u8], source: &[u8], target_offset: u32, source_size: u32) {
+    fn copy_exact(
+        target: &mut [u8],
+        source: &[u8],
+        target_offset: u32,
+        source_offset: u32,
+        size: u32,
+    ) {
+        // Convert u32 to usize
         let target_offset = target_offset as usize;
-        let source_size = source_size as usize;
+        let source_offset = source_offset as usize;
+        let size = size as usize;
 
-        // Check if the offset is within the target slice
-        if target_offset >= target.len() {
-            eprintln!("ERROR: Specified target offset is bigger than target len");
+        // Check if the offsets are within their respective slices
+        if size + target_offset > target.len() {
+            eprintln!("ERROR: Specified target offset and size are bigger than target len");
+            return;
+        }
+
+        if size + source_offset > source.len() {
+            eprintln!("ERROR: Specified source offset and size are bigger than source len");
             return;
         }
 
         // Calculate the actual number of bytes we can copy
         let available_target_space = target.len() - target_offset;
-        let available_source_bytes = source.len();
-        let bytes_to_copy = source_size
-            .min(available_target_space)
-            .min(available_source_bytes);
+        let available_source_bytes = source.len() - source_offset;
+        let bytes_to_copy = size.min(available_target_space).min(available_source_bytes);
 
         // Perform the copy
         target[target_offset..target_offset + bytes_to_copy]
-            .copy_from_slice(&source[..bytes_to_copy]);
+            .copy_from_slice(&source[source_offset..source_offset + bytes_to_copy]);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
@@ -941,6 +968,7 @@ pub mod symbols {
     pub const CALL: &str = "evm_mlir__call";
     pub const CREATE: &str = "evm_mlir__create";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
+    pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -1135,6 +1163,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
         engine.register_symbol(
             symbols::GET_RETURN_DATA_SIZE,
             SyscallContext::get_return_data_size as *const fn(*mut c_void) as *mut (),
+        );
+        engine.register_symbol(
+            symbols::COPY_RETURN_DATA_INTO_MEMORY,
+            SyscallContext::copy_return_data_into_memory as *const fn(*mut c_void, u32, u32, u32)
+                as *mut (),
         );
     };
 }
@@ -1537,7 +1570,18 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_RETURN_DATA_SIZE),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint64]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type], &[uint32]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::COPY_RETURN_DATA_INTO_MEMORY),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -2234,17 +2278,35 @@ pub(crate) mod mlir {
         block: &'c Block,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+        let uint32 = IntegerType::new(mlir_ctx, 32).into();
         let result = block
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_RETURN_DATA_SIZE),
                 &[syscall_ctx],
-                &[uint64],
+                &[uint32],
                 location,
             ))
             .result(0)?;
 
         Ok(result.into())
+    }
+
+    pub(crate) fn copy_return_data_into_memory<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        dest_offset: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_RETURN_DATA_INTO_MEMORY),
+            &[syscall_ctx, dest_offset, offset, size],
+            &[],
+            location,
+        ));
     }
 }

@@ -81,6 +81,7 @@ pub fn generate_code_for_op<'c>(
         Operation::ExtcodeSize => codegen_extcodesize(op_ctx, region),
         Operation::ExtcodeCopy => codegen_extcodecopy(op_ctx, region),
         Operation::ReturnDataSize => codegen_returndatasize(op_ctx, region),
+        Operation::ReturnDataCopy => codegen_returndatacopy(op_ctx, region),
         Operation::Coinbase => codegen_coinbase(op_ctx, region),
         Operation::Timestamp => codegen_timestamp(op_ctx, region),
         Operation::Number => codegen_number(op_ctx, region),
@@ -5061,9 +5062,122 @@ fn codegen_returndatasize<'c, 'r>(
 
     let data_size = op_ctx.get_return_data_size(&ok_block, location)?;
 
+    // Extend the 32 bits result to 256 bits
+    let uint256 = IntegerType::new(context, 256);
+    let data_size = ok_block
+        .append_operation(arith::extui(data_size, uint256.into(), location))
+        .result(0)?
+        .into();
+
     stack_push(context, &ok_block, data_size)?;
 
     Ok((start_block, ok_block))
+}
+
+fn codegen_returndatacopy<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+    // where to copy
+    let dest_offset = stack_pop(context, &ok_block)?;
+    // where to copy from
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
+
+    // Truncate values to u32
+    let dest_offset = ok_block
+        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let offset = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let size = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    //gas_cost = copy_gas_cost + memory_expansion_cost + static_gas_cost
+    let copy_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
+    let copy_gas_cost_flag = consume_gas_as_value(context, &ok_block, copy_gas_cost)?;
+    let gas_ok_block = region.append_block(Block::new(&[]));
+
+    ok_block.append_operation(cf::cond_br(
+        context,
+        copy_gas_cost_flag,
+        &gas_ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    // Extend memory to required size
+    let req_mem_size = gas_ok_block
+        .append_operation(arith::addi(dest_offset, size, location))
+        .result(0)?
+        .into();
+    // Calculate required return_data_size based on provided arguments
+    let req_return_data_size = gas_ok_block
+        .append_operation(arith::addi(offset, size, location))
+        .result(0)?
+        .into();
+
+    let ext_mem_block = region.append_block(Block::new(&[]));
+    extend_memory(
+        op_ctx,
+        &gas_ok_block,
+        &ext_mem_block,
+        region,
+        req_mem_size,
+        gas_cost::RETURNDATACOPY,
+    )?;
+
+    //Check that offset + size < return_data_size
+    let end_block = region.append_block(Block::new(&[]));
+    let return_data_size = op_ctx.get_return_data_size(&ext_mem_block, location)?;
+    let req_mem_size_ok = ext_mem_block
+        .append_operation(arith::cmpi(
+            context,
+            arith::CmpiPredicate::Ule,
+            req_return_data_size,
+            return_data_size,
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    ext_mem_block.append_operation(cf::cond_br(
+        context,
+        req_mem_size_ok,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    op_ctx.copy_return_data_into_memory(&end_block, dest_offset, offset, size, location);
+
+    Ok((start_block, end_block))
 }
 
 fn codegen_create<'c, 'r>(
