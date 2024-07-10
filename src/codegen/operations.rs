@@ -5206,9 +5206,9 @@ fn codegen_create<'c, 'r>(
         location,
     ));
 
-    let size = stack_pop(context, &ok_block)?;
-    let offset = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
 
     let offset_as_u32 = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))

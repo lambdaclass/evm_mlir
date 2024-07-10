@@ -2802,9 +2802,9 @@ fn create_happy_path() {
         Operation::Push((1, BigUint::ZERO)),
         Operation::Mstore,
         // Create
-        Operation::Push((1, BigUint::from(value))),
-        Operation::Push((1, BigUint::from(offset))),
         Operation::Push((1, BigUint::from(size))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(value))),
         Operation::Create,
     ];
     append_return_result_operations(&mut operations);
@@ -2859,9 +2859,9 @@ fn create_with_balance_underflow() {
         Operation::Push((1, BigUint::ZERO)),
         Operation::Mstore,
         // Create
-        Operation::Push((1, BigUint::from(value))),
-        Operation::Push((1, BigUint::from(offset))),
         Operation::Push((1, BigUint::from(size))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(value))),
         Operation::Create,
     ];
     append_return_result_operations(&mut operations);
@@ -2902,9 +2902,9 @@ fn create_with_invalid_initialization_code() {
         Operation::Push((1, BigUint::ZERO)),
         Operation::Mstore,
         // Create
-        Operation::Push((1, BigUint::from(value))),
-        Operation::Push((1, BigUint::from(offset))),
         Operation::Push((1, BigUint::from(size))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(value))),
         Operation::Create,
     ];
     append_return_result_operations(&mut operations);
@@ -2948,9 +2948,9 @@ fn create_gas_cost() {
         Operation::Push0,
         Operation::Mstore,
         // Create
-        Operation::Push((1, BigUint::from(value))),
-        Operation::Push((1, BigUint::from(offset))),
         Operation::Push((1, BigUint::from(size))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(value))),
         Operation::Create,
     ];
     let (mut env, db) = default_env_and_db_setup(operations);
