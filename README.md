@@ -313,6 +313,9 @@ The other generated artifacts are:
 
 ### Running with a debugger
 
+> [!NOTE]  
+> This may not be up-to-date since contracts are no longer compiled into an executable.
+
 Once we have the executable, we can run it with a debugger (here we use `lldb`, but you can use others). To run with `lldb`, use `lldb <name>`.
 
 To run until we reach our main function, we can use:
