@@ -9,6 +9,7 @@ use evm_mlir::{
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
+    utils::compute_contract_address2,
     Env, Evm,
 };
 
@@ -2957,4 +2958,73 @@ fn create_gas_cost() {
     env.tx.value = EU256::from(value);
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
+}
+
+#[test]
+fn create2_happy_path() {
+    let value: u8 = 10;
+    let offset: u8 = 19;
+    let size: u8 = 13;
+    let salt: u8 = 52;
+    let sender_nonce = 1;
+    let sender_balance = EU256::from(25);
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+    let bytecode = [0xff, 0xff, 0xff, 0xff];
+    let mut hasher = Keccak256::new();
+    hasher.update(bytecode);
+    let initialization_code_hash = B256::from_slice(&hasher.finalize());
+
+    let expected_address =
+        compute_contract_address2(sender_addr, EU256::from(salt), &initialization_code);
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(salt))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Create2,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    // Check that the returned address is the expected
+    let returned_addr = Address::from_slice(&result.output().unwrap()[12..]);
+    assert_eq!(returned_addr, expected_address);
+
+    // Check that contract is created correctly in the returned address
+    let new_account = evm.db.basic(returned_addr).unwrap().unwrap();
+    assert_eq!(new_account.balance, EU256::from(value));
+    assert_eq!(new_account.nonce, 1);
+    assert_eq!(new_account.code_hash, initialization_code_hash);
+
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+    assert_eq!(sender_account.balance, sender_balance - value);
+}
+
+#[test]
+fn create2_with_stack_underflow() {
+    let operations = vec![Operation::Create2];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
 }

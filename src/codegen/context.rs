@@ -1107,6 +1107,29 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn create2_syscall(
+        &'c self,
+        block: &'c Block,
+        size: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
+        salt: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::create2_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            size,
+            offset,
+            value,
+            remaining_gas,
+            salt,
+            location,
+        )
+    }
+
     pub(crate) fn get_return_data_size(
         &'c self,
         block: &'c Block,
