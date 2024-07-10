@@ -1097,7 +1097,7 @@ impl<'c> OperationCtx<'c> {
             .result(0)?
             .into();
 
-        let value = constant_value_from_i64(context, &start_block, 0)?;
+        let value = constant_value_from_i64(context, start_block, 0)?;
         self.call_syscall(
             start_block,
             finish_block,
