@@ -998,6 +998,7 @@ impl<'c> OperationCtx<'c> {
         args_size: Value<'c, 'c>,
         ret_offset: Value<'c, 'c>,
         ret_size: Value<'c, 'c>,
+        is_static: Value<'c, 'c>,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
         let uint64 = IntegerType::new(context, 64);
@@ -1035,6 +1036,7 @@ impl<'c> OperationCtx<'c> {
             ret_size,
             available_gas,
             gas_return_ptr,
+            is_static,
         )?;
 
         // Update the available gas with the remaining gas after the call
@@ -1069,6 +1071,46 @@ impl<'c> OperationCtx<'c> {
             .into();
 
         Ok(result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn staticcall_syscall(
+        &'c self,
+        start_block: &'c Block,
+        finish_block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+    ) -> Result<Value, CodegenError> {
+        let context = &self.mlir_context;
+        let uint1 = IntegerType::new(context, 1);
+        let true_value = start_block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint1.into(), 1).into(),
+                location,
+            ))
+            .result(0)?
+            .into();
+
+        let value = constant_value_from_i64(context, &start_block, 0)?;
+        self.call_syscall(
+            start_block,
+            finish_block,
+            location,
+            gas,
+            address,
+            value,
+            args_offset,
+            args_size,
+            ret_offset,
+            ret_size,
+            true_value,
+        )
     }
 
     pub(crate) fn get_code_hash_syscall(

@@ -2777,3 +2777,125 @@ fn returndatacopy_gas_check() {
 
     run_program_assert_gas_and_refund(env, db, initial_gas as _, consumed_gas as _, 0);
 }
+
+//TODO: Add CREATE, CREATE2, SELFDESTRUCT
+#[rstest]
+//SSTORE
+#[case(
+        vec![
+            Operation::Push((1_u8, 1_u8.into())),
+            Operation::Push((1_u8, 1_u8.into())),
+            Operation::Sstore,
+        ]
+)]
+//CALL with value > 0
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())), //Ret size
+            Operation::Push((1_u8, 0_u8.into())), //Ret offset
+            Operation::Push((1_u8, 0_u8.into())), //Args size
+            Operation::Push((1_u8, 0_u8.into())), //Args offset
+            Operation::Push((1_u8, 1_u8.into())), //Value
+            Operation::Push((
+                16_u8,
+                BigUint::from_bytes_be(Address::from_low_u64_be(4040).as_bytes()),
+            )),
+            Operation::Push((32_u8, 1000_u32.into())), //Gas
+            Operation::Call,
+        ],
+)]
+//LOG0
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Log(0),
+        ]
+)]
+//LOG1
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Log(0),
+        ]
+)]
+//LOG2
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Log(0),
+        ]
+)]
+//LOG3
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Log(0),
+        ]
+)]
+//LOG4
+#[case(
+        vec![
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Push((1_u8, 0_u8.into())),
+            Operation::Log(0),
+        ]
+)]
+fn staticcall_state_modifying_revert_with_callee_ops(#[case] callee_ops: Vec<Operation>) {
+    let caller_address = Address::from_low_u64_be(4040);
+    let db = Db::new();
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let callee_balance = 100_u8;
+    let mut db = db.with_bytecode(callee_address, bytecode);
+    db.set_account(callee_address, 0, callee_balance.into(), Default::default());
+
+    let gas = 1_000_000_u32;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((10_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let caller_balance = 100_u8;
+    let mut db = db.with_bytecode(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    let expected_result = 0_u8.into();
+
+    run_program_assert_num_result(env, db, expected_result);
+}

@@ -269,6 +269,7 @@ impl<'c> SyscallContext<'c> {
         ret_size: u32,
         available_gas: u64,
         consumed_gas: &mut u64,
+        is_static: bool,
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
@@ -361,7 +362,13 @@ impl<'c> SyscallContext<'c> {
             *consumed_gas = 0;
             return call_opcode::REVERT_RETURN_CODE;
         };
-        let program = Program::from_bytecode(&bytecode);
+
+        let program = if is_static {
+            Program::from_bytecode(&bytecode).with_static_ctx()
+        } else {
+            Program::from_bytecode(&bytecode)
+        };
+
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
@@ -971,6 +978,7 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
                     u32,
                     u64,
                     *mut u64,
+                    bool,
                 ) as *mut (),
         );
         engine.register_symbol(
@@ -1111,9 +1119,10 @@ pub(crate) mod mlir {
 
         // Type declarations
         let ptr_type = pointer(context, 0);
+        let uint1 = IntegerType::new(context, 1).into();
+        let uint8 = IntegerType::new(context, 8).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
-        let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
             Identifier::new(context, "sym_visibility"),
@@ -1411,7 +1420,7 @@ pub(crate) mod mlir {
                     context,
                     &[
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
-                        uint64, ptr_type,
+                        uint64, ptr_type, uint1,
                     ],
                     &[uint8],
                 )
@@ -2009,6 +2018,7 @@ pub(crate) mod mlir {
         ret_size: Value<'c, 'c>,
         available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
+        is_static: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
         let result = block
@@ -2026,6 +2036,7 @@ pub(crate) mod mlir {
                     ret_size,
                     available_gas,
                     remaining_gas_ptr,
+                    is_static,
                 ],
                 &[uint8],
                 location,

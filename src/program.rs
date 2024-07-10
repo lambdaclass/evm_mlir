@@ -155,7 +155,7 @@ pub enum Opcode {
     // DELEGATECALL = 0xF4,
     // CREATE2 = 0xF5,
     // unused 0xF6-0xF9
-    // STATICCALL = 0xFA,
+    STATICCALL = 0xFA,
     // unused 0xFB-0xFC
     REVERT = 0xFD,
     INVALID = 0xFE,
@@ -319,6 +319,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::LOG4 as u8 => Opcode::LOG4,
             x if x == Opcode::CALL as u8 => Opcode::CALL,
             x if x == Opcode::RETURN as u8 => Opcode::RETURN,
+            x if x == Opcode::STATICCALL as u8 => Opcode::STATICCALL,
             x if x == Opcode::REVERT as u8 => Opcode::REVERT,
             x if x == Opcode::BLOCKHASH as u8 => Opcode::BLOCKHASH,
             x if x == Opcode::EXTCODEHASH as u8 => Opcode::EXTCODEHASH,
@@ -403,6 +404,7 @@ pub enum Operation {
     Log(u8),
     Call,
     Return,
+    StaticCall,
     Revert,
     Invalid,
     BlockHash,
@@ -491,6 +493,7 @@ impl Operation {
             Operation::Log(n) => vec![Opcode::LOG0 as u8 + n],
             Operation::Call => vec![Opcode::CALL as u8],
             Operation::Return => vec![Opcode::RETURN as u8],
+            Operation::StaticCall => vec![Opcode::STATICCALL as u8],
             Operation::Revert => vec![Opcode::REVERT as u8],
             Operation::Invalid => vec![Opcode::INVALID as u8],
             Operation::BlockHash => vec![Opcode::BLOCKHASH as u8],
@@ -503,6 +506,7 @@ impl Operation {
 pub struct Program {
     pub(crate) operations: Vec<Operation>,
     pub(crate) code_size: u32,
+    pub(crate) ctx_is_static: bool,
 }
 
 impl Program {
@@ -530,6 +534,7 @@ impl Program {
             Ok(Program {
                 operations,
                 code_size,
+                ctx_is_static: false,
             })
         } else {
             Err(ParseError(failed_opcodes))
@@ -558,6 +563,7 @@ impl Program {
         Program {
             operations,
             code_size,
+            ctx_is_static: false,
         }
     }
 
@@ -566,6 +572,20 @@ impl Program {
             .iter()
             .flat_map(Operation::to_bytecode)
             .collect::<Vec<u8>>()
+    }
+
+    pub fn with_static_ctx(self) -> Self {
+        let Self {
+            operations,
+            code_size,
+            ..
+        } = self;
+
+        Self {
+            operations,
+            code_size,
+            ctx_is_static: true,
+        }
     }
 
     fn parse_operation(
@@ -936,6 +956,7 @@ impl Program {
             Opcode::LOG4 => Operation::Log(4),
             Opcode::CALL => Operation::Call,
             Opcode::RETURN => Operation::Return,
+            Opcode::STATICCALL => Operation::StaticCall,
             Opcode::REVERT => Operation::Revert,
             Opcode::INVALID => Operation::Invalid,
             Opcode::BLOCKHASH => Operation::BlockHash,
@@ -965,6 +986,7 @@ impl From<Vec<Operation>> for Program {
         Program {
             operations,
             code_size,
+            ctx_is_static: false,
         }
     }
 }

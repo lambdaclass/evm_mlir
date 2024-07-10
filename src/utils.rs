@@ -16,9 +16,8 @@ use melior::{
 
 use crate::{
     codegen::context::OperationCtx,
-    constants::gas_cost,
     constants::{
-        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        gas_cost, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
@@ -125,6 +124,44 @@ pub fn consume_gas<'ctx>(
     ));
 
     Ok(flag.into())
+}
+
+pub(crate) fn check_context_is_not_static<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint1 = IntegerType::new(context, 1);
+    let is_not_static = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint1.into(), !op_ctx.program.ctx_is_static as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    Ok(is_not_static)
+}
+
+pub(crate) fn context_is_static<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint1 = IntegerType::new(context, 1);
+    let is_static = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint1.into(), op_ctx.program.ctx_is_static as i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    Ok(is_static)
 }
 
 pub fn get_stack_pointer<'ctx>(
