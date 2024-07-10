@@ -63,7 +63,6 @@ fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     env.tx.gas_limit = needed_gas;
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact().unwrap().result;
-    dbg!(&result);
     assert!(result.is_success());
 
     // Halt run
