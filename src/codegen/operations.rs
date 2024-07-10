@@ -5187,9 +5187,11 @@ fn codegen_create<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint256 = IntegerType::new(context, 256);
-    let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
+    let uint32 = IntegerType::new(context, 32);
+    let uint64 = IntegerType::new(context, 64);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -5223,29 +5225,52 @@ fn codegen_create<'c, 'r>(
         .result(0)?
         .into();
 
-    let creation_block = region.append_block(Block::new(&[]));
+    let create_block = region.append_block(Block::new(&[]));
+
     extend_memory(
         op_ctx,
         &ok_block,
-        &creation_block,
+        &create_block,
         region,
         req_mem_size,
         gas_cost::CREATE,
     )?;
 
-    // TODO: add gas consumption for init_code_cost + code_deposit_cost
+    let value_ptr = allocate_and_store_value(op_ctx, &create_block, value, location)?;
 
-    let value_ptr = allocate_and_store_value(op_ctx, &creation_block, value, location)?;
+    // Load the gas counter and copy the value into a new pointer
+    let gas_counter_ptr = create_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = create_block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = allocate_and_store_value(op_ctx, &create_block, gas_counter, location)?;
 
     let result = op_ctx.create_syscall(
-        &creation_block,
+        &create_block,
         size_as_u32,
         offset_as_u32,
         value_ptr,
+        gas_ptr,
         location,
     )?;
 
-    let zero_constant_value = creation_block
+    // Check if the return code is error
+    let zero_constant_value = create_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint8.into(), 0).into(),
@@ -5253,7 +5278,7 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let flag = creation_block
+    let flag = create_block
         .append_operation(arith::cmpi(
             context,
             CmpiPredicate::Eq,
@@ -5263,11 +5288,29 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let end_block = region.append_block(Block::new(&[]));
 
-    creation_block.append_operation(cf::cond_br(
+    // Consume gas after creation
+    let gas_cost = create_block
+        .append_operation(llvm::load(
+            context,
+            gas_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let gas_flag = consume_gas_as_value(context, &create_block, gas_cost)?;
+
+    let condition = create_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let end_block = region.append_block(Block::new(&[]));
+    create_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &end_block,
         &op_ctx.revert_block,
         &[],
@@ -5275,7 +5318,7 @@ fn codegen_create<'c, 'r>(
         location,
     ));
 
-    let code_address: melior::ir::Value = end_block
+    let code_address = end_block
         .append_operation(llvm::load(
             context,
             value_ptr,

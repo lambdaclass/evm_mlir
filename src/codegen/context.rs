@@ -1092,6 +1092,7 @@ impl<'c> OperationCtx<'c> {
         size: Value<'c, 'c>,
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::create_syscall(
@@ -1101,6 +1102,7 @@ impl<'c> OperationCtx<'c> {
             size,
             offset,
             value,
+            remaining_gas,
             location,
         )
     }

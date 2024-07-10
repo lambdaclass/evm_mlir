@@ -18,7 +18,7 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::call_opcode,
+    constants::{call_opcode, gas_cost},
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
@@ -62,7 +62,7 @@ impl U256 {
     }
 
     pub fn zero() -> U256 {
-        U256 { hi: 0, lo: 0 }
+        U256 { lo: 0, hi: 0 }
     }
 }
 
@@ -858,7 +858,13 @@ impl<'c> SyscallContext<'c> {
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
     }
 
-    pub extern "C" fn create(&mut self, size: u32, offset: u32, value: &mut U256) -> u8 {
+    pub extern "C" fn create(
+        &mut self,
+        size: u32,
+        offset: u32,
+        value: &mut U256,
+        remaining_gas: &mut u64,
+    ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
         let offset = offset as usize;
         let size = size as usize;
@@ -879,7 +885,7 @@ impl<'c> SyscallContext<'c> {
         // TODO: Add call depth check
         let mut new_env = self.env.clone();
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
-        new_env.tx.gas_limit = self.env.tx.gas_limit; // TODO: load updated gas counter
+        new_env.tx.gas_limit = *remaining_gas;
         new_env.tx.caller = self.env.tx.caller;
         let call_frame = CallFrame::new(sender_address);
 
@@ -891,16 +897,23 @@ impl<'c> SyscallContext<'c> {
         let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
         executor.execute(&mut context, new_env.tx.gas_limit);
-
-        // Check the result
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
-        // Create the new contract and update the sender account
+        // Set the gas cost
+        let init_code_cost = ((size + 31) / 32) as u64 * gas_cost::INIT_WORD_COST as u64;
+        let code_deposit_cost = (bytecode.len() as u64) * gas_cost::BYTE_DEPOSIT_COST as u64;
+        let gas_cost =
+            init_code_cost + code_deposit_cost + result.gas_used() - result.gas_refunded();
+        *remaining_gas = gas_cost;
+
+        // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
             return 0;
         };
+
+        // Create new contract and update sender account
         self.db.insert_contract(dest_addr, bytecode, value_as_u256);
         self.db.set_account(
             sender_address,
@@ -1141,7 +1154,8 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
 
         engine.register_symbol(
             symbols::CREATE,
-            SyscallContext::create as *const extern "C" fn(*mut c_void, u32, u32, *mut U256)
+            SyscallContext::create
+                as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64)
                 as *mut (),
         );
 
@@ -1545,7 +1559,12 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::CREATE),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[uint8]).into(),
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type],
+                    &[uint8],
+                )
+                .into(),
             ),
             Region::new(),
             attributes,
@@ -2239,6 +2258,7 @@ pub(crate) mod mlir {
         ));
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -2246,6 +2266,7 @@ pub(crate) mod mlir {
         size: Value<'c, 'c>,
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
@@ -2253,12 +2274,11 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
-                &[syscall_ctx, size, offset, value],
+                &[syscall_ctx, size, offset, value, remaining_gas],
                 &[uint8],
                 location,
             ))
             .result(0)?;
-
         Ok(result.into())
     }
 
