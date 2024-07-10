@@ -1,4 +1,5 @@
 use rstest::rstest;
+use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
@@ -2782,7 +2783,7 @@ fn returndatacopy_gas_check() {
 #[test]
 fn create_happy_path() {
     let value: u8 = 10;
-    let offset: u8 = 0;
+    let offset: u8 = 19;
     let size: u8 = 13;
     let sender_nonce = 1;
     let sender_balance = EU256::from(25);
@@ -2790,6 +2791,10 @@ fn create_happy_path() {
 
     // Code that returns the value 0xffffffff
     let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+    let bytecode = [0xff, 0xff, 0xff, 0xff];
+    let mut hasher = Keccak256::new();
+    hasher.update(&bytecode);
+    let initialization_code_hash = B256::from_slice(&hasher.finalize());
 
     let mut operations = vec![
         // Store initialization code in memory
@@ -2820,6 +2825,7 @@ fn create_happy_path() {
     let new_account = evm.db.basic(returned_addr).unwrap().unwrap();
     assert_eq!(new_account.balance, EU256::from(value));
     assert_eq!(new_account.nonce, 1);
+    assert_eq!(new_account.code_hash, initialization_code_hash);
 
     // Check that the sender account is updated
     let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
@@ -2838,7 +2844,7 @@ fn create_with_stack_underflow() {
 #[test]
 fn create_with_balance_underflow() {
     let value: u8 = 10;
-    let offset: u8 = 0;
+    let offset: u8 = 19;
     let size: u8 = 13;
     let sender_nonce = 1;
     let sender_balance = EU256::zero();
@@ -2883,7 +2889,7 @@ fn create_with_balance_underflow() {
 #[test]
 fn create_with_invalid_initialization_code() {
     let value: u8 = 10;
-    let offset: u8 = 0;
+    let offset: u8 = 19;
     let size: u8 = 13;
     let sender_nonce = 1;
     let sender_balance = EU256::zero();
