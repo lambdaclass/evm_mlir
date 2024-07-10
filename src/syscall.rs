@@ -852,7 +852,7 @@ impl<'c> SyscallContext<'c> {
         buf.push(0xd5);
         buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
         buf.push(0x94);
-        buf.extend_from_slice(self.env.tx.caller.as_bytes());
+        buf.extend_from_slice(sender_address.as_bytes());
         buf.extend_from_slice(&encoded_nonce);
         let mut hasher = Keccak256::new();
         hasher.update(&buf);
@@ -865,9 +865,10 @@ impl<'c> SyscallContext<'c> {
         }
 
         // Create subcontext for the initialization code
+        // TODO: Add call depth check
         let mut new_env = self.env.clone();
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
-        new_env.tx.gas_limit = self.env.tx.gas_limit; // TODO: usar contador de gas actualizado
+        new_env.tx.gas_limit = self.env.tx.gas_limit; // TODO: load updated gas counter
         new_env.tx.caller = self.env.tx.caller;
         let call_frame = CallFrame::new(sender_address);
 
@@ -894,7 +895,7 @@ impl<'c> SyscallContext<'c> {
             sender_address,
             sender_account.nonce + 1,
             sender_balance,
-            Default::default(), // TODO: refactorizar set_account para no instanciar un nuevo hashmap
+            Default::default(),
         );
 
         value.copy_from(&dest_addr);
