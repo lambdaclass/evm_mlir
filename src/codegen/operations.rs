@@ -5189,6 +5189,7 @@ fn codegen_create<'c, 'r>(
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256);
     let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
 
     let flag = check_stack_has_at_least(context, &start_block, 3)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -5222,11 +5223,11 @@ fn codegen_create<'c, 'r>(
         .result(0)?
         .into();
 
-    let end_block = region.append_block(Block::new(&[]));
+    let creation_block = region.append_block(Block::new(&[]));
     extend_memory(
         op_ctx,
         &ok_block,
-        &end_block,
+        &creation_block,
         region,
         req_mem_size,
         gas_cost::CREATE,
@@ -5234,9 +5235,45 @@ fn codegen_create<'c, 'r>(
 
     // TODO: add gas consumption for init_code_cost + code_deposit_cost
 
-    let value_ptr = allocate_and_store_value(op_ctx, &end_block, value, location)?;
+    let value_ptr = allocate_and_store_value(op_ctx, &creation_block, value, location)?;
 
-    op_ctx.create_syscall(&end_block, size_as_u32, offset_as_u32, value_ptr, location);
+    let result = op_ctx.create_syscall(
+        &creation_block,
+        size_as_u32,
+        offset_as_u32,
+        value_ptr,
+        location,
+    )?;
+
+    let zero_constant_value = creation_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint8.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let flag = creation_block
+        .append_operation(arith::cmpi(
+            context,
+            CmpiPredicate::Eq,
+            zero_constant_value,
+            result,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let end_block = region.append_block(Block::new(&[]));
+
+    creation_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     let code_address: melior::ir::Value = end_block
         .append_operation(llvm::load(

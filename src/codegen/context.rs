@@ -1093,7 +1093,7 @@ impl<'c> OperationCtx<'c> {
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::create_syscall(
             self.mlir_context,
             self.syscall_ctx,

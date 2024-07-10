@@ -858,7 +858,7 @@ impl<'c> SyscallContext<'c> {
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
     }
 
-    pub extern "C" fn create(&mut self, size: u32, offset: u32, value: &mut U256) {
+    pub extern "C" fn create(&mut self, size: u32, offset: u32, value: &mut U256) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
         let offset = offset as usize;
         let size = size as usize;
@@ -867,16 +867,12 @@ impl<'c> SyscallContext<'c> {
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
-        let Some(sender_account) = self.db.basic(sender_address).unwrap() else {
-            *value = U256::zero();
-            return;
-        };
+        let sender_account = self.db.basic(sender_address).unwrap().unwrap();
         let dest_addr = compute_contract_dest_address(sender_address, sender_account.nonce);
 
         // Check if there is already a contract stored in dest_address
         if let Ok(Some(_)) = self.db.basic(dest_addr) {
-            *value = U256::zero();
-            return;
+            return 1;
         }
 
         // Create subcontext for the initialization code
@@ -903,7 +899,7 @@ impl<'c> SyscallContext<'c> {
         // Create the new contract and update the sender account
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
-            return;
+            return 0;
         };
         self.db.insert_contract(dest_addr, bytecode, value_as_u256);
         self.db.set_account(
@@ -916,6 +912,7 @@ impl<'c> SyscallContext<'c> {
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list
+        0
     }
 }
 
@@ -1548,7 +1545,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::CREATE),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[uint8]).into(),
             ),
             Region::new(),
             attributes,
@@ -2250,14 +2247,19 @@ pub(crate) mod mlir {
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
-            &[syscall_ctx, size, offset, value],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint8 = IntegerType::new(mlir_ctx, 8).into();
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
+                &[syscall_ctx, size, offset, value],
+                &[uint8],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 
     pub(crate) fn get_return_data_size<'c>(
