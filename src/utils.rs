@@ -14,6 +14,7 @@ use melior::{
     },
     Context as MeliorContext,
 };
+use sha3::{Digest, Keccak256};
 
 use crate::{
     codegen::context::OperationCtx,
@@ -23,6 +24,7 @@ use crate::{
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
+    primitives::{Address, H160},
     syscall::ExitStatusCode,
 };
 
@@ -1670,4 +1672,19 @@ pub fn encode_rlp_u64(number: u64) -> Bytes {
         }
     }
     buf.into()
+}
+
+pub fn compute_contract_dest_address(address: H160, nonce: u64) -> Address {
+    // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
+    // TODO: replace manual encoding once rlp is added
+    let encoded_nonce = encode_rlp_u64(nonce);
+    let mut buf = Vec::<u8>::new();
+    buf.push(0xd5);
+    buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
+    buf.push(0x94);
+    buf.extend_from_slice(address.as_bytes());
+    buf.extend_from_slice(&encoded_nonce);
+    let mut hasher = Keccak256::new();
+    hasher.update(&buf);
+    Address::from_slice(&hasher.finalize()[12..])
 }

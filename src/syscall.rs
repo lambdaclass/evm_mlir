@@ -27,7 +27,7 @@ use crate::{
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
-    utils::encode_rlp_u64,
+    utils::compute_contract_dest_address,
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
@@ -864,26 +864,14 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let sender_address = self.env.tx.get_address();
 
-        // Read initialization code from memory
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
-        // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
-        let Some(sender_account) = self.db.basic(sender_address).unwrap() else {
+        let Some(sender_account) = self.db.basic(current_address).unwrap() else {
             *value = U256::zero();
             return;
         };
-        // TODO: replace manual encoding once rlp is added
-        let encoded_nonce = encode_rlp_u64(sender_account.nonce);
-        let mut buf = Vec::<u8>::new();
-        buf.push(0xd5);
-        buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
-        buf.push(0x94);
-        buf.extend_from_slice(sender_address.as_bytes());
-        buf.extend_from_slice(&encoded_nonce);
-        let mut hasher = Keccak256::new();
-        hasher.update(&buf);
-        let dest_addr = Address::from_slice(&hasher.finalize()[12..]);
+        let dest_addr = compute_contract_dest_address(sender_address, sender_account.nonce);
 
         // Check if there is already a contract stored in dest_address
         if let Ok(Some(_)) = self.db.basic(dest_addr) {
