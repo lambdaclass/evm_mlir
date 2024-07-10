@@ -166,11 +166,11 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-            let mut db = Db::new().with_bytecode(to, account.code.clone());
+            let mut db = Db::new().with_contract(to, account.code.clone());
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
-                db = db.with_bytecode(address.to_owned(), account_info.code.clone());
+                db = db.with_contract(address.to_owned(), account_info.code.clone());
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,

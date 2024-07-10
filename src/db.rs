@@ -49,7 +49,7 @@ impl Db {
         }
     }
 
-    pub fn with_bytecode(mut self, address: Address, bytecode: Bytecode) -> Self {
+    pub fn with_contract(mut self, address: Address, bytecode: Bytecode) -> Self {
         self.insert_contract(address, bytecode, U256::zero());
         self
     }
