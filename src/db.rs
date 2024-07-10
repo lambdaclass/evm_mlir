@@ -11,7 +11,7 @@ use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct DbAccount {
     pub nonce: u64,
     pub balance: U256,
@@ -42,24 +42,11 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        match self.accounts.get_mut(&address) {
-            Some(a) => {
-                a.nonce = nonce;
-                a.balance = balance;
-                a.storage = storage;
-            }
-            None => {
-                self.accounts.insert(
-                    address,
-                    DbAccount {
-                        nonce,
-                        balance,
-                        storage,
-                        bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
-                    },
-                );
-            }
-        }
+        // We should make `DbAccount::default` have an empty code hash
+        let a = self.accounts.entry(address).or_default();
+        a.nonce = nonce;
+        a.balance = balance;
+        a.storage = storage;
     }
 
     pub fn with_contract(mut self, address: Address, bytecode: Bytecode) -> Self {
@@ -116,7 +103,7 @@ impl Db {
     }
 }
 
-#[derive(Default, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct AccountInfo {
     /// Account balance.
     pub balance: U256,

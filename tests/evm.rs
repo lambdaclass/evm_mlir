@@ -2794,7 +2794,7 @@ fn create_happy_path() {
     let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
     let bytecode = [0xff, 0xff, 0xff, 0xff];
     let mut hasher = Keccak256::new();
-    hasher.update(&bytecode);
+    hasher.update(bytecode);
     let initialization_code_hash = B256::from_slice(&hasher.finalize());
 
     let mut operations = vec![
