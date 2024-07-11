@@ -951,6 +951,7 @@ impl Program {
             Opcode::EXTCODEHASH => Operation::ExtcodeHash,
             Opcode::CREATE => Operation::Create,
             Opcode::CREATE2 => Operation::Create2,
+            Opcode::SELFDESTRUCT => Operation::SelfDestruct,
         };
         pc += 1;
 

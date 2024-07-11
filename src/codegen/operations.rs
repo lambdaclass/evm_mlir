@@ -5359,11 +5359,6 @@ fn codegen_selfdestruct<'c, 'r>(
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
-    let uint32 = IntegerType::new(context, 32);
-    let uint64 = IntegerType::new(context, 64);
-    let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -5379,8 +5374,9 @@ fn codegen_selfdestruct<'c, 'r>(
     ));
 
     let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    // TODO: implement selfdestruct
+    op_ctx.selfdestruct_syscall(&ok_block, address_ptr, location);
 
-    Ok((start_block, end_block))
+    Ok((start_block, ok_block))
 }

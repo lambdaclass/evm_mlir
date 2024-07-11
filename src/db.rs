@@ -2,7 +2,7 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
     primitives::{Address, Bytes, B256, U256},
-    state::{Account, EvmStorageSlot},
+    state::{Account, AccountStatus, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
@@ -11,12 +11,25 @@ use std::{collections::HashMap, convert::Infallible, fmt::Error, ops::Add};
 use thiserror::Error;
 pub type Bytecode = Bytes;
 
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DbAccount {
     pub nonce: u64,
     pub balance: U256,
     pub storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
+    pub status: AccountStatus,
+}
+
+impl Default for DbAccount {
+    fn default() -> Self {
+        DbAccount {
+            nonce: 1,
+            balance: U256::zero(),
+            storage: HashMap::new(),
+            bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
+            status: AccountStatus::Created,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -42,11 +55,30 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        // We should make `DbAccount::default` have an empty code hash
         let a = self.accounts.entry(address).or_default();
         a.nonce = nonce;
         a.balance = balance;
         a.storage = storage;
+    }
+
+    pub fn move_balance(&mut self, from: Address, to: Address) {
+        let from = self.accounts.entry(from).or_default();
+        let balance = from.balance;
+        from.balance = U256::zero();
+        let to = self.accounts.entry(to).or_default();
+        to.balance += balance;
+    }
+
+    pub fn address_is_created(&self, address: Address) -> bool {
+        self.accounts
+            .get(&address)
+            .map(|acc| acc.status.contains(AccountStatus::Created))
+            .unwrap_or(false)
+    }
+
+    pub fn set_status(&mut self, address: Address, status: AccountStatus) {
+        let a = self.accounts.entry(address).or_default();
+        a.status = status;
     }
 
     pub fn with_contract(mut self, address: Address, bytecode: Bytecode) -> Self {
@@ -60,7 +92,6 @@ impl Db {
         let hash = B256::from_slice(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,
-            nonce: 1,
             balance,
             ..Default::default()
         };
@@ -95,7 +126,7 @@ impl Db {
                             .iter()
                             .map(|(k, v)| (*k, EvmStorageSlot::from(*v)))
                             .collect(),
-                        ..Default::default()
+                        status: db_account.status,
                     },
                 )
             })
@@ -198,7 +229,10 @@ mod tests {
         let mut accounts = HashMap::new();
         let address = Address::default();
         let expected_account_info = AccountInfo::default();
-        let db_account = DbAccount::default();
+        let db_account = DbAccount {
+            bytecode_hash: B256::zero(),
+            ..Default::default()
+        };
         accounts.insert(address, db_account);
 
         let mut db = Db {

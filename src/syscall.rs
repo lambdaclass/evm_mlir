@@ -26,7 +26,7 @@ use crate::{
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
-    state::EvmStorageSlot,
+    state::{AccountStatus, EvmStorageSlot},
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
@@ -964,6 +964,17 @@ impl<'c> SyscallContext<'c> {
     ) -> u8 {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
+
+    pub extern "C" fn selfdestruct(&mut self, address: &U256) {
+        let address = Address::from(address);
+        let callee_address = self.env.tx.get_address();
+        self.db.move_balance(callee_address, address);
+
+        if self.db.address_is_created(callee_address) {
+            self.db
+                .set_status(callee_address, AccountStatus::SelfDestructed);
+        }
+    }
 }
 
 pub mod symbols {
@@ -1005,6 +1016,7 @@ pub mod symbols {
     pub const CREATE2: &str = "evm_mlir__create2";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
     pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
+    pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -1212,6 +1224,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::COPY_RETURN_DATA_INTO_MEMORY,
             SyscallContext::copy_return_data_into_memory as *const fn(*mut c_void, u32, u32, u32)
                 as *mut (),
+        );
+
+        engine.register_symbol(
+            symbols::SELFDESTRUCT,
+            SyscallContext::selfdestruct as *const fn(*mut c_void, *mut U256) as *mut (),
         );
     };
 }
@@ -1647,6 +1664,15 @@ pub(crate) mod mlir {
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::SELFDESTRUCT),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -2401,6 +2427,22 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_RETURN_DATA_INTO_MEMORY),
             &[syscall_ctx, dest_offset, offset, size],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn selfdestruct_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::SELFDESTRUCT),
+            &[syscall_ctx, address],
             &[],
             location,
         ));
