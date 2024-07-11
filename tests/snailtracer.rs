@@ -20,7 +20,7 @@ fn snailtracer() {
     env.tx.caller = Address::from_slice(&caller_address);
     env.tx.transact_to = TransactTo::Call(address);
 
-    let db = Db::new().with_bytecode(address, Bytecode::from(SNAILTRACER_BYTECODE));
+    let db = Db::new().with_contract(address, Bytecode::from(SNAILTRACER_BYTECODE));
 
     let mut evm = Evm::new(env, db);
 

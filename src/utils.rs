@@ -1,3 +1,4 @@
+use bytes::{BufMut, Bytes};
 use melior::{
     dialect::{
         arith::{self, CmpiPredicate},
@@ -13,6 +14,7 @@ use melior::{
     },
     Context as MeliorContext,
 };
+use sha3::{Digest, Keccak256};
 
 use crate::{
     codegen::context::OperationCtx,
@@ -21,6 +23,7 @@ use crate::{
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
+    primitives::{Address, H160},
     syscall::{symbols::CONTEXT_IS_STATIC, ExitStatusCode},
 };
 
@@ -1705,4 +1708,40 @@ pub mod llvm_mlir {
             .build()
             .expect("valid operation")
     }
+}
+
+pub fn encode_rlp_u64(number: u64) -> Bytes {
+    let mut buf: Vec<u8> = vec![];
+    match number {
+        // 0, also known as null or the empty string is 0x80
+        0 => buf.put_u8(0x80),
+        // for a single byte whose value is in the [0x00, 0x7f] range, that byte is its own RLP encoding.
+        n @ 1..=0x7f => buf.put_u8(n as u8),
+        // Otherwise, if a string is 0-55 bytes long, the RLP encoding consists of a
+        // single byte with value RLP_NULL (0x80) plus the length of the string followed by the string.
+        n => {
+            let mut bytes: Vec<u8> = vec![];
+            bytes.extend_from_slice(&n.to_be_bytes());
+            let start = bytes.iter().position(|&x| x != 0).unwrap();
+            let len = bytes.len() - start;
+            buf.put_u8(0x80 + len as u8);
+            buf.put_slice(&bytes[start..]);
+        }
+    }
+    buf.into()
+}
+
+pub fn compute_contract_dest_address(address: H160, nonce: u64) -> Address {
+    // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
+    // TODO: replace manual encoding once rlp is added
+    let encoded_nonce = encode_rlp_u64(nonce);
+    let mut buf = Vec::<u8>::new();
+    buf.push(0xd5);
+    buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
+    buf.push(0x94);
+    buf.extend_from_slice(address.as_bytes());
+    buf.extend_from_slice(&encoded_nonce);
+    let mut hasher = Keccak256::new();
+    hasher.update(&buf);
+    Address::from_slice(&hasher.finalize()[12..])
 }

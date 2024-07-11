@@ -118,6 +118,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
         Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
+        Operation::Create => codegen_create(op_ctx, region),
     }
 }
 
@@ -5217,6 +5218,117 @@ fn codegen_returndatacopy<'c, 'r>(
     ));
 
     op_ctx.copy_return_data_into_memory(&end_block, dest_offset, offset, size, location);
+
+    Ok((start_block, end_block))
+}
+
+fn codegen_create<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let uint32 = IntegerType::new(context, 32);
+    let uint8 = IntegerType::new(context, 8);
+
+    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let size = stack_pop(context, &ok_block)?;
+    let offset = stack_pop(context, &ok_block)?;
+    let value = stack_pop(context, &ok_block)?;
+
+    let offset_as_u32 = ok_block
+        .append_operation(arith::trunci(offset, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let size_as_u32 = ok_block
+        .append_operation(arith::trunci(size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    let req_mem_size = ok_block
+        .append_operation(arith::addi(offset_as_u32, size_as_u32, location))
+        .result(0)?
+        .into();
+
+    let creation_block = region.append_block(Block::new(&[]));
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &creation_block,
+        region,
+        req_mem_size,
+        gas_cost::CREATE,
+    )?;
+
+    // TODO: add gas consumption for init_code_cost + code_deposit_cost
+
+    let value_ptr = allocate_and_store_value(op_ctx, &creation_block, value, location)?;
+
+    let result = op_ctx.create_syscall(
+        &creation_block,
+        size_as_u32,
+        offset_as_u32,
+        value_ptr,
+        location,
+    )?;
+
+    let zero_constant_value = creation_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint8.into(), 0).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let flag = creation_block
+        .append_operation(arith::cmpi(
+            context,
+            CmpiPredicate::Eq,
+            zero_constant_value,
+            result,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let end_block = region.append_block(Block::new(&[]));
+
+    creation_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let code_address: melior::ir::Value = end_block
+        .append_operation(llvm::load(
+            context,
+            value_ptr,
+            uint256.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &end_block, code_address)?;
 
     Ok((start_block, end_block))
 }

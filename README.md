@@ -4,8 +4,8 @@
 [![rust](https://github.com/lambdaclass/evm_mlir/actions/workflows/ci.yml/badge.svg)](https://github.com/lambdaclass/emv_mlir/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lambdaclass/evm_mlir)](/LICENSE)
 
-[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fethereum_rust%2F&logo=telegram&label=chat&color=neon
-[tg-url]: https://t.me/ethereum_rust
+[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Frust_ethereum%2F&logo=telegram&label=chat&color=neon
+[tg-url]: https://t.me/rust_ethereum
 
 An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
@@ -151,6 +151,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0xA2) LOG2
 1. (0xA3) LOG3
 1. (0xA4) LOG4
+1. (0xF0) CREATE
 1. (0xF1) CALL
 1. (0xF3) RETURN
 1. (0xFA) STATICCALL
@@ -164,7 +165,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
 1. (0x5C) TLOAD
 1. (0x5D) TSTORE
-1. (0xF0) CREATE
 1. (0xF2) CALLCODE
 1. (0xF4) DELEGATECALL
 1. (0xF5) CREATE2
@@ -312,6 +312,9 @@ The other generated artifacts are:
 - Executable (`<name>`)
 
 ### Running with a debugger
+
+> [!NOTE]  
+> This may not be up-to-date since contracts are no longer compiled into an executable.
 
 Once we have the executable, we can run it with a debugger (here we use `lldb`, but you can use others). To run with `lldb`, use `lldb <name>`.
 

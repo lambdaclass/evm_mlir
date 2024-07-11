@@ -1,4 +1,5 @@
 use rstest::rstest;
+use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
@@ -32,7 +33,7 @@ fn default_env_and_db_setup(operations: Vec<Operation>) -> (Env, Db) {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     (env, db)
 }
 
@@ -78,7 +79,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas;
-    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
+    let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
     let result = evm.transact().unwrap().result;
@@ -88,7 +89,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit = needed_gas - 1;
-    let db = Db::new().with_bytecode(address, program.to_bytecode().into());
+    let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
     let result = evm.transact().unwrap().result;
@@ -168,7 +169,7 @@ fn fibonacci_example() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -232,7 +233,7 @@ fn test_opcode_origin() {
     env.tx.gas_limit = 999_999;
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
+    let db = Db::new().with_contract(Address::zero(), bytecode);
     let caller_bytes = &caller.to_fixed_bytes();
     //We extend the result to be 32 bytes long.
     let expected_result: [u8; 32] = [&[0u8; 12], &caller_bytes[0..20]]
@@ -290,7 +291,7 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -334,7 +335,7 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -376,7 +377,7 @@ fn calldataload_with_offset_greater_than_calldata_size() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -408,7 +409,7 @@ fn test_calldatacopy() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
 
@@ -439,7 +440,7 @@ fn test_calldatacopy_zeros_padding() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
 
@@ -470,7 +471,7 @@ fn test_calldatacopy_memory_offset() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
 
@@ -501,7 +502,7 @@ fn test_calldatacopy_calldataoffset() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -533,7 +534,7 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
 
@@ -567,7 +568,7 @@ fn log0() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -606,7 +607,7 @@ fn log1() {
 
     let (address, bytecode) = (Address::zero(), Bytecode::from(program.to_bytecode()));
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -651,7 +652,7 @@ fn log2() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -698,7 +699,7 @@ fn log3() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -753,7 +754,7 @@ fn log4() {
         Bytecode::from(program.to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -794,7 +795,7 @@ fn codecopy() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -830,7 +831,7 @@ fn codecopy_with_offset_out_of_bounds() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -852,7 +853,7 @@ fn callvalue_happy_path() {
     env.tx.value = EU256::from(callvalue);
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
-    let db = Db::new().with_bytecode(Address::zero(), bytecode);
+    let db = Db::new().with_contract(Address::zero(), bytecode);
     let expected_result = BigUint::from(callvalue);
     run_program_assert_num_result(env, db, expected_result);
 }
@@ -1160,7 +1161,7 @@ fn sload_with_valid_key() {
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
     env.tx.caller = caller_address;
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
     evm.db
@@ -1216,7 +1217,7 @@ fn address() {
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
 
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap().result;
     assert!(&result.is_success());
@@ -1266,7 +1267,7 @@ fn balance_with_invalid_address() {
     );
     env.tx.caller = address;
     env.tx.transact_to = TransactTo::Call(address);
-    let mut db = Db::new().with_bytecode(address, bytecode);
+    let mut db = Db::new().with_contract(address, bytecode);
 
     db.set_account(address, 0, balance, HashMap::new());
 
@@ -1314,7 +1315,7 @@ fn balance_with_existing_account() {
     );
     env.tx.caller = address;
     env.tx.transact_to = TransactTo::Call(address);
-    let mut db = Db::new().with_bytecode(address, bytecode);
+    let mut db = Db::new().with_contract(address, bytecode);
 
     db.set_account(address, 0, balance, HashMap::new());
 
@@ -1355,7 +1356,7 @@ fn selfbalance_with_existing_account() {
     append_return_result_operations(&mut operations);
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
-    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    let mut db = Db::new().with_contract(contract_address, bytecode);
     db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
@@ -1377,7 +1378,7 @@ fn selfbalance_and_balance_with_address_check() {
     append_return_result_operations(&mut operations);
     let program = Program::from(operations);
     let bytecode = Bytecode::from(program.to_bytecode());
-    let mut db = Db::new().with_bytecode(contract_address, bytecode);
+    let mut db = Db::new().with_contract(contract_address, bytecode);
     db.set_account(contract_address, 0, contract_balance.into(), HashMap::new());
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(contract_address);
@@ -1607,7 +1608,7 @@ fn extcodecopy() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let expected_result = program.to_bytecode();
     run_program_assert_bytes_result(env, db, &expected_result);
 }
@@ -1638,7 +1639,7 @@ fn extcodecopy_with_offset_out_of_bounds() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let expected_result = [&program.to_bytecode()[offset.into()..], &[0_u8; 6]].concat();
 
     run_program_assert_bytes_result(env, db, &expected_result);
@@ -1679,7 +1680,7 @@ fn extcodecopy_with_dirty_memory() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let expected_result = [
         &[0xff; 2],                              // 2 bytes of dirty memory (offset = 2)
         &program.to_bytecode()[offset.into()..], // 6 bytes
@@ -1724,7 +1725,7 @@ fn extcodecopy_with_wrong_address() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let expected_result = [
         vec![0xff; 2],  // 2 bytes of dirty memory (offset = 2)
         vec![0_u8; 10], // 4 bytes of padding (size = 10)
@@ -1790,7 +1791,7 @@ fn extcodesize() {
         Bytecode::from(program.clone().to_bytecode()),
     );
     env.tx.transact_to = TransactTo::Call(address);
-    let db = Db::new().with_bytecode(address, bytecode);
+    let db = Db::new().with_contract(address, bytecode);
     let expected_result = program.to_bytecode().len();
     run_program_assert_num_result(env, db, expected_result.into())
 }
@@ -1914,7 +1915,7 @@ fn call_returns_addition_from_arguments() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = db.with_bytecode(callee_address, bytecode);
+    let db = db.with_contract(callee_address, bytecode);
 
     let gas = 100_u8;
     let value = 1_u8;
@@ -1961,7 +1962,7 @@ fn call_returns_addition_from_arguments() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let caller_balance = 100_u8;
-    let mut db = db.with_bytecode(caller_address, bytecode);
+    let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let mut evm = Evm::new(env, db);
@@ -1996,7 +1997,7 @@ fn call_without_enough_balance() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = db.with_bytecode(callee_address, bytecode);
+    let db = db.with_contract(callee_address, bytecode);
 
     let gas = 100_u8;
     let value = 1_u8;
@@ -2034,7 +2035,7 @@ fn call_without_enough_balance() {
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let mut db = db.with_bytecode(caller_address, bytecode);
+    let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let expected_contract_call_result = 0_u8.into(); //Call failed
@@ -2084,7 +2085,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = db.with_bytecode(callee_address, bytecode);
+    let db = db.with_contract(callee_address, bytecode);
 
     let gas = callee_gas_cost as u8;
     let value = 0_u8;
@@ -2147,7 +2148,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let mut db = db.with_bytecode(caller_address, bytecode);
+    let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
@@ -2206,7 +2207,7 @@ fn call_return_with_offset_and_size(
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = db.with_bytecode(callee_address, bytecode);
+    let db = db.with_contract(callee_address, bytecode);
 
     let gas = 100_u8;
     let value = 0_u8;
@@ -2241,7 +2242,7 @@ fn call_return_with_offset_and_size(
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     run_program_assert_bytes_result(env, db, expected_result);
 }
@@ -2269,7 +2270,8 @@ fn call_gas_check_with_value_and_empty_account() {
 
     // Callee
     let (callee_address, bytecode) = (Address::from_low_u64_be(8080), Bytecode::default());
-    let db = db.with_bytecode(callee_address, bytecode);
+    let mut db = db.with_contract(callee_address, bytecode);
+    db.set_account(callee_address, 0, EU256::zero(), Default::default());
 
     let gas = 255_u8;
     let value = 3_u8;
@@ -2302,7 +2304,7 @@ fn call_gas_check_with_value_and_empty_account() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let mut db = db.with_bytecode(caller_address, bytecode);
+    let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
@@ -2319,7 +2321,7 @@ fn extcodehash_happy_path() {
     let (env, mut db) = default_env_and_db_setup(operations);
     let bytecode = Bytecode::from_static(b"60806040");
     let address = Address::from_low_u64_be(address_number);
-    db = db.with_bytecode(address, bytecode);
+    db = db.with_contract(address, bytecode);
 
     let code_hash = db.basic(address).unwrap().unwrap().code_hash;
     let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
@@ -2349,7 +2351,7 @@ fn extcodehash_with_32_byte_address() {
     let (env, mut db) = default_env_and_db_setup(operations);
     let bytecode = Bytecode::from_static(b"60806040");
     let address = Address::from_low_u64_be(address_number);
-    db = db.with_bytecode(address, bytecode);
+    db = db.with_contract(address, bytecode);
 
     let code_hash = db.basic(address).unwrap().unwrap().code_hash;
     let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
@@ -2386,7 +2388,7 @@ fn extcodehash_address_with_no_code() {
 
     let bytecode = Bytecode::from_static(b"");
     let address = Address::from_low_u64_be(address_number);
-    db = db.with_bytecode(address, bytecode);
+    db = db.with_contract(address, bytecode);
     let expected_code_hash = BigUint::from_bytes_be(&empty_keccak);
 
     run_program_assert_num_result(env, db, expected_code_hash);
@@ -2403,7 +2405,7 @@ fn returndatasize_happy_path() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = Db::default().with_bytecode(callee_address, bytecode);
+    let db = Db::default().with_contract(callee_address, bytecode);
 
     let gas = 100_u8;
     let value = 0_u8;
@@ -2432,7 +2434,7 @@ fn returndatasize_happy_path() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     let expected_result = 32_u8.into();
 
@@ -2451,7 +2453,7 @@ fn returndatasize_no_return_data() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = Db::default().with_bytecode(caller_address, bytecode);
+    let db = Db::default().with_contract(caller_address, bytecode);
 
     let expected_result = 0_u8.into();
 
@@ -2479,7 +2481,7 @@ fn returndatacopy_happy_path() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = Db::default().with_bytecode(callee_address, bytecode);
+    let db = Db::default().with_contract(callee_address, bytecode);
 
     // Call arguments
     let gas = 100_u8;
@@ -2519,7 +2521,7 @@ fn returndatacopy_happy_path() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     let expected_result = return_value.into();
 
@@ -2557,7 +2559,7 @@ fn returndatacopy_no_return_data() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = Db::default().with_bytecode(caller_address, bytecode);
+    let db = Db::default().with_contract(caller_address, bytecode);
 
     // There was no return data, so memory stays the same
     let expected_result = &initial_memory_state;
@@ -2585,7 +2587,7 @@ fn returndatacopy_size_smaller_than_data() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = Db::default().with_bytecode(callee_address, bytecode);
+    let db = Db::default().with_contract(callee_address, bytecode);
 
     // Call arguments
     let gas = 100_u8;
@@ -2632,7 +2634,7 @@ fn returndatacopy_size_smaller_than_data() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     let expected_result = &[
         vec![0xFF_u8; 1], // <No collapse>
@@ -2656,7 +2658,7 @@ fn returndatacopy_with_offset_and_size_bigger_than_data() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = Db::default().with_bytecode(callee_address, bytecode);
+    let db = Db::default().with_contract(callee_address, bytecode);
 
     // Call arguments
     let gas = 100_u8;
@@ -2692,7 +2694,7 @@ fn returndatacopy_with_offset_and_size_bigger_than_data() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     run_program_assert_halt(env, db);
 }
@@ -2723,7 +2725,7 @@ fn returndatacopy_gas_check() {
         Address::from_low_u64_be(8080),
         Bytecode::from(program.to_bytecode()),
     );
-    let db = Db::default().with_bytecode(callee_address, bytecode);
+    let db = Db::default().with_contract(callee_address, bytecode);
 
     // Call arguments
     let gas = 100_u8;
@@ -2759,7 +2761,7 @@ fn returndatacopy_gas_check() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let db = db.with_bytecode(caller_address, bytecode);
+    let db = db.with_contract(caller_address, bytecode);
 
     let callee_gas_cost = gas_cost::PUSHN * 2
         + gas_cost::PUSH0 * 2
@@ -2778,6 +2780,157 @@ fn returndatacopy_gas_check() {
     run_program_assert_gas_and_refund(env, db, initial_gas as _, consumed_gas as _, 0);
 }
 
+#[test]
+fn create_happy_path() {
+    let value: u8 = 10;
+    let offset: u8 = 19;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::from(25);
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+    let bytecode = [0xff, 0xff, 0xff, 0xff];
+    let mut hasher = Keccak256::new();
+    hasher.update(bytecode);
+    let initialization_code_hash = B256::from_slice(&hasher.finalize());
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    // Check that contract is created correctly in the returned address
+    let returned_addr = Address::from_slice(&result.output().unwrap()[12..]);
+    let new_account = evm.db.basic(returned_addr).unwrap().unwrap();
+    assert_eq!(new_account.balance, EU256::from(value));
+    assert_eq!(new_account.nonce, 1);
+    assert_eq!(new_account.code_hash, initialization_code_hash);
+
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+    assert_eq!(sender_account.balance, sender_balance - value);
+}
+
+#[test]
+fn create_with_stack_underflow() {
+    let operations = vec![Operation::Create];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn create_with_balance_underflow() {
+    let value: u8 = 10;
+    let offset: u8 = 19;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::zero();
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+
+    // Check that the result is zero
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().to_vec(), [0_u8; 32].to_vec());
+
+    // Check that the sender account is not updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce);
+    assert_eq!(sender_account.balance, sender_balance);
+}
+
+#[test]
+fn create_with_invalid_initialization_code() {
+    let value: u8 = 10;
+    let offset: u8 = 19;
+    let size: u8 = 13;
+    let sender_nonce = 1;
+    let sender_balance = EU256::zero();
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that halts
+    let initialization_code = hex::decode("63ffffffff526004601cf3").unwrap();
+
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    let (mut env, mut db) = default_env_and_db_setup(operations);
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+    env.tx.value = EU256::from(value);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+
+    // Check that the result is zero
+    assert!(result.is_success());
+    assert_eq!(result.output().unwrap().to_vec(), [0_u8; 32].to_vec());
+
+    // Check that the sender account is not updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce);
+    assert_eq!(sender_account.balance, sender_balance);
+}
+
 fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>) {
     let caller_address = Address::from_low_u64_be(4040);
     let db = Db::new();
@@ -2787,7 +2940,7 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
         Bytecode::from(program.to_bytecode()),
     );
     let callee_balance = 100_u8;
-    let mut db = db.with_bytecode(callee_address, bytecode);
+    let mut db = db.with_contract(callee_address, bytecode);
     db.set_account(callee_address, 0, callee_balance.into(), Default::default());
 
     let gas = 1_000_000_u32;
@@ -2816,7 +2969,7 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let caller_balance = 100_u8;
-    let mut db = db.with_bytecode(caller_address, bytecode);
+    let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let expected_result = 0_u8.into();
