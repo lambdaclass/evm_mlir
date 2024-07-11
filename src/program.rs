@@ -159,7 +159,7 @@ pub enum Opcode {
     // unused 0xFB-0xFC
     REVERT = 0xFD,
     INVALID = 0xFE,
-    // SELFDESTRUCT = 0xFF,
+    SELFDESTRUCT = 0xFF,
 }
 
 #[derive(Error, Debug)]
@@ -324,6 +324,7 @@ impl TryFrom<u8> for Opcode {
             x if x == Opcode::EXTCODEHASH as u8 => Opcode::EXTCODEHASH,
             x if x == Opcode::CREATE as u8 => Opcode::CREATE,
             x if x == Opcode::CREATE2 as u8 => Opcode::CREATE2,
+            x if x == Opcode::SELFDESTRUCT as u8 => Opcode::SELFDESTRUCT,
             x => return Err(OpcodeParseError(x)),
         };
 
@@ -411,6 +412,7 @@ pub enum Operation {
     ExtcodeHash,
     Create,
     Create2,
+    SelfDestruct,
 }
 
 impl Operation {
@@ -501,6 +503,7 @@ impl Operation {
             Operation::ExtcodeHash => vec![Opcode::EXTCODEHASH as u8],
             Operation::Create => vec![Opcode::CREATE as u8],
             Operation::Create2 => vec![Opcode::CREATE2 as u8],
+            Operation::SelfDestruct => vec![Opcode::SELFDESTRUCT as u8],
         }
     }
 }

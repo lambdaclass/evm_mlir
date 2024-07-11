@@ -118,6 +118,7 @@ pub fn generate_code_for_op<'c>(
         Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
         Operation::Create => codegen_create(op_ctx, region, false),
         Operation::Create2 => codegen_create(op_ctx, region, true),
+        Operation::SelfDestruct => codegen_selfdestruct(op_ctx, region),
     }
 }
 
@@ -5347,6 +5348,39 @@ fn codegen_create<'c, 'r>(
         .into();
 
     stack_push(context, &end_block, code_address)?;
+
+    Ok((start_block, end_block))
+}
+
+fn codegen_selfdestruct<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint8 = IntegerType::new(context, 8);
+    let uint32 = IntegerType::new(context, 32);
+    let uint64 = IntegerType::new(context, 64);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+
+    // TODO: implement selfdestruct
 
     Ok((start_block, end_block))
 }
