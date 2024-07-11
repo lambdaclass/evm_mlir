@@ -2778,84 +2778,7 @@ fn returndatacopy_gas_check() {
     run_program_assert_gas_and_refund(env, db, initial_gas as _, consumed_gas as _, 0);
 }
 
-//TODO: Add CREATE, CREATE2, SELFDESTRUCT
-#[ignore]
-#[rstest]
-//SSTORE
-#[case(
-        vec![
-            Operation::Push((1_u8, 1_u8.into())),
-            Operation::Push((1_u8, 1_u8.into())),
-            Operation::Sstore,
-        ]
-)]
-//CALL with value > 0
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())), //Ret size
-            Operation::Push((1_u8, 0_u8.into())), //Ret offset
-            Operation::Push((1_u8, 0_u8.into())), //Args size
-            Operation::Push((1_u8, 0_u8.into())), //Args offset
-            Operation::Push((1_u8, 1_u8.into())), //Value
-            Operation::Push((
-                16_u8,
-                BigUint::from_bytes_be(Address::from_low_u64_be(4040).as_bytes()),
-            )),
-            Operation::Push((32_u8, 1000_u32.into())), //Gas
-            Operation::Call,
-        ],
-)]
-//LOG0
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Log(0),
-        ]
-)]
-//LOG1
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Log(0),
-        ]
-)]
-//LOG2
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Log(0),
-        ]
-)]
-//LOG3
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Log(0),
-        ]
-)]
-//LOG4
-#[case(
-        vec![
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Push((1_u8, 0_u8.into())),
-            Operation::Log(0),
-        ]
-)]
-fn staticcall_state_modifying_revert_with_callee_ops(#[case] callee_ops: Vec<Operation>) {
+fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>) {
     let caller_address = Address::from_low_u64_be(4040);
     let db = Db::new();
     let program = Program::from(callee_ops);
@@ -2901,12 +2824,43 @@ fn staticcall_state_modifying_revert_with_callee_ops(#[case] callee_ops: Vec<Ope
     run_program_assert_num_result(env, db, expected_result);
 }
 
+//TODO: Add CREATE, CREATE2, SELFDESTRUCT
 #[test]
-fn staticcall_test() {
-    let mut operations = vec![Operation::StaticCall];
-    append_return_result_operations(&mut operations);
-    let (env, db) = default_env_and_db_setup(operations);
-    let expected_result = 1_u8.into(); // Context is static
+fn staticcall_with_sstore_reverts() {
+    let operations = vec![
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::Sstore,
+    ];
+    staticcall_state_modifying_revert_with_callee_ops(operations);
+}
 
-    run_program_assert_num_result(env, db, expected_result);
+#[test]
+fn staticcall_with_call_with_value_not_zero_reverts() {
+    let operations = vec![
+        Operation::Push((1_u8, 0_u8.into())), //Ret size
+        Operation::Push((1_u8, 0_u8.into())), //Ret offset
+        Operation::Push((1_u8, 0_u8.into())), //Args size
+        Operation::Push((1_u8, 0_u8.into())), //Args offset
+        Operation::Push((1_u8, 1_u8.into())), //Value
+        Operation::Push((
+            16_u8,
+            BigUint::from_bytes_be(Address::from_low_u64_be(4040).as_bytes()),
+        )),
+        Operation::Push((32_u8, 1000_u32.into())), //Gas
+        Operation::Call,
+    ];
+    staticcall_state_modifying_revert_with_callee_ops(operations);
+}
+
+#[rstest]
+#[case(0)]
+#[case(1)]
+#[case(2)]
+#[case(3)]
+#[case(4)]
+fn staticcall_with_call_with_log_reverts(#[case] nth: usize) {
+    let mut operations = vec![Operation::Push((1_u8, 1_u8.into())); nth + 2];
+    operations.push(Operation::Log(nth as u8));
+    staticcall_state_modifying_revert_with_callee_ops(operations);
 }
