@@ -858,12 +858,13 @@ impl<'c> SyscallContext<'c> {
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
     }
 
-    pub extern "C" fn create(
+    fn create_aux(
         &mut self,
         size: u32,
         offset: u32,
         value: &mut U256,
         remaining_gas: &mut u64,
+        salt: Option<&U256>,
     ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
         let offset = offset as usize;
@@ -874,7 +875,15 @@ impl<'c> SyscallContext<'c> {
         let program = Program::from_bytecode(initialization_bytecode);
 
         let sender_account = self.db.basic(sender_address).unwrap().unwrap();
-        let dest_addr = compute_contract_address(sender_address, sender_account.nonce);
+
+        let dest_addr = match salt {
+            Some(s) => compute_contract_address2(
+                sender_address,
+                s.to_primitive_u256(),
+                initialization_bytecode,
+            ),
+            _ => compute_contract_address(sender_address, sender_account.nonce),
+        };
 
         // Check if there is already a contract stored in dest_address
         if let Ok(Some(_)) = self.db.basic(dest_addr) {
@@ -928,6 +937,16 @@ impl<'c> SyscallContext<'c> {
         0
     }
 
+    pub extern "C" fn create(
+        &mut self,
+        size: u32,
+        offset: u32,
+        value: &mut U256,
+        remaining_gas: &mut u64,
+    ) -> u8 {
+        self.create_aux(size, offset, value, remaining_gas, None)
+    }
+
     pub extern "C" fn create2(
         &mut self,
         size: u32,
@@ -936,68 +955,7 @@ impl<'c> SyscallContext<'c> {
         remaining_gas: &mut u64,
         salt: &U256,
     ) -> u8 {
-        let value_as_u256 = value.to_primitive_u256();
-        let salt = salt.to_primitive_u256();
-        let offset = offset as usize;
-        let size = size as usize;
-        let sender_address = self.env.tx.get_address();
-
-        let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
-        let program = Program::from_bytecode(initialization_bytecode);
-
-        let sender_account = self.db.basic(sender_address).unwrap().unwrap();
-        let dest_addr = compute_contract_address2(sender_address, salt, initialization_bytecode);
-
-        // Check if there is already a contract stored in dest_address
-        if let Ok(Some(_)) = self.db.basic(dest_addr) {
-            return 1;
-        }
-
-        // Create subcontext for the initialization code
-        // TODO: Add call depth check
-        let mut new_env = self.env.clone();
-        new_env.tx.transact_to = TransactTo::Call(dest_addr);
-        new_env.tx.gas_limit = *remaining_gas;
-        new_env.tx.caller = self.env.tx.caller;
-        let call_frame = CallFrame::new(sender_address);
-
-        // Execute initialization code
-        let context = Context::new();
-        let module = context
-            .compile(&program, Default::default())
-            .expect("failed to compile program");
-        let executor = Executor::new(&module, OptLevel::Aggressive);
-        let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
-        executor.execute(&mut context, new_env.tx.gas_limit);
-        let result = context.get_result().unwrap().result;
-        let bytecode = result.output().cloned().unwrap_or_default();
-
-        // Set the gas cost
-        let init_code_cost = ((size + 31) / 32) as u64 * gas_cost::INIT_WORD_COST as u64;
-        let code_deposit_cost = (bytecode.len() as u64) * gas_cost::BYTE_DEPOSIT_COST as u64;
-        let gas_cost =
-            init_code_cost + code_deposit_cost + result.gas_used() - result.gas_refunded();
-        *remaining_gas = gas_cost;
-
-        // Check if balance is enough
-        let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
-            *value = U256::zero();
-            return 0;
-        };
-
-        // Create new contract and update sender account
-        self.db.insert_contract(dest_addr, bytecode, value_as_u256);
-        self.db.set_account(
-            sender_address,
-            sender_account.nonce + 1,
-            sender_balance,
-            Default::default(),
-        );
-
-        value.copy_from(&dest_addr);
-
-        // TODO: add dest_addr as warm in the access list
-        0
+        self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 }
 

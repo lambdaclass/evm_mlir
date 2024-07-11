@@ -1107,6 +1107,7 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create2_syscall(
         &'c self,
         block: &'c Block,

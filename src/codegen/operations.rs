@@ -116,8 +116,8 @@ pub fn generate_code_for_op<'c>(
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
         Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
-        Operation::Create => codegen_create(op_ctx, region),
-        Operation::Create2 => codegen_create2(op_ctx, region),
+        Operation::Create => codegen_create(op_ctx, region, false),
+        Operation::Create2 => codegen_create(op_ctx, region, true),
     }
 }
 
@@ -5184,6 +5184,7 @@ fn codegen_returndatacopy<'c, 'r>(
 fn codegen_create<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
+    is_create2: bool,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5194,7 +5195,8 @@ fn codegen_create<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
-    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+    let stack_size = if is_create2 { 4 } else { 3 };
+    let flag = check_stack_has_at_least(context, &start_block, stack_size)?;
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -5261,171 +5263,28 @@ fn codegen_create<'c, 'r>(
         .into();
     let gas_ptr = allocate_and_store_value(op_ctx, &create_block, gas_counter, location)?;
 
-    let result = op_ctx.create_syscall(
-        &create_block,
-        size_as_u32,
-        offset_as_u32,
-        value_ptr,
-        gas_ptr,
-        location,
-    )?;
-
-    // Check if the return code is error
-    let zero_constant_value = create_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint8.into(), 0).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let flag = create_block
-        .append_operation(arith::cmpi(
-            context,
-            CmpiPredicate::Eq,
-            zero_constant_value,
-            result,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // Consume gas after creation
-    let gas_cost = create_block
-        .append_operation(llvm::load(
-            context,
-            gas_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let gas_flag = consume_gas_as_value(context, &create_block, gas_cost)?;
-
-    let condition = create_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
-    let end_block = region.append_block(Block::new(&[]));
-    create_block.append_operation(cf::cond_br(
-        context,
-        condition,
-        &end_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    let code_address = end_block
-        .append_operation(llvm::load(
-            context,
+    let result = if is_create2 {
+        let salt = stack_pop(context, &create_block)?;
+        let salt_ptr = allocate_and_store_value(op_ctx, &create_block, salt, location)?;
+        op_ctx.create2_syscall(
+            &create_block,
+            size_as_u32,
+            offset_as_u32,
             value_ptr,
-            uint256.into(),
+            gas_ptr,
+            salt_ptr,
             location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    stack_push(context, &end_block, code_address)?;
-
-    Ok((start_block, end_block))
-}
-
-fn codegen_create2<'c, 'r>(
-    op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
-) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    let start_block = region.append_block(Block::new(&[]));
-    let context = &op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint8 = IntegerType::new(context, 8);
-    let uint32 = IntegerType::new(context, 32);
-    let uint64 = IntegerType::new(context, 64);
-    let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
-
-    let flag = check_stack_has_at_least(context, &start_block, 4)?;
-    let ok_block = region.append_block(Block::new(&[]));
-
-    start_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &ok_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    let value = stack_pop(context, &ok_block)?;
-    let offset = stack_pop(context, &ok_block)?;
-    let size = stack_pop(context, &ok_block)?;
-    let salt = stack_pop(context, &ok_block)?;
-
-    let offset_as_u32 = ok_block
-        .append_operation(arith::trunci(offset, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    let size_as_u32 = ok_block
-        .append_operation(arith::trunci(size, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    let req_mem_size = ok_block
-        .append_operation(arith::addi(offset_as_u32, size_as_u32, location))
-        .result(0)?
-        .into();
-
-    let create_block = region.append_block(Block::new(&[]));
-
-    extend_memory(
-        op_ctx,
-        &ok_block,
-        &create_block,
-        region,
-        req_mem_size,
-        gas_cost::CREATE,
-    )?;
-
-    let value_ptr = allocate_and_store_value(op_ctx, &create_block, value, location)?;
-    let salt_ptr = allocate_and_store_value(op_ctx, &create_block, salt, location)?;
-
-    // Load the gas counter and copy the value into a new pointer
-    let gas_counter_ptr = create_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            GAS_COUNTER_GLOBAL,
-            ptr_type,
+        )?
+    } else {
+        op_ctx.create_syscall(
+            &create_block,
+            size_as_u32,
+            offset_as_u32,
+            value_ptr,
+            gas_ptr,
             location,
-        ))
-        .result(0)?
-        .into();
-    let gas_counter = create_block
-        .append_operation(llvm::load(
-            context,
-            gas_counter_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let gas_ptr = allocate_and_store_value(op_ctx, &create_block, gas_counter, location)?;
-
-    let result = op_ctx.create2_syscall(
-        &create_block,
-        size_as_u32,
-        offset_as_u32,
-        value_ptr,
-        gas_ptr,
-        salt_ptr,
-        location,
-    )?;
+        )?
+    };
 
     // Check if the return code is error
     let zero_constant_value = create_block
