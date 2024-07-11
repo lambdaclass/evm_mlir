@@ -1006,9 +1006,8 @@ fn sstore_happy_path() {
         Operation::Sstore,
     ];
 
-    let (mut env, db) = default_env_and_db_setup(operations);
-    let caller_address = Address::from_low_u64_be(41);
-    env.tx.caller = caller_address;
+    let (env, db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
     let mut evm = Evm::new(env, db);
 
     let res = evm.transact().unwrap();
@@ -1016,7 +1015,7 @@ fn sstore_happy_path() {
 
     let stored_value = res
         .state
-        .get(&caller_address)
+        .get(&callee_address)
         .and_then(|account| account.storage.get(&EU256::from(key)))
         .map(|slot| slot.present_value)
         .unwrap_or(EU256::zero());
@@ -1144,34 +1143,21 @@ fn sload_gas_consumption() {
 fn sload_with_valid_key() {
     let key = 80_u8;
     let value = 11_u8;
-    let program = Program::from(vec![
+    let mut operations = vec![
         Operation::Push((1_u8, BigUint::from(key))),
         Operation::Sload,
-        Operation::Push0,
-        Operation::Mstore,
-        Operation::Push((1_u8, BigUint::from(32_u8))),
-        Operation::Push0,
-        Operation::Return,
-    ]);
-    let (address, bytecode) = (
-        Address::from_low_u64_be(40),
-        Bytecode::from(program.to_bytecode()),
-    );
-    let caller_address = Address::from_low_u64_be(41);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(address);
-    env.tx.caller = caller_address;
-    let db = Db::new().with_contract(address, bytecode);
+    ];
+
+    append_return_result_operations(&mut operations);
+
+    let (env, db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
     let mut evm = Evm::new(env, db);
-
     evm.db
-        .write_storage(caller_address, EU256::from(key), EU256::from(value));
-
+        .write_storage(callee_address, EU256::from(key), EU256::from(value));
     let result = evm.transact().unwrap().result;
     assert!(&result.is_success());
     let result = result.output().unwrap().as_ref();
-
     assert_eq!(EU256::from(result), EU256::from(value));
 }
 
@@ -1495,7 +1481,8 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
     ];
 
     let (env, mut db) = default_env_and_db_setup(program);
-    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
@@ -1549,7 +1536,8 @@ fn sstore_gas_cost_restore_warm_from_zero() {
     ];
 
     let (env, mut db) = default_env_and_db_setup(program);
-    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
@@ -1577,7 +1565,8 @@ fn sstore_gas_cost_update_warm_from_zero() {
     ];
 
     let (env, mut db) = default_env_and_db_setup(program);
-    db.write_storage(env.tx.caller, EU256::from(key), EU256::from(original_value));
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
