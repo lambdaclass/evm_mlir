@@ -2300,6 +2300,117 @@ fn call_gas_check_with_value_and_empty_account() {
 }
 
 #[test]
+fn call_callee_returns_value() {
+    let db = Db::new();
+    let origin = Address::from_low_u64_be(79);
+    let origin_value = 1_u8;
+
+    // Callee
+    let mut callee_ops = vec![Operation::Callvalue];
+    append_return_result_operations(&mut callee_ops);
+
+    // Caller
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let value = 3_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, callee_bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, callee_bytecode);
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::Call,
+        //Return
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let caller_balance = 100_u8;
+    let mut env = Env::default();
+    let mut db = db.with_contract(caller_address, caller_bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+    env.tx.value = origin_value.into();
+
+    let expected_result = value.into();
+
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[ignore] //This test should be run only after fixing CALLER opcode
+#[test]
+fn call_callee_returns_caller() {
+    let db = Db::new();
+    let origin = Address::from_low_u64_be(79);
+
+    // Callee
+    let mut callee_ops = vec![Operation::Caller];
+    append_return_result_operations(&mut callee_ops);
+
+    // Caller
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, callee_bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, callee_bytecode);
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::Call,
+        //Return
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = db.with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+
+    let expected_result = caller_address.as_bytes();
+
+    run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
 fn extcodehash_happy_path() {
     let address_number = 10;
     let mut operations = vec![
@@ -2933,7 +3044,6 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     db.set_account(callee_address, 0, callee_balance.into(), Default::default());
 
     let gas = 1_000_000_u32;
-    let value = 0_u8;
     let args_offset = 0_u8;
     let args_size = 0_u8;
     let ret_offset = 0_u8;
@@ -2944,7 +3054,6 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
         Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
         Operation::Push((1_u8, BigUint::from(args_size))), //Args size
         Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
-        Operation::Push((1_u8, BigUint::from(value))),    //Value
         Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
         Operation::Push((10_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
@@ -3026,4 +3135,111 @@ fn staticcall_with_create_reverts() {
     ];
     append_return_result_operations(&mut operations);
     staticcall_state_modifying_revert_with_callee_ops(operations)
+}
+
+#[test]
+fn staticcall_callee_returns_value() {
+    let db = Db::new();
+    let origin = Address::from_low_u64_be(79);
+    let origin_value = 1_u8;
+
+    // Callee
+    let mut callee_ops = vec![Operation::Callvalue];
+    append_return_result_operations(&mut callee_ops);
+
+    // Caller
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, callee_bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, callee_bytecode);
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        //Return
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = db.with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+    env.tx.value = origin_value.into();
+
+    let expected_result = 0_u8.into(); // Value is set to zero on a static call
+
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[ignore] //This test should be run only after fixing CALLER opcode
+#[test]
+fn staticcall_callee_returns_caller() {
+    let db = Db::new();
+    let origin = Address::from_low_u64_be(79);
+
+    // Callee
+    let mut callee_ops = vec![Operation::Caller];
+    append_return_result_operations(&mut callee_ops);
+
+    // Caller
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, callee_bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, callee_bytecode);
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let mut caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        //Return
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push0,
+        Operation::Return,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = db.with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+
+    let expected_result = caller_address.as_bytes();
+
+    run_program_assert_bytes_result(env, db, expected_result);
 }

@@ -298,7 +298,7 @@ impl<'c> SyscallContext<'c> {
             }
         };
 
-        let caller_address = self.env.tx.caller;
+        let caller_address = self.env.tx.get_address();
         let caller_account = self
             .db
             .basic(caller_address)

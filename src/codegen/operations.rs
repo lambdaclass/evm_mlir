@@ -5349,7 +5349,7 @@ fn codegen_staticcall<'c, 'r>(
     let uint64 = IntegerType::new(context, 64);
     let uint32 = IntegerType::new(context, 32);
 
-    let flag = check_stack_has_at_least(context, &start_block, 7)?;
+    let flag = check_stack_has_at_least(context, &start_block, 6)?;
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
