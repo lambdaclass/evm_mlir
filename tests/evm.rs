@@ -3017,3 +3017,24 @@ fn staticcall_with_call_with_log_reverts(#[case] nth: usize) {
     operations.push(Operation::Log(nth as u8));
     staticcall_state_modifying_revert_with_callee_ops(operations);
 }
+
+#[test]
+fn staticcall_with_create_reverts() {
+    let value: u8 = 10;
+    let offset: u8 = 19;
+    let size: u8 = 13;
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+    let mut operations = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(value))),
+        Operation::Push((1, BigUint::from(offset))),
+        Operation::Push((1, BigUint::from(size))),
+        Operation::Create,
+    ];
+    append_return_result_operations(&mut operations);
+    staticcall_state_modifying_revert_with_callee_ops(operations)
+}

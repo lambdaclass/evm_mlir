@@ -5233,12 +5233,18 @@ fn codegen_create<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
 
-    let flag = check_stack_has_at_least(context, &start_block, 3)?;
+    // Check there's enough elements in stack
+    let stack_flag = check_stack_has_at_least(context, &start_block, 3)?;
+    // Check current context is not static
+    let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    let ok_flag = start_block
+        .append_operation(arith::andi(context_flag, stack_flag, location))
+        .result(0)?
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
-
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
