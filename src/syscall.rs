@@ -869,6 +869,7 @@ impl<'c> SyscallContext<'c> {
         let value_as_u256 = value.to_primitive_u256();
         let offset = offset as usize;
         let size = size as usize;
+        let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
@@ -876,13 +877,19 @@ impl<'c> SyscallContext<'c> {
 
         let sender_account = self.db.basic(sender_address).unwrap().unwrap();
 
-        let dest_addr = match salt {
-            Some(s) => compute_contract_address2(
-                sender_address,
-                s.to_primitive_u256(),
-                initialization_bytecode,
+        let (dest_addr, hash_cost) = match salt {
+            Some(s) => (
+                compute_contract_address2(
+                    sender_address,
+                    s.to_primitive_u256(),
+                    initialization_bytecode,
+                ),
+                minimum_word_size * gas_cost::HASH_WORD_COST as u64,
             ),
-            _ => compute_contract_address(sender_address, sender_account.nonce),
+            _ => (
+                compute_contract_address(sender_address, sender_account.nonce),
+                0,
+            ),
         };
 
         // Check if there is already a contract stored in dest_address
@@ -910,10 +917,10 @@ impl<'c> SyscallContext<'c> {
         let bytecode = result.output().cloned().unwrap_or_default();
 
         // Set the gas cost
-        let init_code_cost = ((size + 31) / 32) as u64 * gas_cost::INIT_WORD_COST as u64;
+        let init_code_cost = minimum_word_size * gas_cost::INIT_WORD_COST as u64;
         let code_deposit_cost = (bytecode.len() as u64) * gas_cost::BYTE_DEPOSIT_COST as u64;
-        let gas_cost =
-            init_code_cost + code_deposit_cost + result.gas_used() - result.gas_refunded();
+        let gas_cost = init_code_cost + code_deposit_cost + hash_cost + result.gas_used()
+            - result.gas_refunded();
         *remaining_gas = gas_cost;
 
         // Check if balance is enough
