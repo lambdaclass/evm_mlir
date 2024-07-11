@@ -1697,9 +1697,9 @@ pub fn compute_contract_address2(address: H160, salt: U256, initialization_code:
     let mut hasher = Keccak256::new();
     let mut salt_bytes = [0; 32];
     salt.to_big_endian(&mut salt_bytes);
-    hasher.update(&[0xff]);
+    hasher.update([0xff]);
     hasher.update(address.as_bytes());
-    hasher.update(&salt_bytes);
-    hasher.update(&initialization_code_hash);
+    hasher.update(salt_bytes);
+    hasher.update(initialization_code_hash);
     Address::from_slice(&hasher.finalize()[12..])
 }
