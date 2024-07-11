@@ -4,8 +4,8 @@
 [![rust](https://github.com/lambdaclass/evm_mlir/actions/workflows/ci.yml/badge.svg)](https://github.com/lambdaclass/emv_mlir/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lambdaclass/evm_mlir)](/LICENSE)
 
-[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fethereum_rust%2F&logo=telegram&label=chat&color=neon
-[tg-url]: https://t.me/ethereum_rust
+[tg-badge]: https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Frust_ethereum%2F&logo=telegram&label=chat&color=neon
+[tg-url]: https://t.me/rust_ethereum
 
 An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
