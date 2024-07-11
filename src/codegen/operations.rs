@@ -5414,7 +5414,7 @@ fn codegen_staticcall<'c, 'r>(
         gas_cost::CALL,
     )?;
 
-    // Invoke call syscall
+    // Invoke staticcall syscall
     let finish_block = region.append_block(Block::new(&[]));
     let call_result = op_ctx.staticcall_syscall(
         &mem_ext_block,

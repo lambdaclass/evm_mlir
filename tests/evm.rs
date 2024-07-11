@@ -2977,7 +2977,7 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     run_program_assert_num_result(env, db, expected_result);
 }
 
-//TODO: Add CREATE, CREATE2, SELFDESTRUCT
+//TODO: Add CREATE2, SELFDESTRUCT
 #[test]
 fn staticcall_with_sstore_reverts() {
     let operations = vec![

@@ -574,19 +574,6 @@ impl Program {
             .collect::<Vec<u8>>()
     }
 
-    pub fn with_static_ctx(self) -> Self {
-        let Self {
-            operations,
-            code_size,
-            ..
-        } = self;
-
-        Self {
-            operations,
-            code_size,
-        }
-    }
-
     fn parse_operation(
         bytecode: &[u8],
         mut pc: usize,
