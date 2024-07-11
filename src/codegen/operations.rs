@@ -5316,3 +5316,27 @@ fn codegen_staticcall<'c, 'r>(
 
     Ok((start_block, finish_block))
 }
+*/
+
+fn codegen_staticcall<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    // NOTE: THIS IS ONLYF FOR DEBUG PURPOSES.
+    // WE WANT TO SEE WHAT VALUE DOES IS_STATIC GLOBAL VARIABLE HAS
+
+    let is_static = context_is_static(op_ctx, &start_block)?;
+    // Extend the 32 bits result to 256 bits
+    let uint256 = IntegerType::new(context, 256);
+    let is_static = start_block
+        .append_operation(arith::extui(is_static, uint256.into(), location))
+        .result(0)?
+        .into();
+
+    stack_push(context, &start_block, is_static)?;
+
+    Ok((start_block, start_block))
+}

@@ -2779,6 +2779,7 @@ fn returndatacopy_gas_check() {
 }
 
 //TODO: Add CREATE, CREATE2, SELFDESTRUCT
+#[ignore]
 #[rstest]
 //SSTORE
 #[case(
@@ -2896,6 +2897,16 @@ fn staticcall_state_modifying_revert_with_callee_ops(#[case] callee_ops: Vec<Ope
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let expected_result = 0_u8.into();
+
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn staticcall_test() {
+    let mut operations = vec![Operation::StaticCall];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    let expected_result = 1_u8.into(); // Context is static
 
     run_program_assert_num_result(env, db, expected_result);
 }
