@@ -21,7 +21,7 @@ use crate::{
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
-    syscall::ExitStatusCode,
+    syscall::{symbols::CONTEXT_IS_STATIC, ExitStatusCode},
 };
 
 // NOTE: the value is of type i64
@@ -133,12 +133,19 @@ pub(crate) fn check_context_is_not_static<'c>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint1 = IntegerType::new(context, 1);
-    let is_not_static = block
+
+    let is_static = context_is_static(op_ctx, block)?;
+    let true_value = block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint1.into(), !op_ctx.program.ctx_is_static as i64).into(),
+            IntegerAttribute::new(uint1.into(), 1).into(),
             location,
         ))
+        .result(0)?
+        .into();
+
+    let is_not_static = block
+        .append_operation(arith::xori(is_static, true_value, location))
         .result(0)?
         .into();
 
@@ -152,11 +159,25 @@ pub(crate) fn context_is_static<'c>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint1 = IntegerType::new(context, 1);
-    let is_static = block
-        .append_operation(arith::constant(
+    let ptr_type = pointer(context, 0);
+
+    let static_flag_ptr = block
+        .append_operation(llvm_mlir::addressof(
             context,
-            IntegerAttribute::new(uint1.into(), op_ctx.program.ctx_is_static as i64).into(),
+            CONTEXT_IS_STATIC,
+            ptr_type,
             location,
+        ))
+        .result(0)?
+        .into();
+
+    let is_static = block
+        .append_operation(llvm::load(
+            context,
+            static_flag_ptr,
+            uint1.into(),
+            location,
+            LoadStoreOptions::default(),
         ))
         .result(0)?
         .into();

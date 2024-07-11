@@ -32,11 +32,10 @@ fn main() {
         .compile(&program, session)
         .expect("failed to compile program");
 
-    let executor = Executor::new(&module, opt_level);
-
     let env = Env::default();
     let mut db = Db::default();
     let mut context = SyscallContext::new(env, &mut db, Default::default());
+    let executor = Executor::new(&module, &context, opt_level);
 
     let initial_gas = 1000;
 

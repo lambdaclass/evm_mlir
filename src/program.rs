@@ -506,7 +506,6 @@ impl Operation {
 pub struct Program {
     pub(crate) operations: Vec<Operation>,
     pub(crate) code_size: u32,
-    pub(crate) ctx_is_static: bool,
 }
 
 impl Program {
@@ -534,7 +533,6 @@ impl Program {
             Ok(Program {
                 operations,
                 code_size,
-                ctx_is_static: false,
             })
         } else {
             Err(ParseError(failed_opcodes))
@@ -563,7 +561,6 @@ impl Program {
         Program {
             operations,
             code_size,
-            ctx_is_static: false,
         }
     }
 
@@ -584,7 +581,6 @@ impl Program {
         Self {
             operations,
             code_size,
-            ctx_is_static: true,
         }
     }
 
@@ -986,7 +982,6 @@ impl From<Vec<Operation>> for Program {
         Program {
             operations,
             code_size,
-            ctx_is_static: false,
         }
     }
 }

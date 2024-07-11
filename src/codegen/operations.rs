@@ -5004,9 +5004,6 @@ fn codegen_call<'c, 'r>(
         gas_cost::CALL,
     )?;
 
-    // Get static context flag
-    let ctx_is_static = context_is_static(op_ctx, &mem_ext_block)?;
-
     // Invoke call syscall
     let finish_block = region.append_block(Block::new(&[]));
     let call_result = op_ctx.call_syscall(
@@ -5224,6 +5221,7 @@ fn codegen_returndatacopy<'c, 'r>(
     Ok((start_block, end_block))
 }
 
+/*
 fn codegen_staticcall<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,

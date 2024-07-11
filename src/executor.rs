@@ -3,7 +3,7 @@ use melior::ExecutionEngine;
 use crate::{
     constants::MAIN_ENTRYPOINT,
     module::MLIRModule,
-    syscall::{self, MainFunc, SyscallContext},
+    syscall::{MainFunc, SyscallContext},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -20,9 +20,9 @@ pub struct Executor {
 }
 
 impl Executor {
-    pub fn new(module: &MLIRModule, opt_level: OptLevel) -> Self {
+    pub fn new(module: &MLIRModule, syscall_ctx: &SyscallContext, opt_level: OptLevel) -> Self {
         let engine = ExecutionEngine::new(module.module(), opt_level as usize, &[], false);
-        syscall::register_syscalls(&engine);
+        syscall_ctx.register_symbols(&engine);
         Self { engine }
     }
 
