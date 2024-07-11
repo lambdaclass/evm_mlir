@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use melior::{
     dialect::{
         arith, cf, func,
-        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
+        llvm::{self, attributes::Linkage, r#type::pointer, AllocaOptions, LoadStoreOptions},
     },
     ir::{
         attribute::{IntegerAttribute, TypeAttribute},
@@ -67,7 +67,7 @@ impl<'c> OperationCtx<'c> {
         generate_calldata_setup_code(context, syscall_ctx, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
-        syscall::mlir::declare_syscalls(context, module);
+        syscall::mlir::declare_symbols(context, module);
 
         // Generate helper blocks
         let revert_block = region.append_block(generate_revert_block(context, syscall_ctx)?);
@@ -166,6 +166,7 @@ fn generate_gas_counter_setup_code<'c>(
         context,
         GAS_COUNTER_GLOBAL,
         uint64,
+        Linkage::Internal,
         location,
     ));
 
@@ -207,6 +208,7 @@ fn generate_stack_setup_code<'c>(
         context,
         STACK_BASEPTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -214,6 +216,7 @@ fn generate_stack_setup_code<'c>(
         context,
         STACK_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -295,6 +298,7 @@ fn generate_memory_setup_code<'c>(
         context,
         MEMORY_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -302,6 +306,7 @@ fn generate_memory_setup_code<'c>(
         context,
         MEMORY_SIZE_GLOBAL,
         uint32,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -352,6 +357,7 @@ fn generate_calldata_setup_code<'c>(
         context,
         CALLDATA_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -359,6 +365,7 @@ fn generate_calldata_setup_code<'c>(
         context,
         CALLDATA_SIZE_GLOBAL,
         uint32,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());

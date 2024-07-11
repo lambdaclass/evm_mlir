@@ -160,7 +160,6 @@ pub(crate) fn context_is_static<'c>(
     let location = Location::unknown(context);
     let uint1 = IntegerType::new(context, 1);
     let ptr_type = pointer(context, 0);
-
     let static_flag_ptr = block
         .append_operation(llvm_mlir::addressof(
             context,
@@ -170,7 +169,6 @@ pub(crate) fn context_is_static<'c>(
         ))
         .result(0)?
         .into();
-
     let is_static = block
         .append_operation(llvm::load(
             context,
@@ -1667,6 +1665,7 @@ pub mod llvm_mlir {
         context: &'c MeliorContext,
         name: &str,
         global_type: melior::ir::Type<'c>,
+        linkage: Linkage,
         location: Location<'c>,
     ) -> melior::ir::Operation<'c> {
         // TODO: use ODS
@@ -1683,7 +1682,7 @@ pub mod llvm_mlir {
                 ),
                 (
                     Identifier::new(context, "linkage"),
-                    llvm::attributes::linkage(context, Linkage::Internal),
+                    llvm::attributes::linkage(context, linkage),
                 ),
             ])
             .build()

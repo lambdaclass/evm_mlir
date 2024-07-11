@@ -30,7 +30,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     env.tx.data = Bytes::from(calldata);
     let mut db = Db::default();
     let mut context = SyscallContext::new(env, &mut db, Default::default());
-    let executor = Executor::new(&module, &mut context, Default::default());
+    let executor = Executor::new(&module, &context, Default::default());
     let initial_gas = 999_999_999;
 
     for _ in 0..runs - 1 {

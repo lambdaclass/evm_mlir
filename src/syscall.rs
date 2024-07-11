@@ -123,7 +123,7 @@ impl CallFrame {
     pub fn new(caller: Address) -> Self {
         Self {
             caller,
-            ctx_is_static: true,
+            ctx_is_static: false,
             ..Default::default()
         }
     }
@@ -1122,7 +1122,10 @@ impl<'c> SyscallContext<'c> {
 /// MLIR util for declaring syscalls
 pub(crate) mod mlir {
     use melior::{
-        dialect::{func, llvm::r#type::pointer},
+        dialect::{
+            func,
+            llvm::{attributes::Linkage, r#type::pointer},
+        },
         ir::{
             attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
             r#type::{FunctionType, IntegerType},
@@ -1135,7 +1138,7 @@ pub(crate) mod mlir {
 
     use super::symbols;
 
-    pub(crate) fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
+    pub(crate) fn declare_symbols(context: &MeliorContext, module: &MeliorModule) {
         let location = Location::unknown(context);
 
         // Type declarations
@@ -1155,6 +1158,7 @@ pub(crate) mod mlir {
             context,
             symbols::CONTEXT_IS_STATIC,
             ptr_type,
+            Linkage::External,
             location,
         ));
         // Syscall declarations

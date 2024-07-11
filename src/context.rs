@@ -209,7 +209,7 @@ fn compile_program(
     let ptr_type = pointer(context, 0);
     let uint8 = IntegerType::new(context, 8).into();
     let uint64 = IntegerType::new(context, 64).into();
-    
+
     // Build the main function
     let main_func = func::func(
         context,

@@ -65,7 +65,7 @@ impl Evm<Db> {
 
         let call_frame = CallFrame::new(self.env.tx.caller);
         let mut context = SyscallContext::new(self.env.clone(), &mut self.db, call_frame);
-        let executor = Executor::new(&module, &mut context, OptLevel::Aggressive);
+        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
