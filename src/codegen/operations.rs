@@ -5258,7 +5258,31 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let gas_ptr = allocate_and_store_value(op_ctx, &create_block, gas_counter, location)?;
+    let number_of_elements = create_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = create_block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    create_block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
+        location,
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
 
     let result = op_ctx.create_syscall(
         &create_block,
