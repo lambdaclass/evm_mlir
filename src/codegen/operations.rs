@@ -5360,12 +5360,17 @@ fn codegen_selfdestruct<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
 
-    let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let ok_block = region.append_block(Block::new(&[]));
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SELFDESTRUCT)?;
+    let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
 
+    let ok_block = region.append_block(Block::new(&[]));
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -5376,7 +5381,19 @@ fn codegen_selfdestruct<'c, 'r>(
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    op_ctx.selfdestruct_syscall(&ok_block, address_ptr, location);
+    let gas_cost = op_ctx.selfdestruct_syscall(&ok_block, address_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
 
-    Ok((start_block, ok_block))
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, end_block))
 }

@@ -965,15 +965,28 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
-    pub extern "C" fn selfdestruct(&mut self, address: &U256) {
+    pub extern "C" fn selfdestruct(&mut self, address: &U256) -> u64 {
         let address = Address::from(address);
+        let receiver_empty = self
+            .db
+            .basic(address)
+            .unwrap()
+            .map(|acc| !acc.balance.is_zero())
+            .unwrap_or(false);
         let callee_address = self.env.tx.get_address();
-        self.db.move_balance(callee_address, address);
+        let is_moved = self.db.move_balance(callee_address, address);
 
         if self.db.address_is_created(callee_address) {
             self.db
                 .set_status(callee_address, AccountStatus::SelfDestructed);
         }
+
+        if is_moved && receiver_empty {
+            gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
+        } else {
+            0
+        }
+        // TODO: add gas cost for cold addresses
     }
 }
 
@@ -1672,7 +1685,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::SELFDESTRUCT),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -2438,13 +2451,19 @@ pub(crate) mod mlir {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::SELFDESTRUCT),
-            &[syscall_ctx, address],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::SELFDESTRUCT),
+                &[syscall_ctx, address],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 }

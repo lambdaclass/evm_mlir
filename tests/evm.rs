@@ -3133,3 +3133,35 @@ fn selfdestruct_on_newly_created_account() {
     let callee = state.get(&callee_address).unwrap();
     assert_eq!(callee.status, AccountStatus::SelfDestructed);
 }
+
+#[test]
+fn selfdestruct_gas_cost_on_empty_account() {
+    let receiver_address: u8 = 100;
+    let needed_gas = gas_cost::PUSHN + gas_cost::SELFDESTRUCT;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn selfdestruct_gas_cost_on_non_empty_account() {
+    let receiver_address = 100;
+    let balance = EU256::from(231);
+    let needed_gas = gas_cost::PUSHN + gas_cost::SELFDESTRUCT + gas_cost::SELFDESTRUCT_DYNAMIC_GAS;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    db.set_account(callee_address, 1, balance, Default::default());
+    let receiver_address = Address::from_low_u64_be(receiver_address);
+    db.set_account(receiver_address, 1, balance, Default::default());
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, needed_gas as _, 0);
+}

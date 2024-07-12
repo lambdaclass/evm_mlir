@@ -61,12 +61,13 @@ impl Db {
         a.storage = storage;
     }
 
-    pub fn move_balance(&mut self, from: Address, to: Address) {
+    pub fn move_balance(&mut self, from: Address, to: Address) -> bool {
         let from = self.accounts.entry(from).or_default();
         let balance = from.balance;
         from.balance = U256::zero();
         let to = self.accounts.entry(to).or_default();
         to.balance += balance;
+        !balance.is_zero()
     }
 
     pub fn address_is_created(&self, address: Address) -> bool {
