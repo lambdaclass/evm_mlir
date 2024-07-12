@@ -3237,7 +3237,15 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     run_program_assert_num_result(env, db, expected_result);
 }
 
-//TODO: Add SELFDESTRUCT
+#[test]
+fn staticcall_with_selfdestruct_reverts() {
+    let operations = vec![
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::SelfDestruct,
+    ];
+    staticcall_state_modifying_revert_with_callee_ops(operations);
+}
+
 #[test]
 fn staticcall_with_sstore_reverts() {
     let operations = vec![

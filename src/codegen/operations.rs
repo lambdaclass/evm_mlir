@@ -5529,8 +5529,13 @@ fn codegen_selfdestruct<'c, 'r>(
 
     let gas_flag = consume_gas(context, &start_block, gas_cost::SELFDESTRUCT)?;
     let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
-    let condition = start_block
+    let gas_stack_flag = start_block
         .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+    let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_stack_flag, context_flag, location))
         .result(0)?
         .into();
 
