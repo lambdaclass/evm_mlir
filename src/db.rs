@@ -66,11 +66,8 @@ impl Db {
         account.balance = balance;
     }
 
-    pub fn get_balance(&mut self, address: Address) -> U256 {
-        self.accounts
-            .get(&address)
-            .map(|acc| acc.balance)
-            .unwrap_or_default()
+    pub fn get_balance(&mut self, address: Address) -> Option<U256> {
+        self.accounts.get(&address).map(|acc| acc.balance)
     }
 
     pub fn address_is_created(&self, address: Address) -> bool {
@@ -236,7 +233,7 @@ mod tests {
         let expected_account_info = AccountInfo::default();
         let db_account = DbAccount {
             bytecode_hash: B256::zero(),
-            nonce: 1,
+            nonce: 0,
             ..Default::default()
         };
         accounts.insert(address, db_account);

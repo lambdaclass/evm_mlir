@@ -975,19 +975,19 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
 
-        let sender_balance = self.db.get_balance(receiver_address);
-        let receiver_balance = self.db.get_balance(receiver_address);
+        let sender_balance = self.db.get_balance(sender_address).unwrap_or_default();
+        let receiver_balance = self.db.get_balance(receiver_address).unwrap_or_default();
 
         self.db.set_balance(sender_address, EU256::zero());
         self.db
             .set_balance(receiver_address, receiver_balance + sender_balance);
 
-        if self.db.address_is_created(callee_address) {
+        if self.db.address_is_created(sender_address) {
             self.db
-                .set_status(callee_address, AccountStatus::SelfDestructed);
+                .set_status(sender_address, AccountStatus::SelfDestructed);
         }
 
-        if !sender_balance.is_zero() && !receiver_balance.is_zero() > 0 {
+        if !sender_balance.is_zero() && !receiver_balance.is_zero() {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0
