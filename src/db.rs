@@ -21,9 +21,9 @@ pub struct DbAccount {
 }
 
 impl DbAccount {
-    fn newly_created() -> Self {
+    pub fn empty() -> Self {
         DbAccount {
-            nonce: 1,
+            nonce: 0,
             balance: U256::zero(),
             storage: HashMap::new(),
             bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
@@ -55,14 +55,14 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        let a = self.accounts.entry(address).or_default();
+        let a = self.accounts.entry(address).or_insert(DbAccount::empty());
         a.nonce = nonce;
         a.balance = balance;
         a.storage = storage;
     }
 
     pub fn set_balance(&mut self, address: Address, balance: U256) {
-        let account = self.accounts.entry(address).or_default();
+        let account = self.accounts.entry(address).or_insert(DbAccount::empty());
         account.balance = balance;
     }
 
@@ -78,7 +78,7 @@ impl Db {
     }
 
     pub fn set_status(&mut self, address: Address, status: AccountStatus) {
-        let a = self.accounts.entry(address).or_default();
+        let a = self.accounts.entry(address).or_insert(DbAccount::empty());
         a.status = status;
     }
 
@@ -94,7 +94,9 @@ impl Db {
         let account = DbAccount {
             bytecode_hash: hash,
             balance,
-            ..DbAccount::newly_created()
+            nonce: 1,
+            status: AccountStatus::Created,
+            ..Default::default()
         };
 
         self.accounts.insert(address, account);
@@ -102,7 +104,7 @@ impl Db {
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
-        let account = self.accounts.entry(address).or_default();
+        let account = self.accounts.entry(address).or_insert(DbAccount::empty());
         account.storage.insert(key, value);
     }
 
@@ -146,6 +148,12 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
+}
+
+impl AccountInfo {
+    pub fn empty() -> AccountInfo {
+        DbAccount::empty().into()
+    }
 }
 
 impl AccountInfo {

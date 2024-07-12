@@ -290,7 +290,7 @@ impl<'c> SyscallContext<'c> {
         let callee_account = match self.db.basic(callee_address) {
             Ok(maybe_account) => {
                 *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                maybe_account.unwrap_or_default()
+                maybe_account.unwrap_or_else(|| AccountInfo::empty())
             }
             Err(_) => {
                 *consumed_gas = 0;
@@ -977,18 +977,22 @@ impl<'c> SyscallContext<'c> {
         let receiver_address = Address::from(receiver_address);
 
         let sender_balance = self.db.get_balance(sender_address).unwrap_or_default();
-        let receiver_balance = self.db.get_balance(receiver_address).unwrap_or_default();
+        let receiver = self
+            .db
+            .basic(receiver_address)
+            .unwrap()
+            .unwrap_or_else(|| AccountInfo::empty());
 
         self.db.set_balance(sender_address, EU256::zero());
         self.db
-            .set_balance(receiver_address, receiver_balance + sender_balance);
+            .set_balance(receiver_address, receiver.balance + sender_balance);
 
         if self.db.address_is_created(sender_address) {
             self.db
                 .set_status(sender_address, AccountStatus::SelfDestructed);
         }
 
-        if !sender_balance.is_zero() && receiver_balance.is_zero() {
+        if !sender_balance.is_zero() && receiver.is_empty() {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0
