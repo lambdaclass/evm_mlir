@@ -81,6 +81,7 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 1. (0x5A) GAS
 1. (0x5B) JUMPDEST
 1. (0x5C) TLOAD
+1. (0x5D) TSTORE
 1. (0x5E) MCOPY
 1. (0x5F) PUSH0
 1. (0x60) PUSH1
@@ -165,7 +166,6 @@ An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 <details>
 <summary>Not yet implemented opcodes (click to open)</summary>
 
-1. (0x5D) TSTORE
 1. (0xF2) CALLCODE
 1. (0xF4) DELEGATECALL
 1. (0xFF) SELFDESTRUCT
