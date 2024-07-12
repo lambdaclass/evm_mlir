@@ -104,6 +104,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Msize => codegen_msize(op_ctx, region),
         Operation::Gas => codegen_gas(op_ctx, region),
         Operation::Jumpdest { pc } => codegen_jumpdest(op_ctx, region, pc),
+        Operation::Tload => codegen_tload(op_ctx, region),
         Operation::Mcopy => codegen_mcopy(op_ctx, region),
         Operation::Push0 => codegen_push(op_ctx, region, BigUint::ZERO, true),
         Operation::Push((_, x)) => codegen_push(op_ctx, region, x, false),
@@ -5373,4 +5374,96 @@ fn codegen_create<'c, 'r>(
     stack_push(context, &end_block, code_address)?;
 
     Ok((start_block, end_block))
+}
+
+fn codegen_tload<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
+    let pointer_size = start_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::TLOAD)?;
+
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let key = stack_pop(context, &ok_block)?;
+
+    // Allocate a pointer for the key
+    let key_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    let res = ok_block.append_operation(llvm::store(
+        context,
+        key,
+        key_ptr,
+        location,
+        LoadStoreOptions::default(),
+    ));
+    assert!(res.verify());
+
+    // Allocate a pointer for the value
+    let read_value_ptr = ok_block
+        .append_operation(llvm::alloca(
+            context,
+            pointer_size,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+        ))
+        .result(0)?
+        .into();
+
+    op_ctx.transient_storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location);
+
+    // Load the value pointer
+    let read_value = ok_block
+        .append_operation(llvm::load(
+            context,
+            read_value_ptr,
+            IntegerType::new(context, 256).into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    stack_push(context, &ok_block, read_value)?;
+
+    Ok((start_block, ok_block))
 }

@@ -3017,3 +3017,33 @@ fn create2_with_stack_underflow() {
 
     run_program_assert_halt(env, db);
 }
+
+#[test]
+fn tload_gas_consumption() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+    let result = gas_cost::PUSHN + gas_cost::SLOAD;
+    let env = Env::default();
+
+    run_program_assert_gas_exact(program, env, result as _);
+}
+
+#[test]
+fn tload_on_new_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(5_u8))),
+        Operation::Tload,
+    ];
+    let (env, db) = default_env_and_db_setup(program);
+    let expected_result = BigUint::from(0_u8);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn tload_with_stack_underflow() {
+    let program = vec![Operation::Tload];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}

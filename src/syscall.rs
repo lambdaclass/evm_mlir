@@ -114,6 +114,7 @@ pub struct InnerContext {
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
     journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
+    transient_storage: HashMap<EU256, EU256>,
 }
 
 /// Information about current call frame
@@ -970,6 +971,20 @@ impl<'c> SyscallContext<'c> {
     ) -> u8 {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
+
+    pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let key = stg_key.to_primitive_u256();
+
+        let result = self
+            .inner_context
+            .transient_storage
+            .get(&key)
+            .cloned()
+            .unwrap_or(EU256::zero());
+
+        stg_value.hi = (result >> 128).low_u128();
+        stg_value.lo = result.low_u128();
+    }
 }
 
 pub mod symbols {
@@ -1011,6 +1026,7 @@ pub mod symbols {
     pub const CREATE2: &str = "evm_mlir__create2";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
     pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
+    pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
 }
 
 /// Registers all the syscalls as symbols in the execution engine
@@ -1218,6 +1234,11 @@ pub fn register_syscalls(engine: &ExecutionEngine) {
             symbols::COPY_RETURN_DATA_INTO_MEMORY,
             SyscallContext::copy_return_data_into_memory as *const fn(*mut c_void, u32, u32, u32)
                 as *mut (),
+        );
+        engine.register_symbol(
+            symbols::TRANSIENT_STORAGE_READ,
+            SyscallContext::read_transient_storage
+                as *const fn(*const c_void, *const U256, *mut U256) as *mut (),
         );
     };
 }
@@ -1657,6 +1678,17 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::TRANSIENT_STORAGE_READ),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
     }
 
     /// Stores the return values in the syscall context
@@ -1915,6 +1947,23 @@ pub(crate) mod mlir {
             ))
             .result(0)?;
         Ok(value.into())
+    }
+
+    pub(crate) fn transient_storage_read_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_READ),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
     }
 
     /// Receives log data and appends a log to the logs vector
