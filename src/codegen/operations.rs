@@ -20,13 +20,14 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        allocate_and_store_value, check_if_zero, check_stack_has_at_least,
-        check_stack_has_space_for, compare_values, compute_copy_cost, compute_log_dynamic_gas,
-        constant_value_from_i64, consume_gas, consume_gas_as_value, extend_memory, get_basefee,
-        get_blob_hash_at_index, get_block_number, get_calldata_ptr, get_calldata_size,
-        get_memory_pointer, get_nth_from_stack, get_prevrandao, get_remaining_gas,
-        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
-        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
+        allocate_and_store_value, check_context_is_not_static, check_if_zero,
+        check_stack_has_at_least, check_stack_has_space_for, compare_values, compute_copy_cost,
+        compute_log_dynamic_gas, constant_value_from_i64, consume_gas, consume_gas_as_value,
+        context_is_static, extend_memory, get_basefee, get_blob_hash_at_index, get_block_number,
+        get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack,
+        get_prevrandao, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
+        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
+        stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -113,6 +114,7 @@ pub fn generate_code_for_op<'c>(
         Operation::Log(x) => codegen_log(op_ctx, region, x),
         Operation::Call => codegen_call(op_ctx, region),
         Operation::Return => codegen_return(op_ctx, region),
+        Operation::StaticCall => codegen_staticcall(op_ctx, region),
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
@@ -2328,13 +2330,18 @@ fn codegen_sstore<'c, 'r>(
     let location = Location::unknown(context);
     let uint64 = IntegerType::new(context, 64).into();
     let ptr_type = pointer(context, 0);
-
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    //Check current context is not static
+    let ok_context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    //Check there are enough arguments in stack
+    let ok_stack_flag = check_stack_has_at_least(context, &start_block, 2)?;
     let ok_block = region.append_block(Block::new(&[]));
-
+    let ok_flag = start_block
+        .append_operation(arith::andi(ok_context_flag, ok_stack_flag, location))
+        .result(0)?
+        .into();
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -3858,13 +3865,19 @@ fn codegen_log<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
     let required_elements = 2 + nth;
     // Check there's enough elements in stack
-    let flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
+    let stack_flag = check_stack_has_at_least(context, &start_block, required_elements.into())?;
+    // Check current context is not static
+    let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    let ok_flag = start_block
+        .append_operation(arith::andi(context_flag, stack_flag, location))
+        .result(0)?
+        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -4901,25 +4914,53 @@ fn codegen_call<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
 
     let flag = check_stack_has_at_least(context, &start_block, 7)?;
-    let ok_block = region.append_block(Block::new(&[]));
+    let stack_ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
         flag,
-        &ok_block,
+        &stack_ok_block,
         &op_ctx.revert_block,
         &[],
         &[],
         location,
     ));
 
-    let gas = stack_pop(context, &ok_block)?;
-    let address = stack_pop(context, &ok_block)?;
-    let value = stack_pop(context, &ok_block)?;
-    let args_offset = stack_pop(context, &ok_block)?;
-    let args_size = stack_pop(context, &ok_block)?;
-    let ret_offset = stack_pop(context, &ok_block)?;
-    let ret_size = stack_pop(context, &ok_block)?;
+    let gas = stack_pop(context, &stack_ok_block)?;
+    let address = stack_pop(context, &stack_ok_block)?;
+    let value = stack_pop(context, &stack_ok_block)?;
+    let args_offset = stack_pop(context, &stack_ok_block)?;
+    let args_size = stack_pop(context, &stack_ok_block)?;
+    let ret_offset = stack_pop(context, &stack_ok_block)?;
+    let ret_size = stack_pop(context, &stack_ok_block)?;
+
+    // If the current context is static, value must be zero
+    let ok_block = region.append_block(Block::new(&[]));
+    let ctx_is_static = context_is_static(op_ctx, &stack_ok_block)?;
+    let zero_value = constant_value_from_i64(context, &stack_ok_block, 0)?;
+    let value_is_not_zero = stack_ok_block
+        .append_operation(arith::cmpi(
+            context,
+            CmpiPredicate::Ne,
+            value,
+            zero_value,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let revert_flag = stack_ok_block
+        .append_operation(arith::andi(ctx_is_static, value_is_not_zero, location))
+        .result(0)?
+        .into();
+    stack_ok_block.append_operation(cf::cond_br(
+        context,
+        revert_flag,
+        &op_ctx.revert_block,
+        &ok_block,
+        &[],
+        &[],
+        location,
+    ));
 
     // Truncate arguments to their corresponding sizes
     let gas = ok_block
@@ -4979,6 +5020,7 @@ fn codegen_call<'c, 'r>(
         args_size,
         ret_offset,
         ret_size,
+        ctx_is_static,
     )?;
 
     // Push return value into stack
@@ -5196,13 +5238,19 @@ fn codegen_create<'c, 'r>(
     let uint256 = IntegerType::new(context, 256);
     let ptr_type = pointer(context, 0);
 
+    // Check there's enough elements in stack
     let stack_size = if is_create2 { 4 } else { 3 };
-    let flag = check_stack_has_at_least(context, &start_block, stack_size)?;
+    let stack_flag = check_stack_has_at_least(context, &start_block, stack_size)?;
+    // Check current context is not static
+    let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    let ok_flag = start_block
+        .append_operation(arith::andi(context_flag, stack_flag, location))
+        .result(0)?
+        .into();
     let ok_block = region.append_block(Block::new(&[]));
-
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        ok_flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -5374,6 +5422,101 @@ fn codegen_create<'c, 'r>(
     stack_push(context, &end_block, code_address)?;
 
     Ok((start_block, end_block))
+}
+
+fn codegen_staticcall<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let flag = check_stack_has_at_least(context, &start_block, 6)?;
+    let ok_block = region.append_block(Block::new(&[]));
+
+    start_block.append_operation(cf::cond_br(
+        context,
+        flag,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let gas = stack_pop(context, &ok_block)?;
+    let address = stack_pop(context, &ok_block)?;
+    let args_offset = stack_pop(context, &ok_block)?;
+    let args_size = stack_pop(context, &ok_block)?;
+    let ret_offset = stack_pop(context, &ok_block)?;
+    let ret_size = stack_pop(context, &ok_block)?;
+
+    // Truncate arguments to their corresponding sizes
+    let gas = ok_block
+        .append_operation(arith::trunci(gas, uint64.into(), location))
+        .result(0)?
+        .into();
+    let args_offset = ok_block
+        .append_operation(arith::trunci(args_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let args_size = ok_block
+        .append_operation(arith::trunci(args_size, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_offset = ok_block
+        .append_operation(arith::trunci(ret_offset, uint32.into(), location))
+        .result(0)?
+        .into();
+    let ret_size = ok_block
+        .append_operation(arith::trunci(ret_size, uint32.into(), location))
+        .result(0)?
+        .into();
+
+    // Alloc required memory size for both arguments and return value
+    let mem_ext_block = region.append_block(Block::new(&[]));
+    let req_arg_mem_size = ok_block
+        .append_operation(arith::addi(args_offset, args_size, location))
+        .result(0)?
+        .into();
+    let req_ret_mem_size = ok_block
+        .append_operation(arith::addi(ret_offset, ret_size, location))
+        .result(0)?
+        .into();
+    let req_mem_size = ok_block
+        .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
+        .result(0)?
+        .into();
+    extend_memory(
+        op_ctx,
+        &ok_block,
+        &mem_ext_block,
+        region,
+        req_mem_size,
+        gas_cost::CALL,
+    )?;
+
+    // Invoke staticcall syscall
+    let finish_block = region.append_block(Block::new(&[]));
+    let call_result = op_ctx.staticcall_syscall(
+        &mem_ext_block,
+        &finish_block,
+        location,
+        gas,
+        address,
+        args_offset,
+        args_size,
+        ret_offset,
+        ret_size,
+    )?;
+
+    // Push return value into stack
+    stack_push(context, &finish_block, call_result)?;
+
+    Ok((start_block, finish_block))
 }
 
 fn codegen_tload<'c, 'r>(

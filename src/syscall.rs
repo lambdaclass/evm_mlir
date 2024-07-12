@@ -121,6 +121,7 @@ pub struct InnerContext {
 #[derive(Debug, Default)]
 pub struct CallFrame {
     pub caller: Address,
+    ctx_is_static: bool,
     last_call_return_data: Vec<u8>,
 }
 
@@ -128,6 +129,7 @@ impl CallFrame {
     pub fn new(caller: Address) -> Self {
         Self {
             caller,
+            ctx_is_static: false,
             ..Default::default()
         }
     }
@@ -277,6 +279,7 @@ impl<'c> SyscallContext<'c> {
         ret_size: u32,
         available_gas: u64,
         consumed_gas: &mut u64,
+        is_static: bool,
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
@@ -296,7 +299,7 @@ impl<'c> SyscallContext<'c> {
             }
         };
 
-        let caller_address = self.env.tx.caller;
+        let caller_address = self.env.tx.get_address();
         let caller_account = self
             .db
             .basic(caller_address)
@@ -369,15 +372,21 @@ impl<'c> SyscallContext<'c> {
             *consumed_gas = 0;
             return call_opcode::REVERT_RETURN_CODE;
         };
+
         let program = Program::from_bytecode(&bytecode);
+
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
 
-        let executor = Executor::new(&module, OptLevel::Aggressive);
-        let call_frame = CallFrame::new(new_frame_caller);
+        let call_frame = CallFrame {
+            caller: new_frame_caller,
+            ctx_is_static: is_static,
+            ..Default::default()
+        };
         let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
+        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         executor.execute(&mut context, env.tx.gas_limit);
 
@@ -489,15 +498,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn store_in_caller_ptr(&self, value: &mut U256) {
-        //TODO: Here we are returning the tx.caller value, which in fact corresponds to ORIGIN
-        //opcode. For the moment it's ok, but it should be changed when we implement the CALL opcode.
-        let bytes = &self.env.tx.caller.to_fixed_bytes();
-        let high: [u8; 16] = [&[0u8; 12], &bytes[..4]].concat().try_into().unwrap();
-        let low: [u8; 16] = bytes[4..20].try_into().unwrap();
-        //Now, we have to swap endianess, since data will be interpreted as it comes from
-        //little endiann, aligned to 16 bytes
-        value.lo = u128::from_be_bytes(low);
-        value.hi = u128::from_be_bytes(high);
+        value.copy_from(&self.call_frame.caller);
     }
 
     pub extern "C" fn store_in_gasprice_ptr(&self, value: &mut U256) {
@@ -917,8 +918,8 @@ impl<'c> SyscallContext<'c> {
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
-        let executor = Executor::new(&module, OptLevel::Aggressive);
         let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
+        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
@@ -988,6 +989,9 @@ impl<'c> SyscallContext<'c> {
 }
 
 pub mod symbols {
+    // Global variables
+    pub const CONTEXT_IS_STATIC: &str = "evm_mlir__context_is_static";
+    // Syscalls
     pub const WRITE_RESULT: &str = "evm_mlir__write_result";
     pub const EXTEND_MEMORY: &str = "evm_mlir__extend_memory";
     pub const KECCAK256_HASHER: &str = "evm_mlir__keccak256_hasher";
@@ -1029,224 +1033,245 @@ pub mod symbols {
     pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
 }
 
-/// Registers all the syscalls as symbols in the execution engine
-///
-/// This allows the generated code to call the syscalls by name.
-pub fn register_syscalls(engine: &ExecutionEngine) {
-    unsafe {
-        engine.register_symbol(
-            symbols::WRITE_RESULT,
-            SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::KECCAK256_HASHER,
-            SyscallContext::keccak256_hasher as *const fn(*mut c_void, u32, u32, *const U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::EXTEND_MEMORY,
-            SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORAGE_READ,
-            SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORAGE_WRITE,
-            SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::APPEND_LOG,
-            SyscallContext::append_log as *const fn(*mut c_void, u32, u32) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::APPEND_LOG_ONE_TOPIC,
-            SyscallContext::append_log_with_one_topic
-                as *const fn(*mut c_void, u32, u32, *const U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::APPEND_LOG_TWO_TOPICS,
-            SyscallContext::append_log_with_two_topics
-                as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::APPEND_LOG_THREE_TOPICS,
-            SyscallContext::append_log_with_three_topics
-                as *const fn(*mut c_void, u32, u32, *const U256, *const U256, *const U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::APPEND_LOG_FOUR_TOPICS,
-            SyscallContext::append_log_with_four_topics
-                as *const fn(
-                    *mut c_void,
-                    u32,
-                    u32,
-                    *const U256,
-                    *const U256,
-                    *const U256,
-                    *const U256,
-                ) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::CALL,
-            SyscallContext::call
-                as *const fn(
-                    *mut c_void,
-                    u64,
-                    *const U256,
-                    *const U256,
-                    u32,
-                    u32,
-                    u32,
-                    u32,
-                    u64,
-                    *mut u64,
-                ) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_CALLDATA_PTR,
-            SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_CALLDATA_SIZE,
-            SyscallContext::get_calldata_size_syscall as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::EXTEND_MEMORY,
-            SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::COPY_CODE_TO_MEMORY,
-            SyscallContext::copy_code_to_memory as *const fn(*mut c_void, u32, u32, u32) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_ORIGIN,
-            SyscallContext::get_origin as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_ADDRESS_PTR,
-            SyscallContext::get_address_ptr as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_CALLVALUE_PTR,
-            SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_BLOBBASEFEE_PTR,
-            SyscallContext::store_in_blobbasefee_ptr
-                as *const extern "C" fn(&SyscallContext, *mut u128) -> () as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_CODESIZE_FROM_ADDRESS,
-            SyscallContext::get_codesize_from_address as *const fn(*mut c_void, *mut U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_COINBASE_PTR,
-            SyscallContext::get_coinbase_ptr as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_TIMESTAMP_PTR,
-            SyscallContext::store_in_timestamp_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_BASEFEE_PTR,
-            SyscallContext::store_in_basefee_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_CALLER_PTR,
-            SyscallContext::store_in_caller_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_GASLIMIT,
-            SyscallContext::get_gaslimit as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_GASPRICE_PTR,
-            SyscallContext::store_in_gasprice_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_BLOCK_NUMBER,
-            SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_PREVRANDAO,
-            SyscallContext::get_prevrandao as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_BLOB_HASH_AT_INDEX,
-            SyscallContext::get_blob_hash_at_index as *const fn(*mut c_void, *mut U256, *mut U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_CHAINID,
-            SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_BALANCE,
-            SyscallContext::store_in_balance as *const fn(*mut c_void, *const U256, *mut U256)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::STORE_IN_SELFBALANCE_PTR,
-            SyscallContext::store_in_selfbalance_ptr as *const extern "C" fn(&SyscallContext) -> u64
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::COPY_EXT_CODE_TO_MEMORY,
-            SyscallContext::copy_ext_code_to_memory
-                as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::GET_BLOCK_HASH,
-            SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
+impl<'c> SyscallContext<'c> {
+    /// Registers all the syscalls as symbols in the execution engine
+    ///
+    /// This allows the generated code to call the syscalls by name.
+    pub fn register_symbols(&self, engine: &ExecutionEngine) {
+        unsafe {
+            // Global variables
+            engine.register_symbol(
+                symbols::CONTEXT_IS_STATIC,
+                &self.call_frame.ctx_is_static as *const bool as *mut (),
+            );
+            // Syscalls
+            engine.register_symbol(
+                symbols::WRITE_RESULT,
+                SyscallContext::write_result as *const fn(*mut c_void, u32, u32, u64, u8)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::KECCAK256_HASHER,
+                SyscallContext::keccak256_hasher as *const fn(*mut c_void, u32, u32, *const U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::EXTEND_MEMORY,
+                SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORAGE_READ,
+                SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORAGE_WRITE,
+                SyscallContext::write_storage as *const fn(*mut c_void, *const U256, *const U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::APPEND_LOG,
+                SyscallContext::append_log as *const fn(*mut c_void, u32, u32) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::APPEND_LOG_ONE_TOPIC,
+                SyscallContext::append_log_with_one_topic
+                    as *const fn(*mut c_void, u32, u32, *const U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::APPEND_LOG_TWO_TOPICS,
+                SyscallContext::append_log_with_two_topics
+                    as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::APPEND_LOG_THREE_TOPICS,
+                SyscallContext::append_log_with_three_topics
+                    as *const fn(*mut c_void, u32, u32, *const U256, *const U256, *const U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::APPEND_LOG_FOUR_TOPICS,
+                SyscallContext::append_log_with_four_topics
+                    as *const fn(
+                        *mut c_void,
+                        u32,
+                        u32,
+                        *const U256,
+                        *const U256,
+                        *const U256,
+                        *const U256,
+                    ) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::CALL,
+                SyscallContext::call
+                    as *const fn(
+                        *mut c_void,
+                        u64,
+                        *const U256,
+                        *const U256,
+                        u32,
+                        u32,
+                        u32,
+                        u32,
+                        u64,
+                        *mut u64,
+                        bool,
+                    ) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_CALLDATA_PTR,
+                SyscallContext::get_calldata_ptr as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_CALLDATA_SIZE,
+                SyscallContext::get_calldata_size_syscall as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::EXTEND_MEMORY,
+                SyscallContext::extend_memory as *const fn(*mut c_void, u32) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::COPY_CODE_TO_MEMORY,
+                SyscallContext::copy_code_to_memory as *const fn(*mut c_void, u32, u32, u32)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_ORIGIN,
+                SyscallContext::get_origin as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_ADDRESS_PTR,
+                SyscallContext::get_address_ptr as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_CALLVALUE_PTR,
+                SyscallContext::store_in_callvalue_ptr as *const fn(*mut c_void, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_BLOBBASEFEE_PTR,
+                SyscallContext::store_in_blobbasefee_ptr
+                    as *const extern "C" fn(&SyscallContext, *mut u128) -> ()
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_CODESIZE_FROM_ADDRESS,
+                SyscallContext::get_codesize_from_address as *const fn(*mut c_void, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_COINBASE_PTR,
+                SyscallContext::get_coinbase_ptr as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_TIMESTAMP_PTR,
+                SyscallContext::store_in_timestamp_ptr as *const fn(*mut c_void, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_BASEFEE_PTR,
+                SyscallContext::store_in_basefee_ptr as *const fn(*mut c_void, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_CALLER_PTR,
+                SyscallContext::store_in_caller_ptr as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_GASLIMIT,
+                SyscallContext::get_gaslimit as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_GASPRICE_PTR,
+                SyscallContext::store_in_gasprice_ptr as *const fn(*mut c_void, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_BLOCK_NUMBER,
+                SyscallContext::get_block_number as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_PREVRANDAO,
+                SyscallContext::get_prevrandao as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_BLOB_HASH_AT_INDEX,
+                SyscallContext::get_blob_hash_at_index
+                    as *const fn(*mut c_void, *mut U256, *mut U256) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_CHAINID,
+                SyscallContext::get_chainid as *const extern "C" fn(&SyscallContext) -> u64
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_BALANCE,
+                SyscallContext::store_in_balance as *const fn(*mut c_void, *const U256, *mut U256)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::STORE_IN_SELFBALANCE_PTR,
+                SyscallContext::store_in_selfbalance_ptr
+                    as *const extern "C" fn(&SyscallContext) -> u64 as *mut (),
+            );
+            engine.register_symbol(
+                symbols::COPY_EXT_CODE_TO_MEMORY,
+                SyscallContext::copy_ext_code_to_memory
+                    as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32)
+                    as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_BLOCK_HASH,
+                SyscallContext::get_block_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
 
-        engine.register_symbol(
-            symbols::GET_CODE_HASH,
-            SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
-        );
+            engine.register_symbol(
+                symbols::GET_CODE_HASH,
+                SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
 
-        engine.register_symbol(
-            symbols::CREATE,
-            SyscallContext::create
-                as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64)
-                as *mut (),
-        );
+            engine.register_symbol(
+                symbols::CREATE,
+                SyscallContext::create
+                    as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64)
+                    as *mut (),
+            );
 
-        engine.register_symbol(
-            symbols::CREATE2,
-            SyscallContext::create2
-                as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64, *mut U256)
-                as *mut (),
-        );
+            engine.register_symbol(
+                symbols::CREATE2,
+                SyscallContext::create2
+                    as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64, *mut U256)
+                    as *mut (),
+            );
 
-        engine.register_symbol(
-            symbols::GET_RETURN_DATA_SIZE,
-            SyscallContext::get_return_data_size as *const fn(*mut c_void) as *mut (),
-        );
-        engine.register_symbol(
-            symbols::COPY_RETURN_DATA_INTO_MEMORY,
-            SyscallContext::copy_return_data_into_memory as *const fn(*mut c_void, u32, u32, u32)
-                as *mut (),
-        );
-        engine.register_symbol(
-            symbols::TRANSIENT_STORAGE_READ,
-            SyscallContext::read_transient_storage
-                as *const fn(*const c_void, *const U256, *mut U256) as *mut (),
-        );
-    };
+            engine.register_symbol(
+                symbols::GET_RETURN_DATA_SIZE,
+                SyscallContext::get_return_data_size as *const fn(*mut c_void) as *mut (),
+            );
+            engine.register_symbol(
+                symbols::COPY_RETURN_DATA_INTO_MEMORY,
+                SyscallContext::copy_return_data_into_memory
+                    as *const fn(*mut c_void, u32, u32, u32) as *mut (),
+            );
+
+            engine.register_symbol(
+                symbols::TRANSIENT_STORAGE_READ,
+                SyscallContext::read_transient_storage
+                    as *const fn(*const c_void, *const U256, *mut U256) as *mut (),
+            );
+        }
+    }
 }
 
 /// MLIR util for declaring syscalls
 pub(crate) mod mlir {
     use melior::{
-        dialect::{func, llvm::r#type::pointer},
+        dialect::{
+            func,
+            llvm::{attributes::Linkage, r#type::pointer},
+        },
         ir::{
             attribute::{FlatSymbolRefAttribute, StringAttribute, TypeAttribute},
             r#type::{FunctionType, IntegerType},
@@ -1255,24 +1280,33 @@ pub(crate) mod mlir {
         Context as MeliorContext,
     };
 
-    use crate::errors::CodegenError;
+    use crate::{errors::CodegenError, utils::llvm_mlir};
 
     use super::symbols;
 
-    pub(crate) fn declare_syscalls(context: &MeliorContext, module: &MeliorModule) {
+    pub(crate) fn declare_symbols(context: &MeliorContext, module: &MeliorModule) {
         let location = Location::unknown(context);
 
         // Type declarations
         let ptr_type = pointer(context, 0);
+        let uint1 = IntegerType::new(context, 1).into();
+        let uint8 = IntegerType::new(context, 8).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
-        let uint8 = IntegerType::new(context, 8).into();
 
         let attributes = &[(
             Identifier::new(context, "sym_visibility"),
             StringAttribute::new(context, "private").into(),
         )];
 
+        // Globals declaration
+        module.body().append_operation(llvm_mlir::global(
+            context,
+            symbols::CONTEXT_IS_STATIC,
+            ptr_type,
+            Linkage::External,
+            location,
+        ));
         // Syscall declarations
         module.body().append_operation(func::func(
             context,
@@ -1564,7 +1598,7 @@ pub(crate) mod mlir {
                     context,
                     &[
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
-                        uint64, ptr_type,
+                        uint64, ptr_type, uint1,
                     ],
                     &[uint8],
                 )
@@ -2222,6 +2256,7 @@ pub(crate) mod mlir {
         ret_size: Value<'c, 'c>,
         available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
+        is_static: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
         let result = block
@@ -2239,6 +2274,7 @@ pub(crate) mod mlir {
                     ret_size,
                     available_gas,
                     remaining_gas_ptr,
+                    is_static,
                 ],
                 &[uint8],
                 location,
