@@ -96,7 +96,7 @@ pub mod gas_cost {
 
     pub const BYTE_DEPOSIT_COST: i64 = 200;
     pub const INIT_WORD_COST: i64 = 2;
-    pub const HASH_WORD_COST: i64 = 2;
+    pub const HASH_WORD_COST: i64 = 6;
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
