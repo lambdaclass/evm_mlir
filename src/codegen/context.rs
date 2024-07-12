@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use melior::{
     dialect::{
         arith, cf, func,
-        llvm::{self, r#type::pointer, AllocaOptions, LoadStoreOptions},
+        llvm::{self, attributes::Linkage, r#type::pointer, AllocaOptions, LoadStoreOptions},
     },
     ir::{
         attribute::{IntegerAttribute, TypeAttribute},
@@ -67,7 +67,7 @@ impl<'c> OperationCtx<'c> {
         generate_calldata_setup_code(context, syscall_ctx, module, setup_block)?;
         generate_gas_counter_setup_code(context, module, setup_block, initial_gas)?;
 
-        syscall::mlir::declare_syscalls(context, module);
+        syscall::mlir::declare_symbols(context, module);
 
         // Generate helper blocks
         let revert_block = region.append_block(generate_revert_block(context, syscall_ctx)?);
@@ -166,6 +166,7 @@ fn generate_gas_counter_setup_code<'c>(
         context,
         GAS_COUNTER_GLOBAL,
         uint64,
+        Linkage::Internal,
         location,
     ));
 
@@ -207,6 +208,7 @@ fn generate_stack_setup_code<'c>(
         context,
         STACK_BASEPTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -214,6 +216,7 @@ fn generate_stack_setup_code<'c>(
         context,
         STACK_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -295,6 +298,7 @@ fn generate_memory_setup_code<'c>(
         context,
         MEMORY_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -302,6 +306,7 @@ fn generate_memory_setup_code<'c>(
         context,
         MEMORY_SIZE_GLOBAL,
         uint32,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -352,6 +357,7 @@ fn generate_calldata_setup_code<'c>(
         context,
         CALLDATA_PTR_GLOBAL,
         ptr_type,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -359,6 +365,7 @@ fn generate_calldata_setup_code<'c>(
         context,
         CALLDATA_SIZE_GLOBAL,
         uint32,
+        Linkage::Internal,
         location,
     ));
     assert!(res.verify());
@@ -998,6 +1005,7 @@ impl<'c> OperationCtx<'c> {
         args_size: Value<'c, 'c>,
         ret_offset: Value<'c, 'c>,
         ret_size: Value<'c, 'c>,
+        is_static: Value<'c, 'c>,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
         let uint64 = IntegerType::new(context, 64);
@@ -1035,6 +1043,7 @@ impl<'c> OperationCtx<'c> {
             ret_size,
             available_gas,
             gas_return_ptr,
+            is_static,
         )?;
 
         // Update the available gas with the remaining gas after the call
@@ -1069,6 +1078,46 @@ impl<'c> OperationCtx<'c> {
             .into();
 
         Ok(result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn staticcall_syscall(
+        &'c self,
+        start_block: &'c Block,
+        finish_block: &'c Block,
+        location: Location<'c>,
+        gas: Value<'c, 'c>,
+        address: Value<'c, 'c>,
+        args_offset: Value<'c, 'c>,
+        args_size: Value<'c, 'c>,
+        ret_offset: Value<'c, 'c>,
+        ret_size: Value<'c, 'c>,
+    ) -> Result<Value, CodegenError> {
+        let context = &self.mlir_context;
+        let uint1 = IntegerType::new(context, 1);
+        let true_value = start_block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint1.into(), 1).into(),
+                location,
+            ))
+            .result(0)?
+            .into();
+
+        let value = constant_value_from_i64(context, start_block, 0)?;
+        self.call_syscall(
+            start_block,
+            finish_block,
+            location,
+            gas,
+            address,
+            value,
+            args_offset,
+            args_size,
+            ret_offset,
+            ret_size,
+            true_value,
+        )
     }
 
     pub(crate) fn get_code_hash_syscall(

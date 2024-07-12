@@ -24,7 +24,7 @@ use crate::{
     },
     errors::CodegenError,
     primitives::{Address, H160, U256},
-    syscall::ExitStatusCode,
+    syscall::{symbols::CONTEXT_IS_STATIC, ExitStatusCode},
 };
 
 // NOTE: the value is of type i64
@@ -127,6 +127,63 @@ pub fn consume_gas<'ctx>(
     ));
 
     Ok(flag.into())
+}
+
+pub(crate) fn check_context_is_not_static<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint1 = IntegerType::new(context, 1);
+
+    let is_static = context_is_static(op_ctx, block)?;
+    let true_value = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint1.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+
+    let is_not_static = block
+        .append_operation(arith::xori(is_static, true_value, location))
+        .result(0)?
+        .into();
+
+    Ok(is_not_static)
+}
+
+pub(crate) fn context_is_static<'c>(
+    op_ctx: &'c OperationCtx,
+    block: &'c Block,
+) -> Result<Value<'c, 'c>, CodegenError> {
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+    let uint1 = IntegerType::new(context, 1);
+    let ptr_type = pointer(context, 0);
+    let static_flag_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            CONTEXT_IS_STATIC,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let is_static = block
+        .append_operation(llvm::load(
+            context,
+            static_flag_ptr,
+            uint1.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    Ok(is_static)
 }
 
 pub fn get_stack_pointer<'ctx>(
@@ -1611,6 +1668,7 @@ pub mod llvm_mlir {
         context: &'c MeliorContext,
         name: &str,
         global_type: melior::ir::Type<'c>,
+        linkage: Linkage,
         location: Location<'c>,
     ) -> melior::ir::Operation<'c> {
         // TODO: use ODS
@@ -1627,7 +1685,7 @@ pub mod llvm_mlir {
                 ),
                 (
                     Identifier::new(context, "linkage"),
-                    llvm::attributes::linkage(context, Linkage::Internal),
+                    llvm::attributes::linkage(context, linkage),
                 ),
             ])
             .build()
