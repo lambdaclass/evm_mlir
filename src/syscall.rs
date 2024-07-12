@@ -26,7 +26,7 @@ use crate::{
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
-    state::EvmStorageSlot,
+    state::{AccountStatus, EvmStorageSlot},
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
@@ -292,7 +292,7 @@ impl<'c> SyscallContext<'c> {
         let callee_account = match self.db.basic(callee_address) {
             Ok(maybe_account) => {
                 *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                maybe_account.unwrap_or_default()
+                maybe_account.unwrap_or_else(AccountInfo::empty)
             }
             Err(_) => {
                 *consumed_gas = 0;
@@ -974,6 +974,34 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
+    pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
+        let sender_address = self.env.tx.get_address();
+        let receiver_address = Address::from(receiver_address);
+
+        let sender_balance = self.db.get_balance(sender_address).unwrap_or_default();
+        let receiver = self
+            .db
+            .basic(receiver_address)
+            .unwrap()
+            .unwrap_or_else(AccountInfo::empty);
+
+        self.db.set_balance(sender_address, EU256::zero());
+        self.db
+            .set_balance(receiver_address, receiver.balance + sender_balance);
+
+        if self.db.address_is_created(sender_address) {
+            self.db
+                .set_status(sender_address, AccountStatus::SelfDestructed);
+        }
+
+        if !sender_balance.is_zero() && receiver.is_empty() {
+            gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
+        } else {
+            0
+        }
+        // TODO: add gas cost for cold addresses
+    }
+
     pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let key = stg_key.to_primitive_u256();
         let address = self.env.tx.get_address();
@@ -1041,6 +1069,7 @@ pub mod symbols {
     pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
     pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
     pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
+    pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
 }
 
 impl<'c> SyscallContext<'c> {
@@ -1264,6 +1293,11 @@ impl<'c> SyscallContext<'c> {
                 symbols::COPY_RETURN_DATA_INTO_MEMORY,
                 SyscallContext::copy_return_data_into_memory
                     as *const fn(*mut c_void, u32, u32, u32) as *mut (),
+            );
+
+            engine.register_symbol(
+                symbols::SELFDESTRUCT,
+                SyscallContext::selfdestruct as *const fn(*mut c_void, *mut U256) as *mut (),
             );
 
             engine.register_symbol(
@@ -1724,6 +1758,15 @@ pub(crate) mod mlir {
             TypeAttribute::new(
                 FunctionType::new(context, &[ptr_type, uint32, uint32, uint32], &[]).into(),
             ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::SELFDESTRUCT),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -2539,5 +2582,27 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    pub(crate) fn selfdestruct_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::SELFDESTRUCT),
+                &[syscall_ctx, address],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 }

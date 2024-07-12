@@ -8,6 +8,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
+    state::AccountStatus,
     syscall::{LogData, U256},
     utils::compute_contract_address2,
     Env, Evm,
@@ -3237,7 +3238,15 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     run_program_assert_num_result(env, db, expected_result);
 }
 
-//TODO: Add SELFDESTRUCT
+#[test]
+fn staticcall_with_selfdestruct_reverts() {
+    let operations = vec![
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::SelfDestruct,
+    ];
+    staticcall_state_modifying_revert_with_callee_ops(operations);
+}
+
 #[test]
 fn staticcall_with_sstore_reverts() {
     let operations = vec![
@@ -3427,6 +3436,140 @@ fn staticcall_callee_returns_caller() {
     let expected_result = caller_address.as_fixed_bytes();
 
     run_program_assert_bytes_result(env, db, expected_result);
+}
+
+#[test]
+fn selfdestruct_with_stack_underflow() {
+    let operations = vec![Operation::SelfDestruct];
+    let (env, db) = default_env_and_db_setup(operations);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn selfdestruct_happy_path() {
+    // it should add the balance to the existing account
+    let receiver_address = 100;
+    let callee_balance = EU256::from(231);
+    let receiver_balance = EU256::from(123);
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    let receiver_address = Address::from_low_u64_be(receiver_address);
+    db.set_account(callee_address, 1, callee_balance, Default::default());
+    db.set_account(receiver_address, 1, receiver_balance, Default::default());
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let callee = evm.db.basic(callee_address).unwrap().unwrap();
+    let receiver = evm.db.basic(receiver_address).unwrap().unwrap();
+    assert_eq!(callee.balance, EU256::zero());
+    assert_eq!(receiver.balance, callee_balance + receiver_balance);
+}
+
+#[test]
+fn selfdestruct_on_inexistent_address() {
+    // it should add the balance to the address even if there is no existing account
+    let receiver_address = 100;
+    let balance = EU256::from(231);
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    let receiver_address = Address::from_low_u64_be(receiver_address);
+    db.set_account(callee_address, 1, balance, Default::default());
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let callee = evm.db.basic(callee_address).unwrap().unwrap();
+    let receiver = evm.db.basic(receiver_address).unwrap().unwrap();
+    assert_eq!(callee.balance, EU256::zero());
+    assert_eq!(receiver.balance, balance);
+}
+
+#[test]
+fn selfdestruct_on_loaded_account() {
+    // it should not set status as selfdestruct
+    let receiver_address: u8 = 100;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    db.set_status(callee_address, AccountStatus::Loaded);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let state = evm.db.into_state();
+    let callee = state.get(&callee_address).unwrap();
+    assert_eq!(callee.status, AccountStatus::Loaded);
+}
+
+#[test]
+fn selfdestruct_on_newly_created_account() {
+    // it should set callee status as selfdestruct
+    let receiver_address: u8 = 100;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    db.set_status(callee_address, AccountStatus::Created);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let state = evm.db.into_state();
+    let callee = state.get(&callee_address).unwrap();
+    assert_eq!(callee.status, AccountStatus::SelfDestructed);
+}
+
+#[test]
+fn selfdestruct_gas_cost_on_empty_account() {
+    let receiver_address: u8 = 100;
+    let needed_gas = gas_cost::PUSHN + gas_cost::SELFDESTRUCT;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let env = Env::default();
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn selfdestruct_gas_cost_on_non_empty_account() {
+    let receiver_address: u8 = 100;
+    let balance = EU256::from(231);
+    let needed_gas = gas_cost::PUSHN + gas_cost::SELFDESTRUCT + gas_cost::SELFDESTRUCT_DYNAMIC_GAS;
+
+    let operations = vec![
+        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::SelfDestruct,
+    ];
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let callee_address = env.tx.get_address();
+    db.set_account(callee_address, 1, balance, Default::default());
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, needed_gas as _, 0);
 }
 
 #[test]

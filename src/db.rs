@@ -2,7 +2,7 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
     primitives::{Address, Bytes, B256, U256},
-    state::{Account, EvmStorageSlot},
+    state::{Account, AccountStatus, EvmStorageSlot},
 };
 use core::fmt;
 use sha3::{Digest, Keccak256};
@@ -17,6 +17,19 @@ pub struct DbAccount {
     pub balance: U256,
     pub storage: HashMap<U256, U256>,
     pub bytecode_hash: B256,
+    pub status: AccountStatus,
+}
+
+impl DbAccount {
+    pub fn empty() -> Self {
+        DbAccount {
+            nonce: 0,
+            balance: U256::zero(),
+            storage: HashMap::new(),
+            bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
+            status: AccountStatus::Created,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -42,11 +55,31 @@ impl Db {
         balance: U256,
         storage: HashMap<U256, U256>,
     ) {
-        // We should make `DbAccount::default` have an empty code hash
-        let a = self.accounts.entry(address).or_default();
+        let a = self.accounts.entry(address).or_insert(DbAccount::empty());
         a.nonce = nonce;
         a.balance = balance;
         a.storage = storage;
+    }
+
+    pub fn set_balance(&mut self, address: Address, balance: U256) {
+        let account = self.accounts.entry(address).or_insert(DbAccount::empty());
+        account.balance = balance;
+    }
+
+    pub fn get_balance(&mut self, address: Address) -> Option<U256> {
+        self.accounts.get(&address).map(|acc| acc.balance)
+    }
+
+    pub fn address_is_created(&self, address: Address) -> bool {
+        self.accounts
+            .get(&address)
+            .map(|acc| acc.status.contains(AccountStatus::Created))
+            .unwrap_or(false)
+    }
+
+    pub fn set_status(&mut self, address: Address, status: AccountStatus) {
+        let a = self.accounts.entry(address).or_insert(DbAccount::empty());
+        a.status = status;
     }
 
     pub fn with_contract(mut self, address: Address, bytecode: Bytecode) -> Self {
@@ -60,8 +93,9 @@ impl Db {
         let hash = B256::from_slice(&hasher.finalize());
         let account = DbAccount {
             bytecode_hash: hash,
-            nonce: 1,
             balance,
+            nonce: 1,
+            status: AccountStatus::Created,
             ..Default::default()
         };
 
@@ -70,7 +104,7 @@ impl Db {
     }
 
     pub fn write_storage(&mut self, address: Address, key: U256, value: U256) {
-        let account = self.accounts.entry(address).or_default();
+        let account = self.accounts.entry(address).or_insert(DbAccount::empty());
         account.storage.insert(key, value);
     }
 
@@ -95,7 +129,7 @@ impl Db {
                             .iter()
                             .map(|(k, v)| (*k, EvmStorageSlot::from(*v)))
                             .collect(),
-                        ..Default::default()
+                        status: db_account.status,
                     },
                 )
             })
@@ -114,6 +148,12 @@ pub struct AccountInfo {
     /// code: if None, `code_by_hash` will be used to fetch it if code needs to be loaded from
     /// inside of `revm`.
     pub code: Option<Bytecode>,
+}
+
+impl AccountInfo {
+    pub fn empty() -> AccountInfo {
+        DbAccount::empty().into()
+    }
 }
 
 impl AccountInfo {
@@ -170,6 +210,7 @@ impl Database for Db {
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
+        // TODO: this can be done more efficently if the storage is not cloned
         Ok(self.accounts.get(&address).cloned().map(AccountInfo::from))
     }
 
@@ -199,6 +240,7 @@ mod tests {
         let address = Address::default();
         let expected_account_info = AccountInfo::default();
         let db_account = DbAccount::default();
+
         accounts.insert(address, db_account);
 
         let mut db = Db {

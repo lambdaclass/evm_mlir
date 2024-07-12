@@ -122,6 +122,7 @@ pub fn generate_code_for_op<'c>(
         Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
         Operation::Create => codegen_create(op_ctx, region, false),
         Operation::Create2 => codegen_create(op_ctx, region, true),
+        Operation::SelfDestruct => codegen_selfdestruct(op_ctx, region),
     }
 }
 
@@ -5518,6 +5519,57 @@ fn codegen_staticcall<'c, 'r>(
     stack_push(context, &finish_block, call_result)?;
 
     Ok((start_block, finish_block))
+}
+
+fn codegen_selfdestruct<'c, 'r>(
+    op_ctx: &mut OperationCtx<'c>,
+    region: &'r Region<'c>,
+) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+    let start_block = region.append_block(Block::new(&[]));
+    let context = &op_ctx.mlir_context;
+    let location = Location::unknown(context);
+
+    let gas_flag = consume_gas(context, &start_block, gas_cost::SELFDESTRUCT)?;
+    let stack_flag = check_stack_has_at_least(context, &start_block, 1)?;
+    let gas_stack_flag = start_block
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
+        .result(0)?
+        .into();
+    let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    let condition = start_block
+        .append_operation(arith::andi(gas_stack_flag, context_flag, location))
+        .result(0)?
+        .into();
+
+    let ok_block = region.append_block(Block::new(&[]));
+    start_block.append_operation(cf::cond_br(
+        context,
+        condition,
+        &ok_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let address = stack_pop(context, &ok_block)?;
+    let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
+    let gas_cost = op_ctx.selfdestruct_syscall(&ok_block, address_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, end_block))
 }
 
 fn codegen_tload<'c, 'r>(
