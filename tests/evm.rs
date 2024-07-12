@@ -3626,7 +3626,7 @@ fn tstore_tload_happy_path() {
     let key = 80_u8;
     let value = 11_u8;
     let mut operations = vec![
-        // sstore
+        // tstore
         Operation::Push((1_u8, BigUint::from(value))),
         Operation::Push((1_u8, BigUint::from(key))),
         Operation::Tstore,
