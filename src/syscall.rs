@@ -987,7 +987,7 @@ impl<'c> SyscallContext<'c> {
                 .set_status(sender_address, AccountStatus::SelfDestructed);
         }
 
-        if !sender_balance.is_zero() && !receiver_balance.is_zero() {
+        if !sender_balance.is_zero() && receiver_balance.is_zero() {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0
