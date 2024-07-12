@@ -2358,7 +2358,6 @@ fn call_callee_returns_value() {
     run_program_assert_num_result(env, db, expected_result);
 }
 
-#[ignore] //This test should be run only after fixing CALLER opcode
 #[test]
 fn call_callee_returns_caller() {
     let db = Db::new();
@@ -2370,6 +2369,7 @@ fn call_callee_returns_caller() {
 
     // Caller
     let gas = 100_000_000_u32;
+    let value = 0_u8;
     let args_offset = 0_u8;
     let args_size = 0_u8;
     let ret_offset = 0_u8;
@@ -2388,12 +2388,13 @@ fn call_callee_returns_caller() {
         Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
         Operation::Push((1_u8, BigUint::from(args_size))), //Args size
         Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),    //Value
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::Call,
         //Return
-        Operation::Push((1_u8, 32_u8.into())),
-        Operation::Push0,
+        Operation::Push((1_u8, 20_u8.into())),
+        Operation::Push((1_u8, 12_u8.into())),
         Operation::Return,
     ];
 
@@ -2406,7 +2407,7 @@ fn call_callee_returns_caller() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = origin;
 
-    let expected_result = caller_address.as_bytes();
+    let expected_result = caller_address.as_fixed_bytes();
 
     run_program_assert_bytes_result(env, db, expected_result);
 }
@@ -3376,7 +3377,6 @@ fn staticcall_callee_returns_value() {
     run_program_assert_num_result(env, db, expected_result);
 }
 
-#[ignore] //This test should be run only after fixing CALLER opcode
 #[test]
 fn staticcall_callee_returns_caller() {
     let db = Db::new();
@@ -3410,8 +3410,8 @@ fn staticcall_callee_returns_caller() {
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
         //Return
-        Operation::Push((1_u8, 32_u8.into())),
-        Operation::Push0,
+        Operation::Push((1_u8, 20_u8.into())),
+        Operation::Push((1_u8, 12_u8.into())),
         Operation::Return,
     ];
 
@@ -3424,7 +3424,7 @@ fn staticcall_callee_returns_caller() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = origin;
 
-    let expected_result = caller_address.as_bytes();
+    let expected_result = caller_address.as_fixed_bytes();
 
     run_program_assert_bytes_result(env, db, expected_result);
 }
