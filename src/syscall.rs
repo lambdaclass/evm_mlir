@@ -290,7 +290,7 @@ impl<'c> SyscallContext<'c> {
         let callee_account = match self.db.basic(callee_address) {
             Ok(maybe_account) => {
                 *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                maybe_account.unwrap_or_else(|| AccountInfo::empty())
+                maybe_account.unwrap_or_else(AccountInfo::empty)
             }
             Err(_) => {
                 *consumed_gas = 0;
@@ -981,7 +981,7 @@ impl<'c> SyscallContext<'c> {
             .db
             .basic(receiver_address)
             .unwrap()
-            .unwrap_or_else(|| AccountInfo::empty());
+            .unwrap_or_else(AccountInfo::empty);
 
         self.db.set_balance(sender_address, EU256::zero());
         self.db
