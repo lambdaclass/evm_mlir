@@ -2410,6 +2410,69 @@ fn call_callee_returns_caller() {
     run_program_assert_bytes_result(env, db, expected_result);
 }
 
+#[ignore] //This should be run when storage fix on CALL is made
+#[test]
+fn call_callee_storage_modified() {
+    let db = Db::new();
+    let origin = Address::from_low_u64_be(79);
+    let origin_value = 1_u8;
+
+    // Callee
+    let key = 80_u8;
+    let value = 11_u8;
+    let callee_ops = vec![
+        Operation::Push((1_u8, BigUint::from(value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    // Caller
+    let sent_gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let sent_value = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    let program = Program::from(callee_ops);
+    let (callee_address, callee_bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, callee_bytecode);
+
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_ops = vec![
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(sent_value))), //Value
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(sent_gas))), //Gas
+        Operation::Call,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = db.with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+    env.tx.value = origin_value.into();
+
+    let mut evm = Evm::new(env, db);
+    let res = evm.transact().unwrap();
+    assert!(res.result.is_success());
+    let stored_value = res
+        .state
+        .get(&callee_address)
+        .and_then(|account| account.storage.get(&EU256::from(key)))
+        .map(|slot| slot.present_value)
+        .unwrap_or(EU256::zero());
+    assert_eq!(stored_value, EU256::from(value));
+}
+
 #[test]
 fn extcodehash_happy_path() {
     let address_number = 10;
