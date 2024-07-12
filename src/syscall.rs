@@ -971,23 +971,23 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
-    pub extern "C" fn selfdestruct(&mut self, address: &U256) -> u64 {
-        let address = Address::from(address);
-        let receiver_empty = self
-            .db
-            .basic(address)
-            .unwrap()
-            .map(|acc| !acc.balance.is_zero())
-            .unwrap_or(false);
-        let callee_address = self.env.tx.get_address();
-        let is_moved = self.db.move_balance(callee_address, address);
+    pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
+        let sender_address = self.env.tx.get_address();
+        let receiver_address = Address::from(receiver_address);
+
+        let sender_balance = self.db.get_balance(receiver_address);
+        let receiver_balance = self.db.get_balance(receiver_address);
+
+        self.db.set_balance(sender_address, EU256::zero());
+        self.db
+            .set_balance(receiver_address, receiver_balance + sender_balance);
 
         if self.db.address_is_created(callee_address) {
             self.db
                 .set_status(callee_address, AccountStatus::SelfDestructed);
         }
 
-        if is_moved && receiver_empty {
+        if !sender_balance.is_zero() && !receiver_balance.is_zero() > 0 {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0

@@ -61,13 +61,16 @@ impl Db {
         a.storage = storage;
     }
 
-    pub fn move_balance(&mut self, from: Address, to: Address) -> bool {
-        let from = self.accounts.entry(from).or_default();
-        let balance = from.balance;
-        from.balance = U256::zero();
-        let to = self.accounts.entry(to).or_default();
-        to.balance += balance;
-        !balance.is_zero()
+    pub fn set_balance(&mut self, address: Address, balance: U256) {
+        let account = self.accounts.entry(address).or_default();
+        account.balance = balance;
+    }
+
+    pub fn get_balance(&mut self, address: Address) -> U256 {
+        self.accounts
+            .get(&address)
+            .map(|acc| acc.balance)
+            .unwrap_or_default()
     }
 
     pub fn address_is_created(&self, address: Address) -> bool {
@@ -202,6 +205,7 @@ impl Database for Db {
 
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         // Returns Ok(None) if no account with that address
+        // TODO: this can be done more efficently if the storage is not cloned
         Ok(self.accounts.get(&address).cloned().map(AccountInfo::from))
     }
 
@@ -232,6 +236,7 @@ mod tests {
         let expected_account_info = AccountInfo::default();
         let db_account = DbAccount {
             bytecode_hash: B256::zero(),
+            nonce: 1,
             ..Default::default()
         };
         accounts.insert(address, db_account);
