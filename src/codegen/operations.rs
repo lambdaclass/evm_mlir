@@ -118,7 +118,8 @@ pub fn generate_code_for_op<'c>(
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
         Operation::ExtcodeHash => codegen_extcodehash(op_ctx, region),
-        Operation::Create => codegen_create(op_ctx, region),
+        Operation::Create => codegen_create(op_ctx, region, false),
+        Operation::Create2 => codegen_create(op_ctx, region, true),
     }
 }
 
@@ -5225,16 +5226,20 @@ fn codegen_returndatacopy<'c, 'r>(
 fn codegen_create<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
+    is_create2: bool,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
-    let uint256 = IntegerType::new(context, 256);
-    let uint32 = IntegerType::new(context, 32);
     let uint8 = IntegerType::new(context, 8);
+    let uint32 = IntegerType::new(context, 32);
+    let uint64 = IntegerType::new(context, 64);
+    let uint256 = IntegerType::new(context, 256);
+    let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
-    let stack_flag = check_stack_has_at_least(context, &start_block, 3)?;
+    let stack_size = if is_create2 { 4 } else { 3 };
+    let stack_flag = check_stack_has_at_least(context, &start_block, stack_size)?;
     // Check current context is not static
     let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
     let ok_flag = start_block
@@ -5252,9 +5257,9 @@ fn codegen_create<'c, 'r>(
         location,
     ));
 
-    let size = stack_pop(context, &ok_block)?;
-    let offset = stack_pop(context, &ok_block)?;
     let value = stack_pop(context, &ok_block)?;
+    let offset = stack_pop(context, &ok_block)?;
+    let size = stack_pop(context, &ok_block)?;
 
     let offset_as_u32 = ok_block
         .append_operation(arith::trunci(offset, uint32.into(), location))
@@ -5271,29 +5276,90 @@ fn codegen_create<'c, 'r>(
         .result(0)?
         .into();
 
-    let creation_block = region.append_block(Block::new(&[]));
+    let create_block = region.append_block(Block::new(&[]));
+
     extend_memory(
         op_ctx,
         &ok_block,
-        &creation_block,
+        &create_block,
         region,
         req_mem_size,
         gas_cost::CREATE,
     )?;
 
-    // TODO: add gas consumption for init_code_cost + code_deposit_cost
+    let value_ptr = allocate_and_store_value(op_ctx, &create_block, value, location)?;
 
-    let value_ptr = allocate_and_store_value(op_ctx, &creation_block, value, location)?;
-
-    let result = op_ctx.create_syscall(
-        &creation_block,
-        size_as_u32,
-        offset_as_u32,
-        value_ptr,
+    // Load the gas counter and copy the value into a new pointer
+    let gas_counter_ptr = create_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = create_block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let number_of_elements = create_block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = create_block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    create_block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
         location,
-    )?;
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
 
-    let zero_constant_value = creation_block
+    let result = if is_create2 {
+        let salt = stack_pop(context, &create_block)?;
+        let salt_ptr = allocate_and_store_value(op_ctx, &create_block, salt, location)?;
+        op_ctx.create2_syscall(
+            &create_block,
+            size_as_u32,
+            offset_as_u32,
+            value_ptr,
+            gas_ptr,
+            salt_ptr,
+            location,
+        )?
+    } else {
+        op_ctx.create_syscall(
+            &create_block,
+            size_as_u32,
+            offset_as_u32,
+            value_ptr,
+            gas_ptr,
+            location,
+        )?
+    };
+
+    // Check if the return code is error
+    let zero_constant_value = create_block
         .append_operation(arith::constant(
             context,
             IntegerAttribute::new(uint8.into(), 0).into(),
@@ -5301,7 +5367,7 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let flag = creation_block
+    let flag = create_block
         .append_operation(arith::cmpi(
             context,
             CmpiPredicate::Eq,
@@ -5311,11 +5377,29 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let end_block = region.append_block(Block::new(&[]));
 
-    creation_block.append_operation(cf::cond_br(
+    // Consume gas after creation
+    let gas_cost = create_block
+        .append_operation(llvm::load(
+            context,
+            gas_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let gas_flag = consume_gas_as_value(context, &create_block, gas_cost)?;
+
+    let condition = create_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
+    let end_block = region.append_block(Block::new(&[]));
+    create_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &end_block,
         &op_ctx.revert_block,
         &[],
@@ -5323,7 +5407,7 @@ fn codegen_create<'c, 'r>(
         location,
     ));
 
-    let code_address: melior::ir::Value = end_block
+    let code_address = end_block
         .append_operation(llvm::load(
             context,
             value_ptr,

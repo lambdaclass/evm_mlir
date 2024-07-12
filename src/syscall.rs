@@ -18,7 +18,7 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::call_opcode,
+    constants::{call_opcode, gas_cost},
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
@@ -27,7 +27,7 @@ use crate::{
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::EvmStorageSlot,
-    utils::compute_contract_dest_address,
+    utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
@@ -62,7 +62,7 @@ impl U256 {
     }
 
     pub fn zero() -> U256 {
-        U256 { hi: 0, lo: 0 }
+        U256 { lo: 0, hi: 0 }
     }
 }
 
@@ -873,17 +873,39 @@ impl<'c> SyscallContext<'c> {
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
     }
 
-    pub extern "C" fn create(&mut self, size: u32, offset: u32, value: &mut U256) -> u8 {
+    fn create_aux(
+        &mut self,
+        size: u32,
+        offset: u32,
+        value: &mut U256,
+        remaining_gas: &mut u64,
+        salt: Option<&U256>,
+    ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
         let offset = offset as usize;
         let size = size as usize;
+        let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
         let sender_account = self.db.basic(sender_address).unwrap().unwrap();
-        let dest_addr = compute_contract_dest_address(sender_address, sender_account.nonce);
+
+        let (dest_addr, hash_cost) = match salt {
+            Some(s) => (
+                compute_contract_address2(
+                    sender_address,
+                    s.to_primitive_u256(),
+                    initialization_bytecode,
+                ),
+                minimum_word_size * gas_cost::HASH_WORD_COST as u64,
+            ),
+            _ => (
+                compute_contract_address(sender_address, sender_account.nonce),
+                0,
+            ),
+        };
 
         // Check if there is already a contract stored in dest_address
         if let Ok(Some(_)) = self.db.basic(dest_addr) {
@@ -894,7 +916,7 @@ impl<'c> SyscallContext<'c> {
         // TODO: Add call depth check
         let mut new_env = self.env.clone();
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
-        new_env.tx.gas_limit = self.env.tx.gas_limit; // TODO: load updated gas counter
+        new_env.tx.gas_limit = *remaining_gas;
         new_env.tx.caller = self.env.tx.caller;
         let call_frame = CallFrame::new(sender_address);
 
@@ -906,16 +928,23 @@ impl<'c> SyscallContext<'c> {
         let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
-
-        // Check the result
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
-        // Create the new contract and update the sender account
+        // Set the gas cost
+        let init_code_cost = minimum_word_size * gas_cost::INIT_WORD_COST as u64;
+        let code_deposit_cost = (bytecode.len() as u64) * gas_cost::BYTE_DEPOSIT_COST as u64;
+        let gas_cost = init_code_cost + code_deposit_cost + hash_cost + result.gas_used()
+            - result.gas_refunded();
+        *remaining_gas = gas_cost;
+
+        // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
             return 0;
         };
+
+        // Create new contract and update sender account
         self.db.insert_contract(dest_addr, bytecode, value_as_u256);
         self.db.set_account(
             sender_address,
@@ -928,6 +957,27 @@ impl<'c> SyscallContext<'c> {
 
         // TODO: add dest_addr as warm in the access list
         0
+    }
+
+    pub extern "C" fn create(
+        &mut self,
+        size: u32,
+        offset: u32,
+        value: &mut U256,
+        remaining_gas: &mut u64,
+    ) -> u8 {
+        self.create_aux(size, offset, value, remaining_gas, None)
+    }
+
+    pub extern "C" fn create2(
+        &mut self,
+        size: u32,
+        offset: u32,
+        value: &mut U256,
+        remaining_gas: &mut u64,
+        salt: &U256,
+    ) -> u8 {
+        self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 }
 
@@ -970,6 +1020,7 @@ pub mod symbols {
     pub const GET_CODE_HASH: &str = "evm_mlir__get_code_hash";
     pub const CALL: &str = "evm_mlir__call";
     pub const CREATE: &str = "evm_mlir__create";
+    pub const CREATE2: &str = "evm_mlir__create2";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
     pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
 }
@@ -1175,7 +1226,15 @@ impl<'c> SyscallContext<'c> {
 
             engine.register_symbol(
                 symbols::CREATE,
-                SyscallContext::create as *const extern "C" fn(*mut c_void, u32, u32, *mut U256)
+                SyscallContext::create
+                    as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64)
+                    as *mut (),
+            );
+
+            engine.register_symbol(
+                symbols::CREATE2,
+                SyscallContext::create2
+                    as *const extern "C" fn(*mut c_void, u32, u32, *mut U256, *mut u64, *mut U256)
                     as *mut (),
             );
 
@@ -1592,7 +1651,28 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::CREATE),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, uint32, uint32, ptr_type], &[uint8]).into(),
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type],
+                    &[uint8],
+                )
+                .into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::CREATE2),
+            TypeAttribute::new(
+                FunctionType::new(
+                    context,
+                    &[ptr_type, uint32, uint32, ptr_type, ptr_type, ptr_type],
+                    &[uint8],
+                )
+                .into(),
             ),
             Region::new(),
             attributes,
@@ -2288,6 +2368,7 @@ pub(crate) mod mlir {
         ));
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -2295,6 +2376,7 @@ pub(crate) mod mlir {
         size: Value<'c, 'c>,
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
@@ -2302,12 +2384,36 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
-                &[syscall_ctx, size, offset, value],
+                &[syscall_ctx, size, offset, value, remaining_gas],
                 &[uint8],
                 location,
             ))
             .result(0)?;
+        Ok(result.into())
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create2_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        size: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
+        salt: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint8 = IntegerType::new(mlir_ctx, 8).into();
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE2),
+                &[syscall_ctx, size, offset, value, remaining_gas, salt],
+                &[uint8],
+                location,
+            ))
+            .result(0)?;
         Ok(result.into())
     }
 

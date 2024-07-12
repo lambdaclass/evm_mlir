@@ -1141,6 +1141,7 @@ impl<'c> OperationCtx<'c> {
         size: Value<'c, 'c>,
         offset: Value<'c, 'c>,
         value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::create_syscall(
@@ -1150,6 +1151,31 @@ impl<'c> OperationCtx<'c> {
             size,
             offset,
             value,
+            remaining_gas,
+            location,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create2_syscall(
+        &'c self,
+        block: &'c Block,
+        size: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        remaining_gas: Value<'c, 'c>,
+        salt: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value, CodegenError> {
+        syscall::mlir::create2_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            size,
+            offset,
+            value,
+            remaining_gas,
+            salt,
             location,
         )
     }
