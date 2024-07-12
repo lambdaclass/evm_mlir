@@ -114,7 +114,6 @@ pub struct InnerContext {
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
     journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
-    transient_storage: HashMap<EU256, EU256>, // TODO: cambiar a HashMap<(Address, EU256), EU256>, nested calls pueden necesitar el transient storage
 }
 
 /// Information about current call frame
@@ -142,6 +141,7 @@ pub struct SyscallContext<'c> {
     pub db: &'c mut Db,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
+    pub transient_storage: HashMap<(Address, EU256), EU256>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -164,6 +164,7 @@ impl<'c> SyscallContext<'c> {
             db,
             call_frame,
             inner_context: Default::default(),
+            transient_storage: Default::default(),
         }
     }
 
@@ -975,11 +976,11 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
         let key = stg_key.to_primitive_u256();
+        let address = self.env.tx.get_address();
 
         let result = self
-            .inner_context
             .transient_storage
-            .get(&key)
+            .get(&(address, key))
             .cloned()
             .unwrap_or(EU256::zero());
 
@@ -988,9 +989,11 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn write_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let address = self.env.tx.get_address();
+
         let key = stg_key.to_primitive_u256();
         let value = stg_value.to_primitive_u256();
-        self.inner_context.transient_storage.insert(key, value);
+        self.transient_storage.insert((address, key), value);
     }
 }
 
