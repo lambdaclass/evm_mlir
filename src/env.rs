@@ -1,8 +1,11 @@
 use crate::{
-    constants::gas_cost::{
-        init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
-        TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO,
-        TX_DATA_COST_PER_ZERO,
+    constants::{
+        gas_cost::{
+            init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
+            TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
+            TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
+        },
+        MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
@@ -31,6 +34,42 @@ impl Env {
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         }
+    }
+
+    pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
+        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
+
+        if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
+            return Err(InvalidTransaction::CreateInitCodeSizeLimit);
+        }
+        if let Some(max) = self.tx.max_fee_per_blob_gas {
+            let price = self.block.blob_gasprice.unwrap();
+            if U256::from(price) > max {
+                return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
+            }
+            if self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::EmptyBlobs);
+            }
+            if is_create {
+                return Err(InvalidTransaction::BlobCreateTransaction);
+            }
+            for blob in self.tx.blob_hashes.iter() {
+                if blob[0] != VERSIONED_HASH_VERSION_KZG {
+                    return Err(InvalidTransaction::BlobVersionNotSupported);
+                }
+            }
+
+            let num_blobs = self.tx.blob_hashes.len();
+            if num_blobs > MAX_BLOB_NUMBER_PER_BLOCK as usize {
+                return Err(InvalidTransaction::TooManyBlobs {
+                    have: num_blobs,
+                    max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
+                });
+            }
+            // TODO: check if more blob validations are needed
+        }
+        // TODO: validate sender
+        Ok(())
     }
 
     ///  Calculates the gas that is charged before execution is started.
@@ -169,7 +208,7 @@ pub struct TxEnv {
     // Incorporated as part of the Cancun upgrade via [EIP-4844].
     //
     // [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844
-    // pub max_fee_per_blob_gas: Option<U256>,
+    pub max_fee_per_blob_gas: Option<U256>,
 }
 
 impl Default for TxEnv {
@@ -187,7 +226,7 @@ impl Default for TxEnv {
             // nonce: None,
             access_list: Vec::new(),
             blob_hashes: Vec::new(),
-            // max_fee_per_blob_gas: None,
+            max_fee_per_blob_gas: None,
         }
     }
 }

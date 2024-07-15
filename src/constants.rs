@@ -13,6 +13,9 @@ pub const MAIN_ENTRYPOINT: &str = "main";
 pub const EMPTY_CODE_HASH_STR: &str =
     "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
+pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+pub const MAX_BLOB_NUMBER_PER_BLOCK: u8 = 0x01;
+
 //TODO: Add missing opcodes gas consumption costs
 //  -> This implies refactoring codegen/operations.rs
 /// Contains the gas costs of the EVM instructions

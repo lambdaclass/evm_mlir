@@ -1,6 +1,5 @@
 use builder::EvmBuilder;
 use db::{Database, Db};
-use env::TransactTo;
 use executor::{Executor, OptLevel};
 use program::Program;
 use result::{EVMError, ResultAndState};
@@ -57,6 +56,7 @@ impl Evm<Db> {
         let program = Program::from_bytecode(&bytecode);
 
         self.env.consume_intrinsic_cost()?;
+        self.env.validate_transaction()?;
         // validate transaction
 
         let module = context
