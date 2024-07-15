@@ -98,6 +98,19 @@ pub mod gas_cost {
     pub const INIT_WORD_COST: i64 = 2;
     pub const HASH_WORD_COST: i64 = 6;
 
+    // Transaction costs
+    pub const TX_BASE_COST: u64 = 21000;
+    pub const TX_DATA_COST_PER_NON_ZERO: u64 = 16;
+    pub const TX_DATA_COST_PER_ZERO: u64 = 4;
+    pub const TX_CREATE_COST: u64 = 32000;
+    pub const TX_ACCESS_LIST_ADDRESS_COST: u64 = 2400;
+    pub const TX_ACCESS_LIST_STORAGE_KEY_COST: u64 = 1900;
+    pub const MAX_CODE_SIZE: usize = 0x6000;
+
+    pub fn init_code_cost(init_code_length: usize) -> u64 {
+        INIT_WORD_COST as u64 * (init_code_length as u64 + 31) / 32
+    }
+
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
         let new_memory_cost =

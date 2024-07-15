@@ -59,6 +59,8 @@ impl Evm<Db> {
             .expect("Failed to get code from address");
         let program = Program::from_bytecode(&bytecode);
 
+        self.env.validate_transaction()?;
+
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");

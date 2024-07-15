@@ -1,5 +1,11 @@
 use crate::{
+    constants::gas_cost::{
+        init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
+        TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO,
+        TX_DATA_COST_PER_ZERO,
+    },
     primitives::{Address, Bytes, B256, U256},
+    result::InvalidTransaction,
     utils::calc_blob_gasprice,
 };
 
@@ -14,6 +20,39 @@ pub struct Env {
     pub block: BlockEnv,
     /// Configuration of the transaction that is being executed.
     pub tx: TxEnv,
+}
+
+impl Env {
+    /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
+    pub fn validate_transaction(&self) -> Result<(), InvalidTransaction> {
+        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
+        if self.calculate_intrinsic_cost() <= self.tx.gas_limit {
+            Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
+        } else if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
+            Err(InvalidTransaction::CreateInitCodeSizeLimit)
+        } else {
+            Ok(())
+        }
+    }
+
+    ///  Calculates the gas that is charged before execution is started.
+    fn calculate_intrinsic_cost(&self) -> u64 {
+        let data_cost = self.tx.data.iter().fold(0, |acc, byte| {
+            acc + if *byte == 0 {
+                TX_DATA_COST_PER_ZERO
+            } else {
+                TX_DATA_COST_PER_NON_ZERO
+            }
+        });
+        let create_cost = match self.tx.transact_to {
+            TransactTo::Call(_) => 0,
+            TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
+        };
+        let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
+            acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
+        });
+        TX_BASE_COST + data_cost + create_cost + access_list_cost
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -111,7 +150,7 @@ pub struct TxEnv {
     // Added in [EIP-2930].
     //
     // [EIP-2930]: https://eips.ethereum.org/EIPS/eip-2930
-    // pub access_list: Vec<(Address, Vec<U256>)>,
+    pub access_list: Vec<(Address, Vec<U256>)>,
 
     // The priority fee per gas.
     //
@@ -148,7 +187,7 @@ impl Default for TxEnv {
             data: Bytes::new(),
             // chain_id: None,
             // nonce: None,
-            // access_list: Vec::new(),
+            access_list: Vec::new(),
             blob_hashes: Vec::new(),
             // max_fee_per_blob_gas: None,
         }
