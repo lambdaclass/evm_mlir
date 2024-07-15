@@ -5613,25 +5613,7 @@ fn codegen_tload<'c, 'r>(
     let key = stack_pop(context, &ok_block)?;
 
     // Allocate a pointer for the key
-    let key_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            pointer_size,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
-        ))
-        .result(0)?
-        .into();
-
-    let res = ok_block.append_operation(llvm::store(
-        context,
-        key,
-        key_ptr,
-        location,
-        LoadStoreOptions::default(),
-    ));
-    assert!(res.verify());
+    let key_ptr = allocate_and_store_value(op_ctx, &ok_block, key, location)?;
 
     // Allocate a pointer for the value
     let read_value_ptr = ok_block

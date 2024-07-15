@@ -3576,7 +3576,7 @@ fn selfdestruct_gas_cost_on_non_empty_account() {
 fn tload_gas_consumption() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Sload,
+        Operation::Tload,
     ];
     let result = gas_cost::PUSHN + gas_cost::TLOAD;
     let env = Env::default();
@@ -3603,7 +3603,7 @@ fn tload_with_stack_underflow() {
 }
 
 #[test]
-fn tstore_gas_consumption() {
+fn tload_gas_consumption() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
         Operation::Tload,
@@ -3630,7 +3630,7 @@ fn tstore_tload_happy_path() {
         Operation::Push((1_u8, BigUint::from(value))),
         Operation::Push((1_u8, BigUint::from(key))),
         Operation::Tstore,
-        // sload
+        // tload
         Operation::Push((1_u8, BigUint::from(key))),
         Operation::Tload,
     ];
