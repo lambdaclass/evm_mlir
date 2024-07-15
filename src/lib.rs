@@ -47,10 +47,7 @@ impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
-        let code_address = match self.env.tx.transact_to {
-            TransactTo::Call(code_address) => code_address,
-            TransactTo::Create => unimplemented!(), // TODO: implement creation
-        };
+        let code_address = self.env.tx.get_address();
 
         //TODO: Improve error handling
         let bytecode = self
@@ -59,7 +56,8 @@ impl Evm<Db> {
             .expect("Failed to get code from address");
         let program = Program::from_bytecode(&bytecode);
 
-        self.env.validate_transaction()?;
+        self.env.consume_intrinsic_cost()?;
+        // validate transaction
 
         let module = context
             .compile(&program, Default::default())
