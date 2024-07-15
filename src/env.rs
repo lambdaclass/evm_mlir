@@ -26,7 +26,6 @@ pub struct Env {
 }
 
 impl Env {
-    /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn consume_intrinsic_cost(&mut self) -> Result<(), InvalidTransaction> {
         if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
             self.tx.gas_limit -= self.calculate_intrinsic_cost();
@@ -36,6 +35,7 @@ impl Env {
         }
     }
 
+    /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
