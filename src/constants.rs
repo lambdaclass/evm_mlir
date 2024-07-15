@@ -141,16 +141,20 @@ pub mod call_opcode {
 
 #[derive(PartialEq, Debug)]
 pub enum CallType {
-    CALL,
-    STATICCALL,
+    Call,
+    StaticCall,
+    DelegateCall,
+    CallCode,
 }
 
 impl From<u8> for CallType {
     fn from(call_type: u8) -> CallType {
         match call_type {
-            x if x == CallType::CALL as u8 => CallType::CALL,
-            x if x == CallType::STATICCALL as u8 => CallType::STATICCALL,
-            _ => CallType::CALL,
+            x if x == CallType::Call as u8 => CallType::Call,
+            x if x == CallType::StaticCall as u8 => CallType::StaticCall,
+            x if x == CallType::DelegateCall as u8 => CallType::DelegateCall,
+            x if x == CallType::CallCode as u8 => CallType::CallCode,
+            _ => CallType::Call,
         }
     }
 }

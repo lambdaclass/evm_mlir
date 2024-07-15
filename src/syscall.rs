@@ -350,14 +350,17 @@ impl<'c> SyscallContext<'c> {
         gas_to_send += stipend;
 
         let mut env = self.env.clone();
-        env.tx.transact_to = TransactTo::Call(callee_address);
 
-        //TODO: Check if this is ok
-        let new_frame_caller = match self.env.tx.transact_to {
-            TransactTo::Call(a) => a,
-            TransactTo::Create => Address::zero(),
+        //TODO: Check if calling `get_address()` here is ok
+        let this_address = self.env.tx.get_address();
+        let (new_frame_caller, new_value, transact_to) = match call_type {
+            CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
+            CallType::CallCode => (this_address, value, this_address),
+            CallType::DelegateCall => (self.call_frame.caller, self.env.tx.value, this_address),
         };
-        env.tx.value = value;
+
+        env.tx.value = new_value;
+        env.tx.transact_to = TransactTo::Call(transact_to);
         env.tx.gas_limit = gas_to_send;
 
         //Copy the calldata from memory
@@ -380,7 +383,7 @@ impl<'c> SyscallContext<'c> {
             .compile(&program, Default::default())
             .expect("failed to compile program");
 
-        let is_static = self.call_frame.ctx_is_static || call_type == CallType::STATICCALL;
+        let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
 
         let call_frame = CallFrame {
             caller: new_frame_caller,

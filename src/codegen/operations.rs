@@ -111,9 +111,11 @@ pub fn generate_code_for_op<'c>(
         Operation::Dup(x) => codegen_dup(op_ctx, region, x),
         Operation::Swap(x) => codegen_swap(op_ctx, region, x),
         Operation::Log(x) => codegen_log(op_ctx, region, x),
-        Operation::Call => codegen_call(op_ctx, region, CallType::CALL),
+        Operation::Call => codegen_call(op_ctx, region, CallType::Call),
+        Operation::CallCode => codegen_call(op_ctx, region, CallType::CallCode),
         Operation::Return => codegen_return(op_ctx, region),
-        Operation::StaticCall => codegen_call(op_ctx, region, CallType::STATICCALL),
+        Operation::DelegateCall => codegen_call(op_ctx, region, CallType::DelegateCall),
+        Operation::StaticCall => codegen_call(op_ctx, region, CallType::StaticCall),
         Operation::Revert => codegen_revert(op_ctx, region),
         Operation::Invalid => codegen_invalid(op_ctx, region),
         Operation::BlockHash => codegen_blockhash(op_ctx, region),
@@ -4915,8 +4917,8 @@ fn codegen_call<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
 
     let nargs = match call_type {
-        CallType::CALL => 7,
-        CallType::STATICCALL => 6,
+        CallType::Call | CallType::CallCode => 7,
+        CallType::StaticCall | CallType::DelegateCall => 6,
     };
 
     let flag = check_stack_has_at_least(context, &start_block, nargs)?;
@@ -4937,8 +4939,10 @@ fn codegen_call<'c, 'r>(
     let gas = stack_pop(context, &stack_ok_block)?;
     let address = stack_pop(context, &stack_ok_block)?;
     let value = match call_type {
-        CallType::CALL => stack_pop(context, &stack_ok_block)?,
-        CallType::STATICCALL => constant_value_from_i64(context, &stack_ok_block, 0)?,
+        CallType::Call | CallType::CallCode => stack_pop(context, &stack_ok_block)?,
+        CallType::StaticCall | CallType::DelegateCall => {
+            constant_value_from_i64(context, &stack_ok_block, 0)?
+        }
     };
     let args_offset = stack_pop(context, &stack_ok_block)?;
     let args_size = stack_pop(context, &stack_ok_block)?;
