@@ -3,7 +3,7 @@ use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::{call_opcode, gas_cost, EMPTY_CODE_HASH_STR},
+    constants::{call_opcode, gas_cost, CallType, EMPTY_CODE_HASH_STR},
     db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -1884,6 +1884,106 @@ fn blobhash_with_index_too_big() {
 
     let expected_result = [0x00; 32];
     run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[rstest]
+#[case(CallType::CALL)]
+#[case(CallType::STATICCALL)]
+fn call_simple_callee_call(#[case] call_type: CallType) {
+    let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
+    let db = Db::new();
+
+    // Callee
+    let mut callee_ops = vec![
+        Operation::Push0,
+        Operation::CalldataLoad,
+        Operation::Push((1_u8, BigUint::from(32_u8))),
+        Operation::CalldataLoad,
+        Operation::Add,
+    ];
+    append_return_result_operations(&mut callee_ops);
+
+    let program = Program::from(callee_ops);
+    let (callee_address, bytecode) = (
+        Address::from_low_u64_be(8080),
+        Bytecode::from(program.to_bytecode()),
+    );
+    let db = db.with_contract(callee_address, bytecode);
+
+    let gas = 100_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+
+    //Add or not the value argument
+    let value_op_vec = match call_type {
+        CallType::CALL => vec![Operation::Push((1_u8, BigUint::from(value)))],
+        CallType::STATICCALL => vec![],
+    };
+
+    let call_op_vec = match call_type {
+        CallType::CALL => vec![Operation::Call],
+        CallType::STATICCALL => vec![Operation::StaticCall],
+    };
+
+    let caller_ops = vec![
+        vec![
+            Operation::Push((32_u8, b.clone())),                 //Operand B
+            Operation::Push0,                                    //
+            Operation::Mstore,                                   //Store in mem address 0
+            Operation::Push((32_u8, a.clone())),                 //Operand A
+            Operation::Push((1_u8, BigUint::from(32_u8))),       //
+            Operation::Mstore,                                   //Store in mem address 32
+            Operation::Push((1_u8, BigUint::from(ret_size))),    //Ret size
+            Operation::Push((1_u8, BigUint::from(ret_offset))),  //Ret offset
+            Operation::Push((1_u8, BigUint::from(args_size))),   //Args size
+            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        ],
+        value_op_vec,
+        vec![
+            Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+            Operation::Push((1_u8, BigUint::from(gas))),                                 //Gas
+        ],
+        call_op_vec,
+        vec![
+            //This ops will return the value stored in memory, the call status and the caller balance
+            //call status
+            Operation::Push((1_u8, 32_u8.into())),
+            Operation::Mstore,
+            //Return
+            Operation::Push((1_u8, 64_u8.into())),
+            Operation::Push0,
+            Operation::Return,
+        ],
+    ]
+    .concat();
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let db = db.with_contract(caller_address, bytecode);
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap().result;
+    assert!(result.is_success());
+
+    let res_bytes: &[u8] = result.output().unwrap();
+
+    let expected_contract_data_result = a + b;
+    let expected_contract_status_result = 1_u8.into();
+
+    let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
+    let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..]);
+
+    assert_eq!(contract_status_result, expected_contract_status_result);
+    assert_eq!(contract_data_result, expected_contract_data_result);
 }
 
 #[test]

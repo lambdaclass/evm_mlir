@@ -139,6 +139,22 @@ pub mod call_opcode {
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }
 
+#[derive(PartialEq, Debug)]
+pub enum CallType {
+    CALL,
+    STATICCALL,
+}
+
+impl From<u8> for CallType {
+    fn from(call_type: u8) -> CallType {
+        match call_type {
+            x if x == CallType::CALL as u8 => CallType::CALL,
+            x if x == CallType::STATICCALL as u8 => CallType::STATICCALL,
+            _ => CallType::CALL,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -18,7 +18,7 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost},
+    constants::{call_opcode, gas_cost, CallType},
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
@@ -278,12 +278,13 @@ impl<'c> SyscallContext<'c> {
         ret_size: u32,
         available_gas: u64,
         consumed_gas: &mut u64,
-        is_static: bool,
+        call_type: u8,
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = Address::from(call_to_address);
         let value = value_to_transfer.to_primitive_u256();
+        let call_type = CallType::from(call_type);
 
         //TODO: This should instead add the account fetch (warm or cold) cost
         //For the moment we consider warm access
@@ -378,6 +379,8 @@ impl<'c> SyscallContext<'c> {
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
+
+        let is_static = self.call_frame.ctx_is_static || call_type == CallType::STATICCALL;
 
         let call_frame = CallFrame {
             caller: new_frame_caller,
@@ -1130,7 +1133,7 @@ impl<'c> SyscallContext<'c> {
                         u32,
                         u64,
                         *mut u64,
-                        bool,
+                        u8,
                     ) as *mut (),
             );
             engine.register_symbol(
@@ -1301,7 +1304,6 @@ pub(crate) mod mlir {
 
         // Type declarations
         let ptr_type = pointer(context, 0);
-        let uint1 = IntegerType::new(context, 1).into();
         let uint8 = IntegerType::new(context, 8).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
@@ -1610,7 +1612,7 @@ pub(crate) mod mlir {
                     context,
                     &[
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
-                        uint64, ptr_type, uint1,
+                        uint64, ptr_type, uint8,
                     ],
                     &[uint8],
                 )
@@ -2249,7 +2251,7 @@ pub(crate) mod mlir {
         ret_size: Value<'c, 'c>,
         available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
-        is_static: Value<'c, 'c>,
+        call_type: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
         let result = block
@@ -2267,7 +2269,7 @@ pub(crate) mod mlir {
                     ret_size,
                     available_gas,
                     remaining_gas_ptr,
-                    is_static,
+                    call_type,
                 ],
                 &[uint8],
                 location,
