@@ -22,6 +22,7 @@ pub mod program;
 pub mod syscall;
 pub mod utils;
 pub use env::Env;
+pub mod journal;
 pub mod result;
 pub mod state;
 

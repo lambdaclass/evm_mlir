@@ -48,6 +48,10 @@ impl Db {
         self.block_hashes.insert(number, hash);
     }
 
+    pub fn get_account(&mut self, address: &Address) -> Option<&DbAccount> {
+        self.accounts.get(address)
+    }
+
     pub fn set_account(
         &mut self,
         address: Address,
