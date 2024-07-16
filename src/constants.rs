@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 pub const MAX_STACK_SIZE: usize = 1024;
 pub const GAS_COUNTER_GLOBAL: &str = "evm_mlir__gas_counter";
 pub const STACK_BASEPTR_GLOBAL: &str = "evm_mlir__stack_baseptr";
@@ -147,14 +149,19 @@ pub enum CallType {
     CallCode,
 }
 
-impl From<u8> for CallType {
-    fn from(call_type: u8) -> CallType {
+#[derive(Error, Debug)]
+#[error("Couldn't parse CallType from u8")]
+pub struct CallTypeParseError;
+
+impl TryFrom<u8> for CallType {
+    type Error = CallTypeParseError;
+    fn try_from(call_type: u8) -> Result<CallType, Self::Error> {
         match call_type {
-            x if x == CallType::Call as u8 => CallType::Call,
-            x if x == CallType::StaticCall as u8 => CallType::StaticCall,
-            x if x == CallType::DelegateCall as u8 => CallType::DelegateCall,
-            x if x == CallType::CallCode as u8 => CallType::CallCode,
-            _ => CallType::Call,
+            x if x == CallType::Call as u8 => Ok(CallType::Call),
+            x if x == CallType::StaticCall as u8 => Ok(CallType::StaticCall),
+            x if x == CallType::DelegateCall as u8 => Ok(CallType::DelegateCall),
+            x if x == CallType::CallCode as u8 => Ok(CallType::CallCode),
+            _ => Err(CallTypeParseError),
         }
     }
 }

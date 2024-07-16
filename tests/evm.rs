@@ -3,7 +3,7 @@ use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::{call_opcode, gas_cost, CallType, EMPTY_CODE_HASH_STR},
+    constants::{call_opcode, gas_cost, EMPTY_CODE_HASH_STR},
     db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -1887,9 +1887,9 @@ fn blobhash_with_index_too_big() {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::StaticCall)]
-fn call_simple_callee_call(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::StaticCall)]
+fn call_simple_callee_call(#[case] call_type: Operation) {
     let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
     let db = Db::new();
 
@@ -1921,15 +1921,19 @@ fn call_simple_callee_call(#[case] call_type: CallType) {
 
     //Add or not the value argument
     let value_op_vec = match call_type {
-        CallType::Call | CallType::CallCode => vec![Operation::Push((1_u8, BigUint::from(value)))],
-        CallType::StaticCall | CallType::DelegateCall => vec![],
+        Operation::Call | Operation::CallCode => {
+            vec![Operation::Push((1_u8, BigUint::from(value)))]
+        }
+        Operation::StaticCall | Operation::DelegateCall => vec![],
+        _ => panic!("Only call opcodes allowed"),
     };
 
     let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::StaticCall => vec![Operation::StaticCall],
-        CallType::CallCode => vec![Operation::CallCode],
-        CallType::DelegateCall => vec![Operation::DelegateCall],
+        Operation::Call => vec![Operation::Call],
+        Operation::StaticCall => vec![Operation::StaticCall],
+        Operation::CallCode => vec![Operation::CallCode],
+        Operation::DelegateCall => vec![Operation::DelegateCall],
+        _ => panic!("Only call opcodes allowed"),
     };
 
     let caller_ops = [
@@ -1989,9 +1993,9 @@ fn call_simple_callee_call(#[case] call_type: CallType) {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::CallCode)]
-fn call_addition_with_value_transfer(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::CallCode)]
+fn call_addition_with_value_transfer(#[case] call_type: Operation) {
     let (a, b) = (BigUint::from(3_u8), BigUint::from(5_u8));
     let db = Db::new();
 
@@ -2023,8 +2027,8 @@ fn call_addition_with_value_transfer(#[case] call_type: CallType) {
 
     let caller_address = Address::from_low_u64_be(4040);
     let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::CallCode => vec![Operation::CallCode],
+        Operation::Call => vec![Operation::Call],
+        Operation::CallCode => vec![Operation::CallCode],
         _ => panic!("Only Call and CallCode allowed on this test"),
     };
     let caller_ops = [
@@ -2098,9 +2102,9 @@ fn call_addition_with_value_transfer(#[case] call_type: CallType) {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::CallCode)]
-fn call_without_enough_balance(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::CallCode)]
+fn call_without_enough_balance(#[case] call_type: Operation) {
     let db = Db::new();
 
     // Callee
@@ -2125,8 +2129,8 @@ fn call_without_enough_balance(#[case] call_type: CallType) {
 
     let caller_address = Address::from_low_u64_be(4040);
     let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::CallCode => vec![Operation::CallCode],
+        Operation::Call => vec![Operation::Call],
+        Operation::CallCode => vec![Operation::CallCode],
         _ => panic!("Only Call and CallCode allowed on this test"),
     };
     let mut caller_ops = [
@@ -2181,11 +2185,11 @@ fn call_without_enough_balance(#[case] call_type: CallType) {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::StaticCall)]
-#[case(CallType::CallCode)]
-#[case(CallType::DelegateCall)]
-fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::StaticCall)]
+#[case(Operation::CallCode)]
+#[case(Operation::DelegateCall)]
+fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_type: Operation) {
     /*
     This will test the gas consumption for a call with the following conditions:
     Value: 0
@@ -2231,21 +2235,18 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_
 
     //Add or not the value argument
     let nargs = match call_type {
-        CallType::Call | CallType::CallCode => 7,
-        CallType::StaticCall | CallType::DelegateCall => 6,
+        Operation::Call | Operation::CallCode => 7,
+        Operation::StaticCall | Operation::DelegateCall => 6,
+        _ => panic!("Only call related opcodes allowd"),
     };
 
     //Add or not the value argument
     let value_op_vec = match call_type {
-        CallType::Call | CallType::CallCode => vec![Operation::Push((1_u8, BigUint::from(value)))],
-        CallType::StaticCall | CallType::DelegateCall => vec![],
-    };
-
-    let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::StaticCall => vec![Operation::StaticCall],
-        CallType::CallCode => vec![Operation::CallCode],
-        CallType::DelegateCall => vec![Operation::DelegateCall],
+        Operation::Call | Operation::CallCode => {
+            vec![Operation::Push((1_u8, BigUint::from(value)))]
+        }
+        Operation::StaticCall | Operation::DelegateCall => vec![],
+        _ => panic!("Only call related opcodes allowd"),
     };
 
     let caller_ops = [
@@ -2266,7 +2267,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_
             Operation::Push((16_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
             Operation::Push((1_u8, BigUint::from(gas))),                                 //Gas
         ],
-        call_op_vec,
+        vec![call_type],
     ]
     .concat();
 
@@ -2392,25 +2393,20 @@ fn call_return_with_offset_and_size(
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::StaticCall)]
-#[case(CallType::CallCode)]
-#[case(CallType::DelegateCall)]
-fn call_check_stack_underflow(#[case] call_type: CallType) {
-    let program = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::StaticCall => vec![Operation::StaticCall],
-        CallType::CallCode => vec![Operation::CallCode],
-        CallType::DelegateCall => vec![Operation::DelegateCall],
-    };
+#[case(Operation::Call)]
+#[case(Operation::StaticCall)]
+#[case(Operation::CallCode)]
+#[case(Operation::DelegateCall)]
+fn call_check_stack_underflow(#[case] call_type: Operation) {
+    let program = vec![call_type];
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::CallCode)]
-fn call_gas_check_with_value_and_empty_account(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::CallCode)]
+fn call_gas_check_with_value_and_empty_account(#[case] call_type: Operation) {
     /*
     This will test the gas consumption for a call with the following conditions:
     Value: 3
@@ -2438,8 +2434,8 @@ fn call_gas_check_with_value_and_empty_account(#[case] call_type: CallType) {
     let ret_size = 0_u8;
 
     let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::CallCode => vec![Operation::CallCode],
+        Operation::Call => vec![Operation::Call],
+        Operation::CallCode => vec![Operation::CallCode],
         _ => panic!("Only Call and CallCode allowed on this test"),
     };
     let caller_ops = [
@@ -2475,11 +2471,11 @@ fn call_gas_check_with_value_and_empty_account(#[case] call_type: CallType) {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::StaticCall)]
-#[case(CallType::CallCode)]
-#[case(CallType::DelegateCall)]
-fn call_callee_returns_new_value(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::StaticCall)]
+#[case(Operation::CallCode)]
+#[case(Operation::DelegateCall)]
+fn call_callee_returns_new_value(#[case] call_type: Operation) {
     let db = Db::new();
     let origin = Address::from_low_u64_be(79);
     let origin_value = 5_u8;
@@ -2505,16 +2501,12 @@ fn call_callee_returns_new_value(#[case] call_type: CallType) {
 
     let caller_address = Address::from_low_u64_be(4040);
 
-    let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::CallCode => vec![Operation::CallCode],
-        CallType::StaticCall => vec![Operation::StaticCall],
-        CallType::DelegateCall => vec![Operation::DelegateCall],
-    };
-
     let value_op_vec = match call_type {
-        CallType::Call | CallType::CallCode => vec![Operation::Push((1_u8, BigUint::from(value)))],
-        CallType::StaticCall | CallType::DelegateCall => vec![],
+        Operation::Call | Operation::CallCode => {
+            vec![Operation::Push((1_u8, BigUint::from(value)))]
+        }
+        Operation::StaticCall | Operation::DelegateCall => vec![],
+        _ => panic!("Only call related opcodes allowed"),
     };
 
     let caller_ops = [
@@ -2529,7 +2521,7 @@ fn call_callee_returns_new_value(#[case] call_type: CallType) {
             Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
             Operation::Push((32_u8, BigUint::from(gas))),                                //Gas
         ],
-        call_op_vec,
+        vec![call_type.clone()],
         vec![
             Operation::Push((1_u8, 32_u8.into())),
             Operation::Push0,
@@ -2549,8 +2541,8 @@ fn call_callee_returns_new_value(#[case] call_type: CallType) {
     env.tx.value = origin_value.into();
 
     let expected_result = match call_type {
-        CallType::StaticCall => 0,
-        CallType::DelegateCall => origin_value,
+        Operation::StaticCall => 0,
+        Operation::DelegateCall => origin_value,
         _ => value,
     };
 
@@ -2558,11 +2550,11 @@ fn call_callee_returns_new_value(#[case] call_type: CallType) {
 }
 
 #[rstest]
-#[case(CallType::Call)]
-#[case(CallType::CallCode)]
-#[case(CallType::StaticCall)]
-#[case(CallType::DelegateCall)]
-fn call_callee_returns_caller(#[case] call_type: CallType) {
+#[case(Operation::Call)]
+#[case(Operation::CallCode)]
+#[case(Operation::StaticCall)]
+#[case(Operation::DelegateCall)]
+fn call_callee_returns_caller(#[case] call_type: Operation) {
     let db = Db::new();
     let origin = Address::from_low_u64_be(79);
 
@@ -2586,14 +2578,11 @@ fn call_callee_returns_caller(#[case] call_type: CallType) {
     let db = db.with_contract(callee_address, callee_bytecode);
     let caller_address = Address::from_low_u64_be(4040);
     let value_op_vec = match call_type {
-        CallType::Call | CallType::CallCode => vec![Operation::Push((1_u8, BigUint::from(value)))],
-        CallType::StaticCall | CallType::DelegateCall => vec![],
-    };
-    let call_op_vec = match call_type {
-        CallType::Call => vec![Operation::Call],
-        CallType::CallCode => vec![Operation::CallCode],
-        CallType::StaticCall => vec![Operation::StaticCall],
-        CallType::DelegateCall => vec![Operation::DelegateCall],
+        Operation::Call | Operation::CallCode => {
+            vec![Operation::Push((1_u8, BigUint::from(value)))]
+        }
+        Operation::StaticCall | Operation::DelegateCall => vec![],
+        _ => panic!("Only call opcodes allowed"),
     };
     let caller_ops = [
         vec![
@@ -2607,7 +2596,7 @@ fn call_callee_returns_caller(#[case] call_type: CallType) {
             Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
             Operation::Push((32_u8, BigUint::from(gas))),                                //Gas
         ],
-        call_op_vec,
+        vec![call_type.clone()],
         vec![
             Operation::Push((1_u8, 20_u8.into())),
             Operation::Push((1_u8, 12_u8.into())),
@@ -2624,7 +2613,7 @@ fn call_callee_returns_caller(#[case] call_type: CallType) {
     env.tx.caller = origin;
 
     let expected_result = match call_type {
-        CallType::DelegateCall => origin,
+        Operation::DelegateCall => origin,
         _ => caller_address,
     };
 

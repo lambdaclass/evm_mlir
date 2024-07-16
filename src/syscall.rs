@@ -284,7 +284,8 @@ impl<'c> SyscallContext<'c> {
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = Address::from(call_to_address);
         let value = value_to_transfer.to_primitive_u256();
-        let call_type = CallType::from(call_type);
+        let call_type =
+            CallType::try_from(call_type).expect("Error while parsing CallType on call syscall");
 
         //TODO: This should instead add the account fetch (warm or cold) cost
         //For the moment we consider warm access
