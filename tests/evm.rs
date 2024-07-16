@@ -3578,10 +3578,10 @@ fn tload_gas_consumption() {
         Operation::Push((1_u8, BigUint::from(1_u8))),
         Operation::Tload,
     ];
-    let result = gas_cost::PUSHN + gas_cost::TLOAD;
+    let needed_gas = gas_cost::PUSHN + gas_cost::TLOAD;
     let env = Env::default();
 
-    run_program_assert_gas_exact(program, env, result as _);
+    run_program_assert_gas_exact(program, env, needed_gas as _);
 }
 
 #[test]
@@ -3603,15 +3603,16 @@ fn tload_with_stack_underflow() {
 }
 
 #[test]
-fn tload_gas_consumption() {
+fn tstore_gas_consumption() {
     let program = vec![
         Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Tload,
+        Operation::Push((1_u8, BigUint::from(2_u8))),
+        Operation::Tstore,
     ];
-    let result = gas_cost::PUSHN + gas_cost::TSTORE;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::TSTORE;
     let env = Env::default();
 
-    run_program_assert_gas_exact(program, env, result as _);
+    run_program_assert_gas_exact(program, env, needed_gas as _);
 }
 
 #[test]
