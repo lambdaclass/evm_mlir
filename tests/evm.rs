@@ -3778,3 +3778,71 @@ fn selfdestruct_gas_cost_on_non_empty_account() {
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, needed_gas as _, 0);
 }
+
+#[test]
+fn tload_gas_consumption() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Tload,
+    ];
+    let needed_gas = gas_cost::PUSHN + gas_cost::TLOAD;
+    let env = Env::default();
+
+    run_program_assert_gas_exact(program, env, needed_gas as _);
+}
+
+#[test]
+fn tload_on_new_key() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(5_u8))),
+        Operation::Tload,
+    ];
+    let (env, db) = default_env_and_db_setup(program);
+    let expected_result = BigUint::from(0_u8);
+    run_program_assert_num_result(env, db, expected_result);
+}
+
+#[test]
+fn tload_with_stack_underflow() {
+    let program = vec![Operation::Tload];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn tstore_gas_consumption() {
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Push((1_u8, BigUint::from(2_u8))),
+        Operation::Tstore,
+    ];
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::TSTORE;
+    let env = Env::default();
+
+    run_program_assert_gas_exact(program, env, needed_gas as _);
+}
+
+#[test]
+fn tstore_with_stack_underflow() {
+    let program = vec![Operation::Push0, Operation::Tstore];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn tstore_tload_happy_path() {
+    let key = 80_u8;
+    let value = 11_u8;
+    let mut operations = vec![
+        // tstore
+        Operation::Push((1_u8, BigUint::from(value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Tstore,
+        // tload
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Tload,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, db) = default_env_and_db_setup(operations);
+    run_program_assert_num_result(env, db, BigUint::from(value));
+}

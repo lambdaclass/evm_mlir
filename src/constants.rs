@@ -90,6 +90,8 @@ pub mod gas_cost {
     pub const GASLIMIT: i64 = 2;
     pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;
     pub const CREATE: i64 = 32_000;
+    pub const TLOAD: i64 = 100;
+    pub const TSTORE: i64 = 100;
     pub const SELFDESTRUCT: i64 = 5_000;
     pub const SELFDESTRUCT_DYNAMIC_GAS: i64 = 25_000;
 
