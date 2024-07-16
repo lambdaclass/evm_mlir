@@ -66,9 +66,8 @@ impl Env {
                     max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
                 });
             }
-            // TODO: check if more blob validations are needed
         }
-        // TODO: validate sender
+        // TODO: check if more validations are needed
         Ok(())
     }
 
