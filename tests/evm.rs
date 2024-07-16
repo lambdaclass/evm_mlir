@@ -405,7 +405,6 @@ fn test_calldatacopy() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000 + gas_cost::TX_BASE_COST;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -436,7 +435,6 @@ fn test_calldatacopy_zeros_padding() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4]);
-    env.tx.gas_limit = 1000 + gas_cost::TX_BASE_COST;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -498,7 +496,6 @@ fn test_calldatacopy_calldataoffset() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000 + gas_cost::TX_BASE_COST;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -530,7 +527,6 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000 + gas_cost::TX_BASE_COST;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
