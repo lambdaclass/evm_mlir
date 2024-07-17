@@ -2,6 +2,7 @@ use builder::EvmBuilder;
 use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
+use journal::Journal;
 use program::Program;
 use result::{EVMError, ResultAndState};
 use syscall::{CallFrame, SyscallContext};
@@ -65,7 +66,8 @@ impl Evm<Db> {
             .expect("failed to compile program");
 
         let call_frame = CallFrame::new(self.env.tx.caller);
-        let mut context = SyscallContext::new(self.env.clone(), &mut self.db, call_frame);
+        let journal = Journal::new(&mut self.db);
+        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
