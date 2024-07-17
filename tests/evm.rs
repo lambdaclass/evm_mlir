@@ -2838,7 +2838,7 @@ fn staticcall_on_precompile_identity_happy_path() {
         Operation::StaticCall,
         // Return
         Operation::Push((1_u8, 1_u8.into())),
-        Operation::Push((1_u8, 31_u8.into())),
+        Operation::Push((1_u8, 63_u8.into())),
         Operation::Return,
     ];
 
