@@ -160,7 +160,7 @@ pub mod call_opcode {
 }
 
 pub mod precompiles {
-    pub const ECRECOVER_COST: i64 = 3000;
+    pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
 }
 

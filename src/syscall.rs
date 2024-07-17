@@ -305,7 +305,7 @@ impl<'c> SyscallContext<'c> {
         let (return_code, return_data) = match callee_address {
             x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
-                ecrecover(&calldata).unwrap_or_default(),
+                ecrecover(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
             ),
             _ => {
                 // Execute subcontext
