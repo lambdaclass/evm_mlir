@@ -9,6 +9,13 @@
 
 An EVM-bytecode to machine-bytecode compiler using MLIR and LLVM.
 
+## Status
+
+- [X] Opcodes
+- [ ] Precompiles
+- [ ] Transaction validation
+- [ ] Pass all EF tests
+
 ## Getting Started
 
 ### Dependencies
