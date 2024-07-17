@@ -300,12 +300,12 @@ impl<'c> SyscallContext<'c> {
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
-        let calldata = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+        let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
         let (return_code, return_data) = match callee_address {
             x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
-                ecrecover(calldata).unwrap_or_default(),
+                ecrecover(&calldata).unwrap_or_default(),
             ),
             _ => {
                 // Execute subcontext

@@ -2,7 +2,7 @@ use bytes::Bytes;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-pub fn ecrecover(calldata: Bytes) -> Result<Bytes, secp256k1::Error> {
+pub fn ecrecover(calldata: &Bytes) -> Result<Bytes, secp256k1::Error> {
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
     let sig = &calldata[64..128];
@@ -42,7 +42,7 @@ mod tests {
         calldata.extend(r);
         calldata.extend(s);
 
-        let result = ecrecover(Bytes::from(calldata)).unwrap();
+        let result = ecrecover(&Bytes::from(calldata)).unwrap();
         let expected_result = Bytes::from(
             hex::decode("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a")
                 .unwrap(),
