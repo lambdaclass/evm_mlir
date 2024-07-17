@@ -48,6 +48,8 @@ pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Byt
         return Bytes::new();
     }
     *consumed_gas += gas_cost;
-    // TODO
-    Bytes::new()
+    let hash = sha2::Sha256::digest(calldata);
+    Bytes::copy_from_slice(&hash)
+
+    // TODO: should be move precompiles to a separate crate with its own dependencies (sha2, secp256k1, etc...)?
 }

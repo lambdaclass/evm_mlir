@@ -2885,8 +2885,8 @@ fn staticcall_on_precompile_sha2_256_happy_path() {
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, 1_u8.into())),
-        Operation::Push((1_u8, 63_u8.into())),
+        Operation::Push((1_u8, 32_u8.into())),
+        Operation::Push((1_u8, 32_u8.into())),
         Operation::Return,
     ];
 
