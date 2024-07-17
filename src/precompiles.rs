@@ -2,7 +2,7 @@ use bytes::Bytes;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-use crate::constants::precompiles::ECRECOVER_COST;
+use crate::constants::precompiles::{identity_dynamic_cost, ECRECOVER_COST, IDENTITY_COST};
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -29,4 +29,13 @@ pub fn ecrecover(
     let mut address_hash = hasher.finalize();
     address_hash[..12].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
+}
+
+pub fn identity(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        return Bytes::new();
+    }
+    *consumed_gas += gas_cost;
+    calldata.clone()
 }
