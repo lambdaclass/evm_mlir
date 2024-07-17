@@ -2,7 +2,9 @@ use bytes::Bytes;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-use crate::constants::precompiles::{identity_dynamic_cost, ECRECOVER_COST, IDENTITY_COST};
+use crate::constants::precompiles::{
+    identity_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST, IDENTITY_COST, SHA2_256_COST,
+};
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -38,4 +40,14 @@ pub fn identity(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Byt
     }
     *consumed_gas += gas_cost;
     calldata.clone()
+}
+
+pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    let gas_cost = SHA2_256_COST + sha2_256_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        return Bytes::new();
+    }
+    *consumed_gas += gas_cost;
+    // TODO
+    Bytes::new()
 }

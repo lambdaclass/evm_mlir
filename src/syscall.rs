@@ -23,7 +23,7 @@ use crate::{
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
-    precompiles::{ecrecover, identity},
+    precompiles::{ecrecover, identity, sha2_256},
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -310,6 +310,10 @@ impl<'c> SyscallContext<'c> {
             x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 identity(&calldata, gas_to_send, consumed_gas),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                sha2_256(&calldata, gas_to_send, consumed_gas),
             ),
             _ => {
                 // Execute subcontext
