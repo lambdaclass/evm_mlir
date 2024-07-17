@@ -18,11 +18,12 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost},
+    constants::{call_opcode, gas_cost, precompiles::ECRECOVER_ADDRESS},
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
+    precompiles::ecrecover,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -283,133 +284,131 @@ impl<'c> SyscallContext<'c> {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = Address::from(call_to_address);
-        let value = value_to_transfer.to_primitive_u256();
-
-        //TODO: This should instead add the account fetch (warm or cold) cost
-        //For the moment we consider warm access
-        let callee_account = match self.db.basic(callee_address) {
-            Ok(maybe_account) => {
-                *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                maybe_account.unwrap_or_else(AccountInfo::empty)
-            }
-            Err(_) => {
-                *consumed_gas = 0;
-                return call_opcode::REVERT_RETURN_CODE;
-            }
-        };
-
-        let caller_address = self.env.tx.get_address();
-        let caller_account = self
-            .db
-            .basic(caller_address)
-            .unwrap() //We are sure it exists
-            .unwrap_or_default();
-
-        let mut stipend = 0;
-        if !value.is_zero() {
-            if caller_account.balance < value {
-                //There isn't enough balance to send
-                return call_opcode::REVERT_RETURN_CODE;
-            }
-            *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
-            if callee_account.is_empty() {
-                *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
-            }
-            if available_gas < *consumed_gas {
-                return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
-            }
-            stipend = call_opcode::STIPEND_GAS_ADDITION;
-
-            //TODO: Maybe we should increment the nonce too
-            let caller_balance = caller_account.balance;
-            let caller_nonce = caller_account.nonce;
-            self.db.set_account(
-                caller_address,
-                caller_nonce,
-                caller_balance - value,
-                Default::default(),
-            );
-
-            let callee_balance = callee_account.balance;
-            let callee_nonce = callee_account.nonce;
-            self.db.set_account(
-                callee_address,
-                callee_nonce,
-                callee_balance + value,
-                Default::default(),
-            );
-        }
-
-        let remaining_gas = available_gas - *consumed_gas;
-        gas_to_send = std::cmp::min(
-            remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
-            gas_to_send,
-        );
-        *consumed_gas += gas_to_send;
-        gas_to_send += stipend;
-
-        let mut env = self.env.clone();
-        env.tx.transact_to = TransactTo::Call(callee_address);
-
-        //TODO: Check if this is ok
-        let new_frame_caller = match self.env.tx.transact_to {
-            TransactTo::Call(a) => a,
-            TransactTo::Create => Address::zero(),
-        };
-        env.tx.value = value;
-        env.tx.gas_limit = gas_to_send;
 
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
-        env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+        let calldata = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
 
-        //NOTE: We could optimize this by not making the call if the bytecode is zero.
-        //We would have to refund the stipend here
-        //TODO: Check if returning REVERT because of database fail is ok
-        let Ok(bytecode) = self.db.code_by_address(callee_address) else {
-            *consumed_gas = 0;
-            return call_opcode::REVERT_RETURN_CODE;
-        };
-
-        let program = Program::from_bytecode(&bytecode);
-
-        let context = Context::new();
-        let module = context
-            .compile(&program, Default::default())
-            .expect("failed to compile program");
-
-        let call_frame = CallFrame {
-            caller: new_frame_caller,
-            ctx_is_static: is_static,
-            ..Default::default()
-        };
-        let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
-        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-
-        executor.execute(&mut context, env.tx.gas_limit);
-
-        let (return_code, refunded_gas, return_data) = match context.get_result().unwrap().result {
-            ExecutionResult::Success {
-                gas_used, output, ..
-            } => (
+        let (return_code, return_data) = match callee_address {
+            x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
-                gas_to_send - gas_used,
-                output.into_data(),
+                ecrecover(calldata).unwrap_or_default(),
             ),
-            //TODO: If we revert, should we still send the value to the called contract?
-            ExecutionResult::Revert {
-                gas_used, output, ..
-            } => (
-                call_opcode::REVERT_RETURN_CODE,
-                gas_to_send - gas_used,
-                output,
-            ),
-            ExecutionResult::Halt { gas_used, .. } => (
-                call_opcode::REVERT_RETURN_CODE,
-                gas_to_send - gas_used,
-                Bytes::default(),
-            ),
+            _ => {
+                // Execute subcontext
+                let value = value_to_transfer.to_primitive_u256();
+
+                //TODO: This should instead add the account fetch (warm or cold) cost
+                //For the moment we consider warm access
+                let callee_account = match self.db.basic(callee_address) {
+                    Ok(maybe_account) => {
+                        *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
+                        maybe_account.unwrap_or_else(AccountInfo::empty)
+                    }
+                    Err(_) => {
+                        *consumed_gas = 0;
+                        return call_opcode::REVERT_RETURN_CODE;
+                    }
+                };
+
+                let caller_address = self.env.tx.get_address();
+                let caller_account = self
+                    .db
+                    .basic(caller_address)
+                    .unwrap() //We are sure it exists
+                    .unwrap_or_default();
+
+                let mut stipend = 0;
+                if !value.is_zero() {
+                    if caller_account.balance < value {
+                        //There isn't enough balance to send
+                        return call_opcode::REVERT_RETURN_CODE;
+                    }
+                    *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
+                    if callee_account.is_empty() {
+                        *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
+                    }
+                    if available_gas < *consumed_gas {
+                        return call_opcode::REVERT_RETURN_CODE; //It actually doesn't matter what we return here
+                    }
+                    stipend = call_opcode::STIPEND_GAS_ADDITION;
+
+                    //TODO: Maybe we should increment the nonce too
+                    let caller_balance = caller_account.balance;
+                    let caller_nonce = caller_account.nonce;
+                    self.db.set_account(
+                        caller_address,
+                        caller_nonce,
+                        caller_balance - value,
+                        Default::default(),
+                    );
+
+                    let callee_balance = callee_account.balance;
+                    let callee_nonce = callee_account.nonce;
+                    self.db.set_account(
+                        callee_address,
+                        callee_nonce,
+                        callee_balance + value,
+                        Default::default(),
+                    );
+                }
+
+                let remaining_gas = available_gas - *consumed_gas;
+                gas_to_send = std::cmp::min(
+                    remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+                    gas_to_send,
+                );
+                *consumed_gas += gas_to_send;
+                gas_to_send += stipend;
+
+                let mut env = self.env.clone();
+                env.tx.transact_to = TransactTo::Call(callee_address);
+
+                //TODO: Check if this is ok
+                let new_frame_caller = match self.env.tx.transact_to {
+                    TransactTo::Call(a) => a,
+                    TransactTo::Create => Address::zero(),
+                };
+                env.tx.value = value;
+                env.tx.gas_limit = gas_to_send;
+                env.tx.data = calldata;
+                //NOTE: We could optimize this by not making the call if the bytecode is zero.
+                //We would have to refund the stipend here
+                //TODO: Check if returning REVERT because of database fail is ok
+                let Ok(bytecode) = self.db.code_by_address(callee_address) else {
+                    *consumed_gas = 0;
+                    return call_opcode::REVERT_RETURN_CODE;
+                };
+
+                let program = Program::from_bytecode(&bytecode);
+
+                let context = Context::new();
+                let module = context
+                    .compile(&program, Default::default())
+                    .expect("failed to compile program");
+
+                let call_frame = CallFrame {
+                    caller: new_frame_caller,
+                    ctx_is_static: is_static,
+                    ..Default::default()
+                };
+                let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
+                let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+                executor.execute(&mut context, env.tx.gas_limit);
+                let result = context.get_result().unwrap().result;
+
+                let unused_gas = gas_to_send - result.gas_used();
+                *consumed_gas -= unused_gas;
+                let return_code = if result.is_success() {
+                    call_opcode::SUCCESS_RETURN_CODE
+                } else {
+                    //TODO: If we revert, should we still send the value to the called contract?
+                    call_opcode::REVERT_RETURN_CODE
+                };
+                let output = result.into_output().unwrap_or_default();
+                (return_code, output)
+            }
         };
 
         //TODO: This copying mechanism may be improved with a safe copy_from_slice which would
@@ -425,7 +424,6 @@ impl<'c> SyscallContext<'c> {
             0,
             ret_size,
         );
-        *consumed_gas -= refunded_gas;
 
         return_code
     }

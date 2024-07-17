@@ -139,6 +139,11 @@ pub mod call_opcode {
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }
 
+pub mod precompiles {
+    pub const ECRECOVER_COST: i64 = 3000;
+    pub const ECRECOVER_ADDRESS: u64 = 0x01;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
