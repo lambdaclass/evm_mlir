@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 pub const MAX_STACK_SIZE: usize = 1024;
 pub const GAS_COUNTER_GLOBAL: &str = "evm_mlir__gas_counter";
 pub const STACK_BASEPTR_GLOBAL: &str = "evm_mlir__stack_baseptr";
@@ -91,6 +93,8 @@ pub mod gas_cost {
     pub const GASLIMIT: i64 = 2;
     pub const SSTORE_MIN_REMAINING_GAS: i64 = 2_300;
     pub const CREATE: i64 = 32_000;
+    pub const TLOAD: i64 = 100;
+    pub const TSTORE: i64 = 100;
     pub const SELFDESTRUCT: i64 = 5_000;
     pub const SELFDESTRUCT_DYNAMIC_GAS: i64 = 25_000;
 
@@ -153,6 +157,31 @@ pub mod call_opcode {
     pub const EMPTY_CALLEE_COST: u64 = 25000;
     pub const STIPEND_GAS_ADDITION: u64 = 2300;
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
+}
+
+#[derive(PartialEq, Debug)]
+pub enum CallType {
+    Call,
+    StaticCall,
+    DelegateCall,
+    CallCode,
+}
+
+#[derive(Error, Debug)]
+#[error("Couldn't parse CallType from u8")]
+pub struct CallTypeParseError;
+
+impl TryFrom<u8> for CallType {
+    type Error = CallTypeParseError;
+    fn try_from(call_type: u8) -> Result<CallType, Self::Error> {
+        match call_type {
+            x if x == CallType::Call as u8 => Ok(CallType::Call),
+            x if x == CallType::StaticCall as u8 => Ok(CallType::StaticCall),
+            x if x == CallType::DelegateCall as u8 => Ok(CallType::DelegateCall),
+            x if x == CallType::CallCode as u8 => Ok(CallType::CallCode),
+            _ => Err(CallTypeParseError),
+        }
+    }
 }
 
 #[cfg(test)]

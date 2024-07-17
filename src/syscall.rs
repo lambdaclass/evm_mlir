@@ -18,7 +18,7 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost},
+    constants::{call_opcode, gas_cost, CallType},
     context::Context,
     db::{AccountInfo, Database, Db},
     env::{Env, TransactTo},
@@ -141,6 +141,7 @@ pub struct SyscallContext<'c> {
     pub db: &'c mut Db,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
+    pub transient_storage: HashMap<(Address, EU256), EU256>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -163,6 +164,7 @@ impl<'c> SyscallContext<'c> {
             db,
             call_frame,
             inner_context: Default::default(),
+            transient_storage: Default::default(),
         }
     }
 
@@ -278,12 +280,14 @@ impl<'c> SyscallContext<'c> {
         ret_size: u32,
         available_gas: u64,
         consumed_gas: &mut u64,
-        is_static: bool,
+        call_type: u8,
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
         let callee_address = Address::from(call_to_address);
         let value = value_to_transfer.to_primitive_u256();
+        let call_type =
+            CallType::try_from(call_type).expect("Error while parsing CallType on call syscall");
 
         //TODO: This should instead add the account fetch (warm or cold) cost
         //For the moment we consider warm access
@@ -349,14 +353,17 @@ impl<'c> SyscallContext<'c> {
         gas_to_send += stipend;
 
         let mut env = self.env.clone();
-        env.tx.transact_to = TransactTo::Call(callee_address);
 
-        //TODO: Check if this is ok
-        let new_frame_caller = match self.env.tx.transact_to {
-            TransactTo::Call(a) => a,
-            TransactTo::Create => Address::zero(),
+        //TODO: Check if calling `get_address()` here is ok
+        let this_address = self.env.tx.get_address();
+        let (new_frame_caller, new_value, transact_to) = match call_type {
+            CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
+            CallType::CallCode => (this_address, value, this_address),
+            CallType::DelegateCall => (self.call_frame.caller, self.env.tx.value, this_address),
         };
-        env.tx.value = value;
+
+        env.tx.value = new_value;
+        env.tx.transact_to = TransactTo::Call(transact_to);
         env.tx.gas_limit = gas_to_send;
 
         //Copy the calldata from memory
@@ -378,6 +385,8 @@ impl<'c> SyscallContext<'c> {
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
+
+        let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
 
         let call_frame = CallFrame {
             caller: new_frame_caller,
@@ -999,6 +1008,28 @@ impl<'c> SyscallContext<'c> {
         }
         // TODO: add gas cost for cold addresses
     }
+
+    pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let key = stg_key.to_primitive_u256();
+        let address = self.env.tx.get_address();
+
+        let result = self
+            .transient_storage
+            .get(&(address, key))
+            .cloned()
+            .unwrap_or(EU256::zero());
+
+        stg_value.hi = (result >> 128).low_u128();
+        stg_value.lo = result.low_u128();
+    }
+
+    pub extern "C" fn write_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let address = self.env.tx.get_address();
+
+        let key = stg_key.to_primitive_u256();
+        let value = stg_value.to_primitive_u256();
+        self.transient_storage.insert((address, key), value);
+    }
 }
 
 pub mod symbols {
@@ -1043,6 +1074,8 @@ pub mod symbols {
     pub const CREATE2: &str = "evm_mlir__create2";
     pub const GET_RETURN_DATA_SIZE: &str = "evm_mlir__get_return_data_size";
     pub const COPY_RETURN_DATA_INTO_MEMORY: &str = "evm_mlir__copy_return_data_into_memory";
+    pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
+    pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
     pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
 }
 
@@ -1130,7 +1163,7 @@ impl<'c> SyscallContext<'c> {
                         u32,
                         u64,
                         *mut u64,
-                        bool,
+                        u8,
                     ) as *mut (),
             );
             engine.register_symbol(
@@ -1273,6 +1306,18 @@ impl<'c> SyscallContext<'c> {
                 symbols::SELFDESTRUCT,
                 SyscallContext::selfdestruct as *const fn(*mut c_void, *mut U256) as *mut (),
             );
+
+            engine.register_symbol(
+                symbols::TRANSIENT_STORAGE_READ,
+                SyscallContext::read_transient_storage
+                    as *const fn(*const c_void, *const U256, *mut U256) as *mut (),
+            );
+
+            engine.register_symbol(
+                symbols::TRANSIENT_STORAGE_WRITE,
+                SyscallContext::write_transient_storage
+                    as *const fn(*const c_void, *const U256, *mut U256) as *mut (),
+            );
         }
     }
 }
@@ -1301,7 +1346,6 @@ pub(crate) mod mlir {
 
         // Type declarations
         let ptr_type = pointer(context, 0);
-        let uint1 = IntegerType::new(context, 1).into();
         let uint8 = IntegerType::new(context, 8).into();
         let uint32 = IntegerType::new(context, 32).into();
         let uint64 = IntegerType::new(context, 64).into();
@@ -1610,7 +1654,7 @@ pub(crate) mod mlir {
                     context,
                     &[
                         ptr_type, uint64, ptr_type, ptr_type, uint32, uint32, uint32, uint32,
-                        uint64, ptr_type, uint1,
+                        uint64, ptr_type, uint8,
                     ],
                     &[uint8],
                 )
@@ -1729,6 +1773,28 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::SELFDESTRUCT),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::TRANSIENT_STORAGE_READ),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::TRANSIENT_STORAGE_WRITE),
+            r#TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -1993,6 +2059,40 @@ pub(crate) mod mlir {
         Ok(value.into())
     }
 
+    pub(crate) fn transient_storage_read_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_READ),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
+    }
+
+    pub(crate) fn transient_storage_write_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_WRITE),
+            &[syscall_ctx, key, value],
+            &[],
+            location,
+        ));
+    }
+
     /// Receives log data and appends a log to the logs vector
     pub(crate) fn append_log_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
@@ -2249,7 +2349,7 @@ pub(crate) mod mlir {
         ret_size: Value<'c, 'c>,
         available_gas: Value<'c, 'c>,
         remaining_gas_ptr: Value<'c, 'c>,
-        is_static: Value<'c, 'c>,
+        call_type: Value<'c, 'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint8 = IntegerType::new(mlir_ctx, 8).into();
         let result = block
@@ -2267,7 +2367,7 @@ pub(crate) mod mlir {
                     ret_size,
                     available_gas,
                     remaining_gas_ptr,
-                    is_static,
+                    call_type,
                 ],
                 &[uint8],
                 location,

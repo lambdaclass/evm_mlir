@@ -15,7 +15,7 @@ use melior::{
 
 use crate::{
     constants::{
-        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        CallType, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
     errors::CodegenError,
@@ -700,6 +700,40 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
+    pub(crate) fn transient_storage_read_syscall(
+        &'c self,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::transient_storage_read_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            key,
+            value,
+            location,
+        )
+    }
+
+    pub(crate) fn transient_storage_write_syscall(
+        &'c self,
+        block: &'c Block,
+        key: Value<'c, 'c>,
+        value: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        syscall::mlir::transient_storage_write_syscall(
+            self.mlir_context,
+            self.syscall_ctx,
+            block,
+            key,
+            value,
+            location,
+        )
+    }
+
     pub(crate) fn append_log_syscall(
         &'c self,
         block: &'c Block,
@@ -1005,14 +1039,18 @@ impl<'c> OperationCtx<'c> {
         args_size: Value<'c, 'c>,
         ret_offset: Value<'c, 'c>,
         ret_size: Value<'c, 'c>,
-        is_static: Value<'c, 'c>,
+        call_type: CallType,
     ) -> Result<Value, CodegenError> {
         let context = self.mlir_context;
         let uint64 = IntegerType::new(context, 64);
+        let uint8 = IntegerType::new(context, 8);
         let ptr_type = pointer(context, 0);
 
         let available_gas = get_remaining_gas(context, start_block)?;
         // Alloc and store value argument
+        // NOTE: We have to alloc memory for value on STATICCALL and DELEGATECALL
+        // because we are using the same syscall. We could create a new syscall to not alloc memory
+        // and optimize this
         let value_ptr = allocate_and_store_value(self, start_block, value, location)?;
         let address_ptr = allocate_and_store_value(self, start_block, address, location)?;
 
@@ -1025,6 +1063,15 @@ impl<'c> OperationCtx<'c> {
                 ptr_type,
                 location,
                 AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint64.into()))),
+            ))
+            .result(0)?
+            .into();
+
+        let call_type_value = start_block
+            .append_operation(arith::constant(
+                context,
+                IntegerAttribute::new(uint8.into(), call_type as u8 as i64).into(),
+                location,
             ))
             .result(0)?
             .into();
@@ -1043,7 +1090,7 @@ impl<'c> OperationCtx<'c> {
             ret_size,
             available_gas,
             gas_return_ptr,
-            is_static,
+            call_type_value,
         )?;
 
         // Update the available gas with the remaining gas after the call
@@ -1078,46 +1125,6 @@ impl<'c> OperationCtx<'c> {
             .into();
 
         Ok(result)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn staticcall_syscall(
-        &'c self,
-        start_block: &'c Block,
-        finish_block: &'c Block,
-        location: Location<'c>,
-        gas: Value<'c, 'c>,
-        address: Value<'c, 'c>,
-        args_offset: Value<'c, 'c>,
-        args_size: Value<'c, 'c>,
-        ret_offset: Value<'c, 'c>,
-        ret_size: Value<'c, 'c>,
-    ) -> Result<Value, CodegenError> {
-        let context = &self.mlir_context;
-        let uint1 = IntegerType::new(context, 1);
-        let true_value = start_block
-            .append_operation(arith::constant(
-                context,
-                IntegerAttribute::new(uint1.into(), 1).into(),
-                location,
-            ))
-            .result(0)?
-            .into();
-
-        let value = constant_value_from_i64(context, start_block, 0)?;
-        self.call_syscall(
-            start_block,
-            finish_block,
-            location,
-            gas,
-            address,
-            value,
-            args_offset,
-            args_size,
-            ret_offset,
-            ret_size,
-            true_value,
-        )
     }
 
     pub(crate) fn get_code_hash_syscall(
