@@ -5,7 +5,7 @@ use std::{collections::HashMap, str::FromStr};
 use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
-        precompiles::{ECRECOVER_ADDRESS, IDENTITY_ADDRESS, SHA2_256_ADDRESS},
+        precompiles::{ECRECOVER_ADDRESS, IDENTITY_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS},
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
@@ -2685,9 +2685,6 @@ fn call_callee_storage_modified() {
 
 #[test]
 fn staticcall_on_precompile_ecrecover_happy_path() {
-    let db = Db::new();
-    let origin = Address::from_low_u64_be(79);
-
     let gas = 100_000_000_u32;
     let args_offset = 0_u8;
     let args_size = 128_u8;
@@ -2738,18 +2735,14 @@ fn staticcall_on_precompile_ecrecover_happy_path() {
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
-    let db = db.with_contract(caller_address, caller_bytecode);
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = origin;
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
 fn staticcall_on_precompile_ecrecover_without_gas() {
-    let db = Db::new();
-    let origin = Address::from_low_u64_be(79);
-
     let gas = 0_u32;
     let args_offset = 0_u8;
     let args_size = 128_u8;
@@ -2800,18 +2793,14 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
-    let db = db.with_contract(caller_address, caller_bytecode);
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = origin;
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
 fn staticcall_on_precompile_identity_happy_path() {
-    let db = Db::new();
-    let origin = Address::from_low_u64_be(79);
-
     let gas: u32 = 100_000_000;
     let args_offset: u8 = 31;
     let args_size: u8 = 1;
@@ -2847,18 +2836,14 @@ fn staticcall_on_precompile_identity_happy_path() {
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
-    let db = db.with_contract(caller_address, caller_bytecode);
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = origin;
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
 fn staticcall_on_precompile_sha2_256_happy_path() {
-    let db = Db::new();
-    let origin = Address::from_low_u64_be(79);
-
     let gas: u32 = 100_000_000;
     let args_offset: u8 = 31;
     let args_size: u8 = 1;
@@ -2895,9 +2880,51 @@ fn staticcall_on_precompile_sha2_256_happy_path() {
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
-    let db = db.with_contract(caller_address, caller_bytecode);
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = origin;
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ripemd_160_happy_path() {
+    let gas: u32 = 100_000_000;
+    let args_offset: u8 = 31;
+    let args_size: u8 = 1;
+    let ret_offset: u8 = 0;
+    let ret_size: u8 = 32;
+    let data: u8 = 0xff;
+    let callee_address = Address::from_low_u64_be(RIPEMD_160_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let expected_result = hex::decode("2c0c45d3ecab80fe060e5f1d7057cd2f8de5e557").unwrap();
+
+    let mut caller_ops = vec![
+        // Place the parameter in memory
+        Operation::Push((1_u8, BigUint::from(data))),
+        Operation::Push((1_u8, BigUint::ZERO)),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, 20_u8.into())),
+        Operation::Push((1_u8, 12_u8.into())),
+        Operation::Return,
+    ];
+
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }

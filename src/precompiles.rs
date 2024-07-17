@@ -3,7 +3,8 @@ use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
 use crate::constants::precompiles::{
-    identity_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST, IDENTITY_COST, SHA2_256_COST,
+    identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST,
+    IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
 };
 
 pub fn ecrecover(
@@ -50,6 +51,17 @@ pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Byt
     *consumed_gas += gas_cost;
     let hash = sha2::Sha256::digest(calldata);
     Bytes::copy_from_slice(&hash)
+}
 
-    // TODO: should be move precompiles to a separate crate with its own dependencies (sha2, secp256k1, etc...)?
+pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    let gas_cost = RIPEMD_160_COST + ripemd_160_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        return Bytes::new();
+    }
+    *consumed_gas += gas_cost;
+    let mut hasher = ripemd::Ripemd160::new();
+    hasher.update(calldata);
+    let mut output = [0u8; 32];
+    hasher.finalize_into((&mut output[12..]).into());
+    Bytes::copy_from_slice(&output)
 }

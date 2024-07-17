@@ -164,6 +164,8 @@ pub mod precompiles {
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
     pub const SHA2_256_COST: u64 = 60;
     pub const SHA2_256_ADDRESS: u64 = 0x02;
+    pub const RIPEMD_160_COST: u64 = 600;
+    pub const RIPEMD_160_ADDRESS: u64 = 0x03;
     pub const IDENTITY_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
 
@@ -172,7 +174,11 @@ pub mod precompiles {
     }
 
     pub fn sha2_256_dynamic_cost(len: u64) -> u64 {
-        (len + 31) / 32 * 12 // refactorizar words count?
+        (len + 31) / 32 * 12
+    }
+
+    pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
+        (len + 31) / 32 * 120
     }
 }
 

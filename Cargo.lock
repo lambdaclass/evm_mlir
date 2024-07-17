@@ -852,6 +852,7 @@ dependencies = [
  "melior",
  "mlir-sys",
  "num-bigint",
+ "ripemd",
  "rstest",
  "secp256k1",
  "serde",
