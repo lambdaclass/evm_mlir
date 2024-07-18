@@ -5,7 +5,10 @@ use std::{collections::HashMap, str::FromStr};
 use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
-        precompiles::{ECRECOVER_ADDRESS, IDENTITY_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS},
+        precompiles::{
+            ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS,
+            SHA2_256_ADDRESS,
+        },
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
@@ -2928,6 +2931,74 @@ fn staticcall_on_precompile_ripemd_160_happy_path() {
 
     run_program_assert_bytes_result(env, db, &expected_result);
 }
+
+#[test]
+fn staticcall_on_precompile_modexp_happy_path() {
+    let ret_size: u8 = 1;
+    let ret_offset: u8 = 159;
+    let args_size: u8 = 99;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let b_size: u8 = 1;
+    let e_size: u8 = 1;
+    let m_size: u8 = 1;
+    let b: u8 = 1;
+    let e: u8 = 1;
+    let m: u8 = 1;
+
+    let expected_result = [8_u8];
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((1_u8, b_size.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, e_size.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, m_size.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        // Operation::Push((1_u8, b)),
+        // Operation::Push((1_u8, e)),
+        // Operation::Push((1_u8, m)),
+        Operation::Push((
+            // borrar este push, solo porque asi essta en playground
+            32_u8,
+            BigUint::from_bytes_be(
+                &hex::decode("08090A0000000000000000000000000000000000000000000000000000000000")
+                    .unwrap(),
+            ),
+        )),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), //Ret size
+        Operation::Push((1_u8, ret_offset.into())), //Ret offset
+        Operation::Push((1_u8, args_size.into())), //Args size
+        Operation::Push((1_u8, args_offset.into())), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, gas.into())),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+// agregar un test con overflow, y otro con gas_cost
 
 #[test]
 fn extcodehash_happy_path() {

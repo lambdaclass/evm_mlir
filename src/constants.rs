@@ -168,6 +168,7 @@ pub mod precompiles {
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;
     pub const IDENTITY_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
+    pub const MODEXP_ADDRESS: u64 = 0x05;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
@@ -179,6 +180,11 @@ pub mod precompiles {
 
     pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 120
+    }
+
+    pub fn modexp_dynamic_cost(len: u64) -> u64 {
+        // TODO
+        0
     }
 }
 
