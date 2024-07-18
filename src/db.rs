@@ -139,6 +139,38 @@ impl Db {
             })
             .collect()
     }
+
+    // NOTE: Here we are still losing bytecode and blockhashes
+    // TODO: We should do like revm, call self.insert_contract if account was created and holds
+    // code inside (hash is not empty) -> Maybe add method like Account::has_code() -> bool
+    pub fn commit(&mut self, changes: HashMap<Address, Account>) {
+        for (address, mut account) in changes {
+            //NOTE: What happens if an account that was created and marked as selfdestructed
+            //receives a transfer? That balance will be lost since it wont be commited
+            let not_modified =
+                !account.is_touched() && !account.is_created() && !account.is_selfdestructed();
+            let created_and_destroyed = account.is_created() && account.is_selfdestructed();
+
+            if created_and_destroyed || not_modified {
+                continue;
+            }
+
+            let mut db_account = self
+                .accounts
+                .entry(address)
+                .or_insert_with(DbAccount::empty);
+            db_account.nonce = account.info.nonce;
+            db_account.balance = account.info.balance;
+            db_account.status = AccountStatus::Cold;
+            db_account.bytecode_hash = account.info.code_hash;
+            db_account.storage.extend(
+                account
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| (key, value.present_value)),
+            );
+        }
+    }
 }
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]

@@ -8,7 +8,6 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    state::AccountStatus,
     syscall::{LogData, U256},
     utils::compute_contract_address2,
     Env, Evm,
@@ -41,7 +40,7 @@ fn default_env_and_db_setup(operations: Vec<Operation>) -> (Env, Db) {
 
 fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
     let result_data = BigUint::from_bytes_be(result.output().unwrap_or(&Bytes::new()));
     assert_eq!(result_data, expected_result);
@@ -49,14 +48,14 @@ fn run_program_assert_num_result(env: Env, db: Db, expected_result: BigUint) {
 
 fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
     assert_eq!(result.output().unwrap().as_ref(), expected_result);
 }
 
 fn run_program_assert_halt(env: Env, db: Db) {
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_halt());
 }
 
@@ -64,13 +63,13 @@ fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
     env.tx.gas_limit = needed_gas;
     let mut evm = Evm::new(env.clone(), db.clone());
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     // Halt run
     env.tx.gas_limit = needed_gas - 1;
     let mut evm = Evm::new(env.clone(), db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_halt());
 }
 
@@ -84,7 +83,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     //Halt run
@@ -94,7 +93,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_halt());
 }
 
@@ -108,7 +107,7 @@ fn run_program_assert_gas_and_refund(
     env.tx.gas_limit = needed_gas;
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
     assert_eq!(result.gas_used(), used_gas);
     assert_eq!(result.gas_refunded(), refunded_gas);
@@ -174,7 +173,7 @@ fn fibonacci_example() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let number = BigUint::from_bytes_be(result.output().unwrap());
@@ -296,7 +295,7 @@ fn calldataload_with_all_bytes_before_end_of_calldata() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let calldata_slice = result.output().unwrap();
@@ -340,7 +339,7 @@ fn calldataload_with_some_bytes_after_end_of_calldata() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let calldata_slice = result.output().unwrap();
@@ -382,7 +381,7 @@ fn calldataload_with_offset_greater_than_calldata_size() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let calldata_slice = result.output().unwrap();
@@ -413,7 +412,7 @@ fn test_calldatacopy() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -444,7 +443,7 @@ fn test_calldatacopy_zeros_padding() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 1, 2, 3, 4, 0, 0, 0, 0, 0];
@@ -475,7 +474,7 @@ fn test_calldatacopy_memory_offset() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     //Test that the memory is correctly copied
     let correct_memory = vec![1, 2, 3, 4, 5];
@@ -507,7 +506,7 @@ fn test_calldatacopy_calldataoffset() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
@@ -538,7 +537,7 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     //Test that the memory is correctly copied
     let correct_memory = vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -573,7 +572,7 @@ fn log0() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
@@ -612,7 +611,7 @@ fn log1() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
@@ -657,7 +656,7 @@ fn log2() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
@@ -704,7 +703,7 @@ fn log3() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
@@ -759,7 +758,7 @@ fn log4() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
@@ -800,7 +799,7 @@ fn codecopy() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(&result.is_success());
 
@@ -836,7 +835,7 @@ fn codecopy_with_offset_out_of_bounds() {
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(&result.is_success());
 
@@ -1011,16 +1010,10 @@ fn sstore_happy_path() {
     let callee_address = env.tx.get_address();
     let mut evm = Evm::new(env, db);
 
-    let res = evm.transact().unwrap();
-    assert!(&res.result.is_success());
-
-    let stored_value = res
-        .state
-        .get(&callee_address)
-        .and_then(|account| account.storage.get(&EU256::from(key)))
-        .map(|slot| slot.present_value)
-        .unwrap_or(EU256::zero());
-
+    let res = evm.transact_and_commit().unwrap();
+    assert!(&res.is_success());
+    let stored_value = evm.db.read_storage(callee_address, key.into());
+    assert_eq!(stored_value, EU256::from(value));
     assert_eq!(stored_value, EU256::from(value));
 }
 
@@ -1156,7 +1149,7 @@ fn sload_with_valid_key() {
     let mut evm = Evm::new(env, db);
     evm.db
         .write_storage(callee_address, EU256::from(key), EU256::from(value));
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(&result.is_success());
     let result = result.output().unwrap().as_ref();
     assert_eq!(EU256::from(result), EU256::from(value));
@@ -1207,7 +1200,7 @@ fn address() {
 
     let db = Db::new().with_contract(address, bytecode);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(&result.is_success());
     let result_data = result.output().unwrap().as_ref();
     assert_eq!(result_data, &expected_result);
@@ -1261,7 +1254,7 @@ fn balance_with_invalid_address() {
 
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(&result.is_success());
     let result = result.output().unwrap();
@@ -1309,7 +1302,7 @@ fn balance_with_existing_account() {
 
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     assert!(&result.is_success());
     let result = result.output().unwrap();
@@ -1977,7 +1970,7 @@ fn call_simple_callee_call(#[case] call_type: Operation) {
     let db = db.with_contract(caller_address, bytecode);
 
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     let res_bytes: &[u8] = result.output().unwrap();
@@ -2070,7 +2063,7 @@ fn call_addition_with_value_transfer(#[case] call_type: Operation) {
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     let res_bytes: &[u8] = result.output().unwrap();
@@ -2163,7 +2156,7 @@ fn call_without_enough_balance(#[case] call_type: Operation) {
     let expected_callee_balance_result = callee_balance.into();
 
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     let result_data = BigUint::from_bytes_be(result.output().unwrap_or(&Bytes::new()));
     let final_caller_balance = evm
         .db
@@ -2672,14 +2665,10 @@ fn call_callee_storage_modified() {
     env.tx.value = origin_value.into();
 
     let mut evm = Evm::new(env, db);
-    let res = evm.transact().unwrap();
-    assert!(res.result.is_success());
-    let stored_value = res
-        .state
-        .get(&callee_address)
-        .and_then(|account| account.storage.get(&EU256::from(key)))
-        .map(|slot| slot.present_value)
-        .unwrap_or(EU256::zero());
+    let res = evm.transact_and_commit().unwrap();
+    assert!(res.is_success());
+
+    let stored_value = evm.db.read_storage(callee_address, key.into());
     assert_eq!(stored_value, EU256::from(value));
 }
 
@@ -3190,7 +3179,7 @@ fn create_happy_path() {
     );
     env.tx.value = EU256::from(value);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     // Check that contract is created correctly in the returned address
@@ -3247,7 +3236,7 @@ fn create_with_balance_underflow() {
     );
     env.tx.value = EU256::from(value);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     // Check that the result is zero
     assert!(result.is_success());
@@ -3284,7 +3273,7 @@ fn create_with_invalid_initialization_code() {
     let (mut env, db) = default_env_and_db_setup(operations);
     env.tx.value = EU256::from(value);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
 
     // Check that contract is created in the returned address with empty bytecode
     let returned_addr = Address::from_slice(&result.output().unwrap()[12..]);
@@ -3374,7 +3363,7 @@ fn create2_happy_path() {
     );
     env.tx.value = EU256::from(value);
     let mut evm = Evm::new(env, db);
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     // Check that the returned address is the expected
@@ -3671,7 +3660,7 @@ fn selfdestruct_happy_path() {
     db.set_account(receiver_address, 1, receiver_balance, Default::default());
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     let callee = evm.db.basic(callee_address).unwrap().unwrap();
@@ -3696,7 +3685,7 @@ fn selfdestruct_on_inexistent_address() {
     db.set_account(callee_address, 1, balance, Default::default());
     let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
     let callee = evm.db.basic(callee_address).unwrap().unwrap();
@@ -3706,47 +3695,125 @@ fn selfdestruct_on_inexistent_address() {
 }
 
 #[test]
-fn selfdestruct_on_loaded_account() {
-    // it should not set status as selfdestruct
-    let receiver_address: u8 = 100;
+fn selfdestruct_on_already_existing_account() {
+    // it should not be destructed, but modified (empty balance)
+    let receiver_address = Address::from_low_u64_be(123);
+    let caller_init_balance = 50_u8;
 
     let operations = vec![
-        Operation::Push((20, BigUint::from(receiver_address))),
+        Operation::Push((20, BigUint::from_bytes_be(receiver_address.as_bytes()))),
         Operation::SelfDestruct,
     ];
     let (env, mut db) = default_env_and_db_setup(operations);
-    let callee_address = env.tx.get_address();
-    db.set_status(callee_address, AccountStatus::Loaded);
-    let mut evm = Evm::new(env, db);
 
-    let result = evm.transact().unwrap().result;
+    let contract_address = env.tx.get_address();
+    db.set_account(
+        contract_address,
+        1,
+        caller_init_balance.into(),
+        Default::default(),
+    );
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
 
-    let state = evm.db.into_state();
-    let callee = state.get(&callee_address).unwrap();
-    assert_eq!(callee.status, AccountStatus::Loaded);
+    let expected_contract_balance = 0.into();
+    let expected_receiver_balance = caller_init_balance.into();
+
+    assert!(evm.db.basic(contract_address).unwrap().is_some()); // It wasn't destroyed
+    assert!(evm.db.basic(receiver_address).unwrap().is_some()); // It was created
+
+    let contract_balance = evm.db.basic(contract_address).unwrap().unwrap().balance;
+    let receiver_balance = evm.db.basic(receiver_address).unwrap().unwrap().balance;
+
+    assert_eq!(contract_balance, expected_contract_balance);
+    assert_eq!(receiver_balance, expected_receiver_balance);
 }
 
 #[test]
 fn selfdestruct_on_newly_created_account() {
-    // it should set callee status as selfdestruct
-    let receiver_address: u8 = 100;
+    let origin = Address::from_low_u64_be(123);
+    let caller_address = Address::from_low_u64_be(4040);
+    let caller_init_balance = 50_u8;
+    let receiver_acc_address = Address::from_low_u64_be(3030);
 
-    let operations = vec![
-        Operation::Push((20, BigUint::from(receiver_address))),
-        Operation::SelfDestruct,
+    // Call args
+    let gas = 100_000_u32;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 0_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 0_u8;
+
+    // Create args
+    let salt: u8 = 52;
+    let init_code_size = 13_u8;
+    let init_code_offset = 32_u8 - init_code_size;
+    let transfer_value = 30_u8;
+
+    // This bytecode will selfdestruct and transfer to `receiver_acc_address` (EVM Codes playground)
+    let initialization_code = hex::decode("63610bd6ff6000526004601cf3").unwrap();
+    let new_contract_address =
+        compute_contract_address2(caller_address, EU256::from(salt), &initialization_code);
+    let mut caller_ops = vec![
+        // Store initialization code in memory
+        Operation::Push((13, BigUint::from_bytes_be(&initialization_code))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Mstore,
+        // Create
+        Operation::Push((1, BigUint::from(salt))), // Salt
+        Operation::Push((1, BigUint::from(init_code_size))), // Size
+        Operation::Push((1, BigUint::from(init_code_offset))), // Offset
+        Operation::Push((1, BigUint::from(transfer_value))), // Value to send
+        Operation::Create2,
+        // Make the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((1_u8, BigUint::from(value))),
+        Operation::Push((
+            20_u8,
+            BigUint::from_bytes_be(new_contract_address.as_bytes()),
+        )),
+        Operation::Push((32_u8, BigUint::from(gas))), //Gas
+        Operation::Call,
     ];
-    let (env, mut db) = default_env_and_db_setup(operations);
-    let callee_address = env.tx.get_address();
-    db.set_status(callee_address, AccountStatus::Created);
+    append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = origin;
+    env.tx.value = transfer_value.into();
+    let mut db = Db::new().with_contract(caller_address, bytecode);
+    db.set_account(
+        caller_address,
+        1,
+        caller_init_balance.into(),
+        Default::default(),
+    );
     let mut evm = Evm::new(env, db);
-
-    let result = evm.transact().unwrap().result;
+    let result = evm.transact_and_commit().unwrap();
     assert!(result.is_success());
+    let call_return_code = BigUint::from_bytes_be(result.output().unwrap());
+    let expected_return_code = 1_u8.into();
+    assert_eq!(call_return_code, expected_return_code);
 
-    let state = evm.db.into_state();
-    let callee = state.get(&callee_address).unwrap();
-    assert_eq!(callee.status, AccountStatus::SelfDestructed);
+    let expected_caller_balance = (caller_init_balance - transfer_value).into();
+    let expected_receiver_balance = transfer_value.into();
+
+    assert!(evm.db.basic(caller_address).unwrap().is_some());
+    assert!(evm.db.basic(receiver_acc_address).unwrap().is_some());
+    assert!(evm.db.basic(new_contract_address).unwrap().is_none());
+
+    let caller_balance = evm.db.basic(caller_address).unwrap().unwrap().balance;
+    let receiver_balance = evm.db.basic(receiver_acc_address).unwrap().unwrap().balance;
+
+    assert_eq!(caller_balance, expected_caller_balance);
+    assert_eq!(receiver_balance, expected_receiver_balance);
 }
 
 #[test]

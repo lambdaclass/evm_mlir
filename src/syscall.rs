@@ -27,7 +27,7 @@ use crate::{
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
-    state::{AccountStatus, EvmStorageSlot},
+    state::AccountStatus,
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
@@ -319,12 +319,10 @@ impl<'c> SyscallContext<'c> {
 
             //TODO: Maybe we should increment the nonce too
             let caller_balance = caller_account.balance;
-            let caller_nonce = caller_account.nonce;
             self.journal
                 .set_balance(&caller_address, caller_balance - value);
 
             let callee_balance = callee_account.balance;
-            let callee_nonce = callee_account.nonce;
             self.journal
                 .set_balance(&callee_address, callee_balance + value);
         }
@@ -604,12 +602,13 @@ impl<'c> SyscallContext<'c> {
             return 0;
         };
 
+        let is_cold = !self.journal.key_is_warm(&address, &key);
         let slot = self.journal.read_storage(&address, &key);
-        self.journal.write_storage(&address, key, value.clone());
+        self.journal.write_storage(&address, key, value);
 
-        let (original, current, is_cold) = match slot {
-            Some(slot) => (slot.original_value, value, slot.is_cold),
-            None => (value, value, true),
+        let (original, current) = match slot {
+            Some(slot) => (slot.original_value, slot.present_value),
+            None => (value, value),
         };
 
         // Compute the gas cost
@@ -871,7 +870,7 @@ impl<'c> SyscallContext<'c> {
         };
 
         // Check if there is already a contract stored in dest_address
-        if let Some(_) = self.journal.get_account(&dest_addr) {
+        if self.journal.get_account(&dest_addr).is_some() {
             return 1;
         }
 
@@ -906,7 +905,7 @@ impl<'c> SyscallContext<'c> {
         *remaining_gas = gas_cost;
 
         // Check if balance is enough
-        if sender_account.balance.checked_sub(value_as_u256).is_none() {
+        let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
             return 0;
         };
@@ -916,6 +915,7 @@ impl<'c> SyscallContext<'c> {
             .new_contract(dest_addr, bytecode, value_as_u256);
         self.journal
             .set_nonce(&sender_address, sender_account.nonce + 1);
+        self.journal.set_balance(&sender_address, sender_balance);
 
         value.copy_from(&dest_addr);
 
@@ -953,21 +953,29 @@ impl<'c> SyscallContext<'c> {
             .get_account(&sender_address)
             .unwrap_or_default()
             .balance;
-        let receiver = self
-            .journal
-            .get_account(&receiver_address)
-            .unwrap_or_else(AccountInfo::empty);
+
+        let receiver_is_empty = match self.journal.get_account(&receiver_address) {
+            Some(receiver) => {
+                let is_empty = receiver.is_empty();
+                self.journal
+                    .set_balance(&receiver_address, receiver.balance + sender_balance);
+                is_empty
+            }
+            None => {
+                self.journal
+                    .new_account(receiver_address, sender_balance, Default::default());
+                true
+            }
+        };
 
         self.journal.set_balance(&sender_address, EU256::zero());
-        self.journal
-            .set_balance(&receiver_address, receiver.balance + sender_balance);
 
         if self.journal.get_account(&sender_address).is_some() {
             self.journal
                 .set_status(&sender_address, AccountStatus::SelfDestructed);
         }
 
-        if !sender_balance.is_zero() && receiver.is_empty() {
+        if !sender_balance.is_zero() && receiver_is_empty {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0

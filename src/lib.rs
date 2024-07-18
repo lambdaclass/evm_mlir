@@ -4,7 +4,7 @@ use env::TransactTo;
 use executor::{Executor, OptLevel};
 use journal::Journal;
 use program::Program;
-use result::{EVMError, ResultAndState};
+use result::{EVMError, ExecutionResult, ResultAndState};
 use syscall::{CallFrame, SyscallContext};
 
 use crate::context::Context;
@@ -75,5 +75,11 @@ impl Evm<Db> {
         executor.execute(&mut context, self.env.tx.gas_limit);
 
         context.get_result()
+    }
+
+    pub fn transact_and_commit(&mut self) -> Result<ExecutionResult, EVMError> {
+        let ResultAndState { state, result } = self.transact()?;
+        self.db.commit(state);
+        Ok(result)
     }
 }

@@ -1,11 +1,31 @@
 use crate::{
-    db::{AccountInfo, Bytecode, Db, DbAccount},
+    constants::EMPTY_CODE_HASH_STR,
+    db::{AccountInfo, Bytecode, Database, Db, DbAccount},
     primitives::{Address, B256, U256},
     state::{Account, AccountStatus, EvmStorageSlot},
 };
+
 use sha3::{Digest, Keccak256};
 use std::collections::{hash_map::Entry, HashMap};
+use std::str::FromStr;
 use thiserror::Error;
+
+#[derive(Clone, Default, Debug, PartialEq)]
+pub struct JournalStorageSlot {
+    /// Original value of the storage slot.
+    pub original_value: U256,
+    /// Present value of the storage slot.
+    pub present_value: U256,
+}
+
+impl From<U256> for JournalStorageSlot {
+    fn from(value: U256) -> Self {
+        Self {
+            original_value: value,
+            present_value: value,
+        }
+    }
+}
 
 // NOTE: We could store the bytecode inside this `JournalAccount` instead of
 // having a separate HashMap for it.
@@ -13,9 +33,16 @@ use thiserror::Error;
 pub struct JournalAccount {
     pub nonce: u64,
     pub balance: U256,
-    pub storage: HashMap<U256, EvmStorageSlot>,
+    pub storage: HashMap<U256, JournalStorageSlot>,
     pub bytecode_hash: B256,
     pub status: AccountStatus,
+}
+
+impl JournalAccount {
+    pub fn has_code(&self) -> bool {
+        !(self.bytecode_hash == B256::zero()
+            || self.bytecode_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap())
+    }
 }
 
 impl From<DbAccount> for JournalAccount {
@@ -30,7 +57,15 @@ impl From<DbAccount> for JournalAccount {
 
         let storage = storage
             .iter()
-            .map(|(key, &value)| (key.clone(), EvmStorageSlot::from(value)))
+            .map(|(&key, &value)| {
+                (
+                    key,
+                    JournalStorageSlot {
+                        original_value: value,
+                        present_value: value,
+                    },
+                )
+            })
             .collect();
 
         JournalAccount {
@@ -119,20 +154,20 @@ impl<'a> Journal<'a> {
     pub fn set_balance(&mut self, address: &Address, balance: U256) {
         if let Some(acc) = self._get_account_mut(address) {
             acc.balance = balance;
-            acc.status = AccountStatus::Touched;
+            acc.status |= AccountStatus::Touched;
         }
     }
 
     pub fn set_nonce(&mut self, address: &Address, nonce: u64) {
         if let Some(acc) = self._get_account_mut(address) {
             acc.nonce = nonce;
-            acc.status = AccountStatus::Touched;
+            acc.status |= AccountStatus::Touched;
         }
     }
 
     pub fn set_status(&mut self, address: &Address, status: AccountStatus) {
         if let Some(acc) = self._get_account_mut(address) {
-            acc.status = status;
+            acc.status |= status;
         }
     }
 
@@ -140,11 +175,27 @@ impl<'a> Journal<'a> {
         self._get_account(address).map(AccountInfo::from)
     }
 
+    //TODO: Refactor this, its awful
     pub fn code_by_address(&mut self, address: &Address) -> Bytecode {
-        self._get_account(address)
-            .cloned()
-            .and_then(|acc| self.contracts.get(&acc.bytecode_hash).cloned())
-            .unwrap_or_default()
+        let Some(acc) = self._get_account(address) else {
+            return Bytecode::default();
+        };
+
+        if !acc.has_code() {
+            return Bytecode::default();
+        }
+
+        let hash = acc.bytecode_hash;
+
+        let code = match self.contracts.get(&hash) {
+            Some(c) => c.clone(),
+            None => match &mut self.db {
+                None => Bytecode::default(),
+                Some(db) => db.code_by_hash(hash).unwrap_or_default(),
+            },
+        };
+
+        code
     }
 
     /* WARM COLD HANDLING */
@@ -160,60 +211,72 @@ impl<'a> Journal<'a> {
         let _ = self._get_account(address);
     }
 
-    pub fn prefetch_account_keys(&mut self, address: &Address, _keys: &Vec<U256>) {
-        // NOTE: This prefetch implies a prefetch to the account too
-        // Aren't all keys already in warm state if the account is in warm state?
-        self.prefetch_account(address);
+    //TODO: HERE WE NEED TO PREFETCH KEYS
+    pub fn prefetch_account_keys(&mut self, address: &Address, keys: &[U256]) {
+        let Some(_) = self._get_account(address) else {
+            return;
+        };
+
+        let slots: HashMap<U256, JournalStorageSlot> = keys
+            .iter()
+            .map(|key| (*key, self._fetch_storage_from_db(address, key)))
+            .collect();
+
+        let acc = self._get_account_mut(address).unwrap();
+        acc.storage.extend(slots);
     }
 
-    pub fn key_is_cold(&self, address: &Address, key: &U256) -> bool {
+    // We ignore the `EvmStorageSlot::is_cold` attribute
+    pub fn key_is_warm(&self, address: &Address, key: &U256) -> bool {
         self.accounts
             .get(address)
-            .map(|acc| acc.storage.get(key))
-            .flatten()
-            .map(|slot| slot.is_cold)
-            .unwrap_or(true)
+            .and_then(|acc| acc.storage.get(key))
+            .is_some()
     }
 
     /* STORAGE HANDLING */
 
-    pub fn read_storage(&mut self, address: &Address, key: &U256) -> Option<EvmStorageSlot> {
-        self._get_account(address)
-            .and_then(|acc| acc.storage.get(key).cloned())
+    pub fn read_storage(&mut self, address: &Address, key: &U256) -> Option<JournalStorageSlot> {
+        let acc = self._get_account(address)?;
+        let slot = acc
+            .storage
+            .get(key)
+            .cloned()
+            .unwrap_or(self._fetch_storage_from_db(address, key));
+        let acc = self._get_account_mut(address).unwrap();
+        acc.storage.insert(*key, slot.clone()); // Now this key is warm
+        Some(slot)
     }
 
     pub fn write_storage(&mut self, address: &Address, key: U256, value: U256) {
-        // TODO: We might do an implace modification here
-        let Some(mut acc) = self._get_account(address).cloned() else {
-            //TODO: This might return error on this case
-            return;
-        };
+        let acc = self._get_account(address).unwrap(); //TODO handle error here
+        let mut slot = acc
+            .storage
+            .get(&key)
+            .cloned()
+            .unwrap_or(self._fetch_storage_from_db(address, &key));
 
-        let slot = match acc.storage.get(&key) {
-            Some(slot) => EvmStorageSlot {
-                original_value: slot.original_value,
-                present_value: value,
-                is_cold: false,
-            },
-            None => EvmStorageSlot {
-                original_value: value,
-                present_value: value,
-                is_cold: false,
-            },
-        };
-
-        acc.storage.insert(key, slot);
-        acc.status = AccountStatus::Touched;
-        self.accounts.insert(*address, acc.clone());
+        slot.present_value = value;
+        let acc = self._get_account_mut(address).unwrap();
+        acc.storage.insert(key, slot.clone());
+        acc.status |= AccountStatus::Touched;
     }
 
     /* BLOCK HASH */
 
     pub fn get_block_hash(&mut self, number: &U256) -> B256 {
-        self.block_hashes
-            .get(&number)
-            .cloned()
-            .unwrap_or(B256::zero())
+        match self.block_hashes.get(number).cloned() {
+            Some(hash) => hash,
+            None => {
+                let block_hash = self
+                    .db
+                    .as_mut()
+                    .and_then(|db| db.block_hash(*number).ok())
+                    .unwrap_or_default();
+                self.block_hashes.insert(*number, block_hash);
+                block_hash
+            }
+        }
     }
 
     /* OTHER METHODS */
@@ -224,11 +287,25 @@ impl<'a> Journal<'a> {
         self.accounts
             .iter()
             .map(|(address, acc)| {
+                let storage = acc
+                    .storage
+                    .iter()
+                    .map(|(&key, slot)| {
+                        (
+                            key,
+                            EvmStorageSlot {
+                                original_value: slot.original_value,
+                                present_value: slot.present_value,
+                                is_cold: false,
+                            },
+                        )
+                    })
+                    .collect();
                 (
                     *address,
                     Account {
                         info: AccountInfo::from(acc),
-                        storage: acc.storage.clone(),
+                        storage,
                         status: acc.status,
                     },
                 )
@@ -261,6 +338,10 @@ impl<'a> Journal<'a> {
 
     /* PRIVATE AUXILIARY METHODS */
 
+    // TODO: Replace db.get_account with db.basic
+    // DbAccount is an internal Db structure so we should not access it
+    // besides, we actually don't need that extra data
+    // Storage should be read from Database::storage method
     fn _get_account(&mut self, address: &Address) -> Option<&JournalAccount> {
         let Some(db) = &mut self.db else {
             return None;
@@ -292,16 +373,23 @@ impl<'a> Journal<'a> {
         // but I'm having trouble with the borrow checker
         let maybe_acc = match self.accounts.entry(*address) {
             Entry::Occupied(e) => Some(e.into_mut()),
-            Entry::Vacant(e) => match db.get_account(address).cloned() {
-                Some(acc) => {
-                    let mut acc = JournalAccount::from(acc);
-                    acc.status = AccountStatus::Loaded;
-                    Some(e.insert(acc))
-                }
-                None => None,
-            },
+            Entry::Vacant(e) => {
+                let acc = db.get_account(address).cloned()?;
+                let mut acc = JournalAccount::from(acc);
+                acc.status = AccountStatus::Loaded;
+                Some(e.insert(acc))
+            }
         };
 
         maybe_acc
+    }
+
+    fn _fetch_storage_from_db(&mut self, address: &Address, key: &U256) -> JournalStorageSlot {
+        let value = self
+            .db
+            .as_mut()
+            .and_then(|db| db.storage(*address, *key).ok())
+            .unwrap_or_default();
+        JournalStorageSlot::from(value)
     }
 }
