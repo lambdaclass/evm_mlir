@@ -62,13 +62,13 @@ fn run_program_assert_halt(env: Env, db: Db) {
 
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
-    env.tx.gas_limit = needed_gas;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact().unwrap().result;
     assert!(result.is_success());
 
     // Halt run
-    env.tx.gas_limit = needed_gas - 1;
+    env.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact().unwrap().result;
     assert!(result.is_halt());
@@ -80,7 +80,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
-    env_success.tx.gas_limit = needed_gas;
+    env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
@@ -90,7 +90,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
-    env_halt.tx.gas_limit = needed_gas - 1;
+    env_halt.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
@@ -105,7 +105,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    env.tx.gas_limit = needed_gas;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact().unwrap().result;
@@ -405,7 +405,6 @@ fn test_calldatacopy() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -436,7 +435,6 @@ fn test_calldatacopy_zeros_padding() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4]);
-    env.tx.gas_limit = 1000;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -467,7 +465,7 @@ fn test_calldatacopy_memory_offset() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000;
+    env.tx.gas_limit = 1000 + gas_cost::TX_BASE_COST;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -498,7 +496,6 @@ fn test_calldatacopy_calldataoffset() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -530,7 +527,6 @@ fn test_calldatacopy_calldataoffset_bigger_than_calldatasize() {
     let program = Program::from(operations);
     let mut env = Env::default();
     env.tx.data = Bytes::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    env.tx.gas_limit = 1000;
     let (address, bytecode) = (
         Address::from_low_u64_be(40),
         Bytecode::from(program.to_bytecode()),
@@ -1426,7 +1422,7 @@ fn gaslimit_happy_path() {
     let mut operations = vec![Operation::Gaslimit];
     append_return_result_operations(&mut operations);
     let (mut env, db) = default_env_and_db_setup(operations);
-    env.tx.gas_limit = gaslimit;
+    env.tx.gas_limit = gaslimit + gas_cost::TX_BASE_COST;
     let expected_result = BigUint::from(gaslimit);
     run_program_assert_num_result(env, db, expected_result);
 }

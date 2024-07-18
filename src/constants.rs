@@ -15,6 +15,9 @@ pub const MAIN_ENTRYPOINT: &str = "main";
 pub const EMPTY_CODE_HASH_STR: &str =
     "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
+pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+pub const MAX_BLOB_NUMBER_PER_BLOCK: u8 = 0x01;
+
 //TODO: Add missing opcodes gas consumption costs
 //  -> This implies refactoring codegen/operations.rs
 /// Contains the gas costs of the EVM instructions
@@ -101,6 +104,19 @@ pub mod gas_cost {
     pub const BYTE_DEPOSIT_COST: i64 = 200;
     pub const INIT_WORD_COST: i64 = 2;
     pub const HASH_WORD_COST: i64 = 6;
+
+    // Transaction costs
+    pub const TX_BASE_COST: u64 = 21000;
+    pub const TX_DATA_COST_PER_NON_ZERO: u64 = 16;
+    pub const TX_DATA_COST_PER_ZERO: u64 = 4;
+    pub const TX_CREATE_COST: u64 = 32000;
+    pub const TX_ACCESS_LIST_ADDRESS_COST: u64 = 2400;
+    pub const TX_ACCESS_LIST_STORAGE_KEY_COST: u64 = 1900;
+    pub const MAX_CODE_SIZE: usize = 0x6000;
+
+    pub fn init_code_cost(init_code_length: usize) -> u64 {
+        INIT_WORD_COST as u64 * (init_code_length as u64 + 31) / 32
+    }
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
         let new_memory_size_word = (new_size + 31) / 32;
