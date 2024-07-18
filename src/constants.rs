@@ -181,11 +181,6 @@ pub mod precompiles {
     pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 120
     }
-
-    pub fn modexp_dynamic_cost(len: u64) -> u64 {
-        // TODO
-        0
-    }
 }
 
 #[derive(PartialEq, Debug)]

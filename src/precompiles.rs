@@ -69,12 +69,6 @@ pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> B
 }
 
 pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = 0; // TODO: add gas cost
-    if gas_limit < gas_cost {
-        return Bytes::new();
-    }
-    *consumed_gas += gas_cost;
-
     if calldata.len() < 96 {
         return Bytes::new();
     }
@@ -100,12 +94,30 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
     let m = BigUint::from_bytes_be(&calldata[96 + b_size + e_size..params_len]);
 
+    // Compute gas cost
+    let max_length = b_size.max(m_size);
+    let words = (max_length + 7) / 8;
+    let multiplication_complexity = (words * words) as u64;
+    let iteration_count = if e_size <= 32 && e != BigUint::ZERO {
+        e.bits() - 1
+    } else if e_size > 32 {
+        (8 * (e_size as u64 - 32)) + (e.bits().max(1) - 1)
+    } else {
+        0
+    };
+    let calculate_iteration_count = iteration_count.max(1);
+    let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(200);
+    if gas_limit < gas_cost {
+        return Bytes::new();
+    }
+    *consumed_gas += gas_cost;
+
     // TODO: casting exp as u32, change pow to a more powerful method
     // Maybe https://docs.rs/aurora-engine-modexp/latest/aurora_engine_modexp/
     let e: u32 = e.try_into().unwrap();
 
     let result = b.pow(e) % m;
 
-    let output = &result.to_bytes_be()[..m_size]; // test if [..m_size] indexes correctly for bigger return values
+    let output = &result.to_bytes_be()[..m_size];
     Bytes::copy_from_slice(output)
 }
