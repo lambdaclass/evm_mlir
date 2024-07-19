@@ -101,7 +101,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     let iteration_count = if e_size <= 32 && e != BigUint::ZERO {
         e.bits() - 1
     } else if e_size > 32 {
-        (8 * (e_size as u64 - 32)) + (e.bits().max(1) - 1)
+        8 * (e_size as u64 - 32) + e.bits().max(1) - 1
     } else {
         0
     };
@@ -112,12 +112,78 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     }
     *consumed_gas += gas_cost;
 
-    // TODO: casting exp as u32, change pow to a more powerful method
-    // Maybe https://docs.rs/aurora-engine-modexp/latest/aurora_engine_modexp/
-    let e: u32 = e.try_into().unwrap();
-
-    let result = b.pow(e) % m;
+    let result = if m == BigUint::ZERO {
+        BigUint::ZERO
+    } else if e == BigUint::ZERO {
+        BigUint::from(1_u8) % m
+    } else {
+        // TODO: casting exp as u32, change pow to a more powerful method
+        // Maybe https://docs.rs/aurora-engine-modexp/latest/aurora_engine_modexp/
+        let e: u32 = e.try_into().unwrap();
+        b.pow(e) % m
+    };
 
     let output = &result.to_bytes_be()[..m_size];
     Bytes::copy_from_slice(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::U256;
+
+    use super::*;
+
+    #[test]
+    fn modexp_gas_cost() {
+        let b_size = U256::from(1_u8);
+        let e_size = U256::from(1_u8);
+        let m_size = U256::from(1_u8);
+        let b = 8_u8;
+        let e = 9_u8;
+        let m = 10_u8;
+        let mut calldata = [0_u8; 99];
+        b_size.to_big_endian(&mut calldata[..32]);
+        e_size.to_big_endian(&mut calldata[32..64]);
+        m_size.to_big_endian(&mut calldata[64..96]);
+        calldata[96] = b;
+        calldata[97] = e;
+        calldata[98] = m;
+
+        let expected_gas = 200;
+        let mut consumed_gas = 0;
+        modexp(
+            &Bytes::copy_from_slice(&calldata),
+            expected_gas,
+            &mut consumed_gas,
+        );
+
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn modexp_gas_cost2() {
+        let b_size = U256::from(256_u16);
+        let e_size = U256::from(1_u8);
+        let m_size = U256::from(1_u8);
+        let b = 8_u8;
+        let e = 6_u8;
+        let m = 10_u8;
+        let mut calldata = [0_u8; 354];
+        b_size.to_big_endian(&mut calldata[..32]);
+        e_size.to_big_endian(&mut calldata[32..64]);
+        m_size.to_big_endian(&mut calldata[64..96]);
+        calldata[351] = b;
+        calldata[352] = e;
+        calldata[353] = m;
+
+        let expected_gas = 682;
+        let mut consumed_gas = 0;
+        modexp(
+            &Bytes::copy_from_slice(&calldata),
+            expected_gas,
+            &mut consumed_gas,
+        );
+
+        assert_eq!(consumed_gas, expected_gas);
+    }
 }
