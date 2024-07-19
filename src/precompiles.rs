@@ -117,10 +117,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     } else if e == BigUint::ZERO {
         BigUint::from(1_u8) % m
     } else {
-        // TODO: casting exp as u32, change pow to a more powerful method
-        // Maybe https://docs.rs/aurora-engine-modexp/latest/aurora_engine_modexp/
-        let e: u32 = e.try_into().unwrap();
-        b.pow(e) % m
+        b.modpow(&e, &m)
     };
 
     let output = &result.to_bytes_be()[..m_size];
