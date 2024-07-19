@@ -3,6 +3,7 @@ use bytes::Bytes;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
+use substrate_bn::{AffineG1, Fq, G1};
 
 use crate::constants::precompiles::{
     identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST,
@@ -125,6 +126,31 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
 
     let output = &result.to_bytes_be()[..m_size];
     Bytes::copy_from_slice(output)
+}
+
+pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    if calldata.len() < 128 {
+        return Bytes::new();
+    }
+    //TODO consume gas
+
+    // Slice lengths are checked, so unwrap is safe
+    let x1 = Fq::from_slice(&calldata[..32]).unwrap();
+    let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
+    let x2 = Fq::from_slice(&calldata[64..96]).unwrap();
+    let y2 = Fq::from_slice(&calldata[96..128]).unwrap();
+
+    let p1: G1 = AffineG1::new(x1, y1).unwrap().into();
+    let p2: G1 = AffineG1::new(x2, y2).unwrap().into();
+
+    let Some(sum) = AffineG1::from_jacobian(p1 + p2) else {
+        return Bytes::new();
+    };
+    let mut output = [0_u8; 64];
+    sum.x().to_big_endian(&mut output[..32]).unwrap();
+    sum.y().to_big_endian(&mut output[32..]).unwrap();
+
+    return Bytes::copy_from_slice(&output);
 }
 
 #[cfg(test)]

@@ -859,6 +859,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
+ "substrate-bn",
  "thiserror",
  "walkdir",
 ]
