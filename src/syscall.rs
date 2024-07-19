@@ -962,8 +962,7 @@ impl<'c> SyscallContext<'c> {
                 is_empty
             }
             None => {
-                self.journal
-                    .new_account(receiver_address, sender_balance, Default::default());
+                self.journal.new_account(receiver_address, sender_balance);
                 true
             }
         };

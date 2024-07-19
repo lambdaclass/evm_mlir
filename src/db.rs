@@ -48,10 +48,6 @@ impl Db {
         self.block_hashes.insert(number, hash);
     }
 
-    pub fn get_account(&mut self, address: &Address) -> Option<&DbAccount> {
-        self.accounts.get(address)
-    }
-
     pub fn set_account(
         &mut self,
         address: Address,
@@ -140,6 +136,17 @@ impl Db {
             .collect()
     }
 
+    pub fn _store_contract(&mut self, account: &AccountInfo) {
+        if !account.has_code() {
+            return;
+        }
+        account.code.as_ref().map(|code| {
+            self.contracts
+                .entry(account.code_hash)
+                .or_insert_with(|| code.clone())
+        });
+    }
+
     // NOTE: Here we are still losing bytecode and blockhashes
     // TODO: We should do like revm, call self.insert_contract if account was created and holds
     // code inside (hash is not empty) -> Maybe add method like Account::has_code() -> bool
@@ -153,6 +160,10 @@ impl Db {
 
             if created_and_destroyed || not_modified {
                 continue;
+            }
+
+            if account.is_created() {
+                self._store_contract(&account.info);
             }
 
             let mut db_account = self
@@ -197,6 +208,11 @@ impl AccountInfo {
         self.balance.is_zero()
             && self.nonce == 0
             && self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap()
+    }
+
+    pub fn has_code(&self) -> bool {
+        !(self.code_hash == B256::zero()
+            || self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap())
     }
 }
 

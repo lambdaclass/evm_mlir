@@ -1,6 +1,6 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
-    db::{AccountInfo, Bytecode, Database, Db, DbAccount},
+    db::{AccountInfo, Bytecode, Database, Db},
     primitives::{Address, B256, U256},
     state::{Account, AccountStatus, EvmStorageSlot},
 };
@@ -43,37 +43,26 @@ impl JournalAccount {
         !(self.bytecode_hash == B256::zero()
             || self.bytecode_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap())
     }
+
+    pub fn new_created(balance: U256) -> Self {
+        Self {
+            nonce: 0,
+            balance,
+            storage: Default::default(),
+            bytecode_hash: B256::from_str(EMPTY_CODE_HASH_STR).unwrap(),
+            status: AccountStatus::Created,
+        }
+    }
 }
 
-impl From<DbAccount> for JournalAccount {
-    fn from(acc: DbAccount) -> JournalAccount {
-        let DbAccount {
-            nonce,
-            storage,
-            balance,
-            bytecode_hash,
-            status,
-        } = acc;
-
-        let storage = storage
-            .iter()
-            .map(|(&key, &value)| {
-                (
-                    key,
-                    JournalStorageSlot {
-                        original_value: value,
-                        present_value: value,
-                    },
-                )
-            })
-            .collect();
-
+impl From<AccountInfo> for JournalAccount {
+    fn from(info: AccountInfo) -> JournalAccount {
         JournalAccount {
-            nonce,
-            balance,
-            storage,
-            bytecode_hash,
-            status,
+            nonce: info.nonce,
+            balance: info.balance,
+            storage: Default::default(),
+            bytecode_hash: info.code_hash,
+            status: AccountStatus::Cold,
         }
     }
 }
@@ -122,16 +111,10 @@ impl<'a> Journal<'a> {
     /* ACCOUNT HANDLING */
 
     //TODO: Check if we really need to pass an init storage
-    pub fn new_account(&mut self, address: Address, balance: U256, storage: HashMap<U256, U256>) {
+    pub fn new_account(&mut self, address: Address, balance: U256) {
         // TODO: Check if account already exists and return error or panic
-        let account = DbAccount {
-            balance,
-            storage,
-            status: AccountStatus::Created,
-            ..Default::default()
-        };
-
-        self.accounts.insert(address, account.into());
+        let account = JournalAccount::new_created(balance);
+        self.accounts.insert(address, account);
     }
 
     pub fn new_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
@@ -211,7 +194,6 @@ impl<'a> Journal<'a> {
         let _ = self._get_account(address);
     }
 
-    //TODO: HERE WE NEED TO PREFETCH KEYS
     pub fn prefetch_account_keys(&mut self, address: &Address, keys: &[U256]) {
         let Some(_) = self._get_account(address) else {
             return;
@@ -237,6 +219,7 @@ impl<'a> Journal<'a> {
     /* STORAGE HANDLING */
 
     pub fn read_storage(&mut self, address: &Address, key: &U256) -> Option<JournalStorageSlot> {
+        //TODO: If AccountStatus::Created, then we don't need to fetch DB
         let acc = self._get_account(address)?;
         let slot = acc
             .storage
@@ -287,6 +270,12 @@ impl<'a> Journal<'a> {
         self.accounts
             .iter()
             .map(|(address, acc)| {
+                let code = acc
+                    .has_code()
+                    .then_some(self.contracts.get(&acc.bytecode_hash))
+                    .flatten()
+                    .cloned();
+
                 let storage = acc
                     .storage
                     .iter()
@@ -304,7 +293,12 @@ impl<'a> Journal<'a> {
                 (
                     *address,
                     Account {
-                        info: AccountInfo::from(acc),
+                        info: AccountInfo {
+                            balance: acc.balance,
+                            nonce: acc.nonce,
+                            code_hash: acc.bytecode_hash,
+                            code,
+                        },
                         storage,
                         status: acc.status,
                     },
@@ -338,30 +332,8 @@ impl<'a> Journal<'a> {
 
     /* PRIVATE AUXILIARY METHODS */
 
-    // TODO: Replace db.get_account with db.basic
-    // DbAccount is an internal Db structure so we should not access it
-    // besides, we actually don't need that extra data
-    // Storage should be read from Database::storage method
     fn _get_account(&mut self, address: &Address) -> Option<&JournalAccount> {
-        let Some(db) = &mut self.db else {
-            return None;
-        };
-
-        // NOTE: This may be simplified replacing the second match with a map or and_then
-        // but I'm having trouble with the borrow checker
-        let maybe_acc: Option<&JournalAccount> = match self.accounts.entry(*address) {
-            Entry::Occupied(e) => Some(e.into_mut()),
-            Entry::Vacant(e) => match db.get_account(address).cloned() {
-                Some(acc) => {
-                    let mut acc = JournalAccount::from(acc);
-                    acc.status = AccountStatus::Loaded;
-                    Some(e.insert(acc))
-                }
-                None => None,
-            },
-        };
-
-        maybe_acc
+        self._get_account_mut(address).map(|acc| &*acc)
     }
 
     fn _get_account_mut(&mut self, address: &Address) -> Option<&mut JournalAccount> {
@@ -369,12 +341,10 @@ impl<'a> Journal<'a> {
             return None;
         };
 
-        // NOTE: This may be simplified replacing the second match with a map or and_then
-        // but I'm having trouble with the borrow checker
         let maybe_acc = match self.accounts.entry(*address) {
             Entry::Occupied(e) => Some(e.into_mut()),
             Entry::Vacant(e) => {
-                let acc = db.get_account(address).cloned()?;
+                let acc = db.basic(*address).ok().flatten()?;
                 let mut acc = JournalAccount::from(acc);
                 acc.status = AccountStatus::Loaded;
                 Some(e.insert(acc))

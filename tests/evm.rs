@@ -3188,6 +3188,8 @@ fn create_happy_path() {
     assert_eq!(new_account.balance, EU256::from(value));
     assert_eq!(new_account.nonce, 1);
     assert_eq!(new_account.code_hash, initialization_code_hash);
+    let new_account_code = evm.db.code_by_hash(new_account.code_hash).unwrap();
+    assert_ne!(new_account_code, Bytecode::default());
 
     // Check that the sender account is updated
     let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
