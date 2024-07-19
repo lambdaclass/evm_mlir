@@ -312,10 +312,14 @@ impl<'a> Journal<'a> {
     }
 
     pub fn extend_from_reverted(&mut self, other: Journal<'a>) {
-        //TODO: Copy new fetched accounts / contracts so we preserve warm/cold state
-        //Caution with modified state, should only copy if state is the same as Db
-        //-> Check AccountStatus flags
-        self.extend_from_successful(other);
+        // TODO: Maybe warm/cold state on both addresses and storage keys should be preserved
+        // but if that's the case, then:
+        // - What happens if the reverted callee context created a new account/storage key?
+        //   -> Should the warm state be preserved? What value should we introduce into the
+        //      self.accounts HashMap? A default one?
+        //
+        // For the moment, we will just discard changes and take the database back
+        self.db = other.db
     }
 
     /* PRIVATE AUXILIARY METHODS */
