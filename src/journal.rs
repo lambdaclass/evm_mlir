@@ -174,7 +174,7 @@ impl<'a> Journal<'a> {
     pub fn account_is_warm(&self, address: &Address) -> bool {
         self.accounts
             .get(address)
-            .map(|acc| !matches!(acc.status, AccountStatus::Cold))
+            .map(|acc| acc.status.contains(AccountStatus::Cold))
             .unwrap_or(false)
     }
 
