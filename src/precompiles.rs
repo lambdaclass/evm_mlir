@@ -1,4 +1,4 @@
-use crate::primitives::U256;
+use crate::{constants::precompiles::ECADD_COST, primitives::U256};
 use bytes::Bytes;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
@@ -130,10 +130,11 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
 
 pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
     if calldata.len() < 128 {
+        *consumed_gas += gas_limit;
         return Bytes::new();
     }
-    //TODO consume gas
 
+    *consumed_gas += ECADD_COST;
     // Slice lengths are checked, so unwrap is safe
     let x1 = Fq::from_slice(&calldata[..32]).unwrap();
     let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
@@ -144,6 +145,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let p2: G1 = AffineG1::new(x2, y2).unwrap().into();
 
     let Some(sum) = AffineG1::from_jacobian(p1 + p2) else {
+        *consumed_gas += gas_limit - ECADD_COST;
         return Bytes::new();
     };
     let mut output = [0_u8; 64];
