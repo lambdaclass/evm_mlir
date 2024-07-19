@@ -150,27 +150,23 @@ impl<'a> Journal<'a> {
         self._get_account(address).map(AccountInfo::from)
     }
 
-    //TODO: Refactor this, its awful
     pub fn code_by_address(&mut self, address: &Address) -> Bytecode {
+        let default = Bytecode::default();
         let Some(acc) = self._get_account(address) else {
-            return Bytecode::default();
+            return default;
         };
 
         if !acc.has_code() {
-            return Bytecode::default();
+            return default;
         }
 
         let hash = acc.bytecode_hash;
-
-        let code = match self.contracts.get(&hash) {
-            Some(c) => c.clone(),
-            None => match &mut self.db {
-                None => Bytecode::default(),
-                Some(db) => db.code_by_hash(hash).unwrap_or_default(),
-            },
-        };
-
-        code
+        self.contracts.get(&hash).cloned().unwrap_or(
+            self.db
+                .as_mut()
+                .and_then(|db| db.code_by_hash(hash).ok())
+                .unwrap_or(default),
+        )
     }
 
     /* WARM COLD HANDLING */
