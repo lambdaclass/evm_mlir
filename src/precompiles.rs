@@ -1,9 +1,12 @@
-use crate::{constants::precompiles::ECADD_COST, primitives::U256};
+use crate::{
+    constants::precompiles::{ECADD_COST, ECMUL_COST},
+    primitives::U256,
+};
 use bytes::Bytes;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use substrate_bn::{AffineG1, Fq, G1};
+use substrate_bn::{AffineG1, Fq, Fr, G1};
 
 use crate::constants::precompiles::{
     identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST,
@@ -133,8 +136,8 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
         *consumed_gas += gas_limit;
         return Bytes::new();
     }
-
     *consumed_gas += ECADD_COST;
+
     // Slice lengths are checked, so unwrap is safe
     let x1 = Fq::from_slice(&calldata[..32]).unwrap();
     let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
@@ -146,6 +149,31 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 
     let Some(sum) = AffineG1::from_jacobian(p1 + p2) else {
         *consumed_gas += gas_limit - ECADD_COST;
+        return Bytes::new();
+    };
+    let mut output = [0_u8; 64];
+    sum.x().to_big_endian(&mut output[..32]).unwrap();
+    sum.y().to_big_endian(&mut output[32..]).unwrap();
+
+    return Bytes::copy_from_slice(&output);
+}
+
+pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    if calldata.len() < 96 {
+        *consumed_gas += gas_limit;
+        return Bytes::new();
+    }
+    *consumed_gas += ECMUL_COST;
+
+    // Slice lengths are checked, so unwrap is safe
+    let x1 = Fq::from_slice(&calldata[..32]).unwrap();
+    let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
+    let s = Fr::from_slice(&calldata[64..96]).unwrap();
+
+    let p: G1 = AffineG1::new(x1, y1).unwrap().into();
+
+    let Some(sum) = AffineG1::from_jacobian(p * s) else {
+        *consumed_gas += gas_limit - ECMUL_COST;
         return Bytes::new();
     };
     let mut output = [0_u8; 64];

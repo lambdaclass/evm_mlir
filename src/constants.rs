@@ -171,6 +171,8 @@ pub mod precompiles {
     pub const MODEXP_ADDRESS: u64 = 0x05;
     pub const ECADD_ADDRESS: u64 = 0x06;
     pub const ECADD_COST: u64 = 150;
+    pub const ECMUL_ADDRESS: u64 = 0x07;
+    pub const ECMUL_COST: u64 = 6000;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3

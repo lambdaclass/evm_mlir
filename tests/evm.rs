@@ -6,8 +6,8 @@ use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
         precompiles::{
-            ECADD_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS,
-            SHA2_256_ADDRESS,
+            ECADD_ADDRESS, ECMUL_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
+            RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
         EMPTY_CODE_HASH_STR,
     },
@@ -3023,6 +3023,60 @@ fn staticcall_on_precompile_ecadd_happy_path() {
         Operation::Mstore,
         Operation::Push((32_u8, y2.into())),
         Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), //Ret size
+        Operation::Push((1_u8, ret_offset.into())), //Ret offset
+        Operation::Push((1_u8, args_size.into())), //Args size
+        Operation::Push((1_u8, args_offset.into())), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, gas.into())),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecmul_happy_path() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 96;
+    let args_size: u8 = 96;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let s: u8 = 2;
+
+    let expected_x =
+        hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3").unwrap();
+    let expected_y =
+        hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4").unwrap();
+    let expected_result = [expected_x, expected_y].concat();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, s.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
         Operation::Mstore,
         // Do the call
         Operation::Push((1_u8, ret_size.into())), //Ret size
