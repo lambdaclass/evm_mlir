@@ -8,7 +8,6 @@ use crate::{
 use sha3::{Digest, Keccak256};
 use std::collections::{hash_map::Entry, HashMap};
 use std::str::FromStr;
-use thiserror::Error;
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct JournalStorageSlot {
@@ -81,7 +80,6 @@ impl From<&JournalAccount> for AccountInfo {
 type AccountState = HashMap<Address, JournalAccount>;
 type ContractState = HashMap<B256, Bytecode>;
 
-#[allow(dead_code)] //TODO: Delete this
 #[derive(Default, Debug)]
 pub struct Journal<'a> {
     accounts: AccountState,
@@ -89,9 +87,6 @@ pub struct Journal<'a> {
     block_hashes: HashMap<U256, B256>,
     db: Option<&'a mut Db>,
 }
-#[derive(Error, Debug)]
-#[error("Journal Error")]
-pub struct JournalError;
 
 // TODO: Handle unwraps and panics
 // TODO: Improve overall performance
@@ -99,7 +94,6 @@ pub struct JournalError;
 //  -> Many copies, clones and Db fetches that may be reduced
 //  -> For the moment we seek for something that works.
 //  -> We can optimize in the future.
-#[allow(dead_code)] //TODO: Delete this
 impl<'a> Journal<'a> {
     pub fn new(db: &'a mut Db) -> Self {
         Self {
@@ -110,7 +104,6 @@ impl<'a> Journal<'a> {
 
     /* ACCOUNT HANDLING */
 
-    //TODO: Check if we really need to pass an init storage
     pub fn new_account(&mut self, address: Address, balance: U256) {
         // TODO: Check if account already exists and return error or panic
         let account = JournalAccount::new_created(balance);
@@ -133,7 +126,6 @@ impl<'a> Journal<'a> {
         self.contracts.insert(hash, bytecode);
     }
 
-    // TODO: We should add some checks here
     pub fn set_balance(&mut self, address: &Address, balance: U256) {
         if let Some(acc) = self._get_account_mut(address) {
             acc.balance = balance;
