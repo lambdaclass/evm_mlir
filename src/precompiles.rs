@@ -1,12 +1,12 @@
 use crate::{
-    constants::precompiles::{ECADD_COST, ECMUL_COST},
+    constants::precompiles::{ECADD_COST, ECMUL_COST, ECPAIRING_COST},
     primitives::U256,
 };
 use bytes::Bytes;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use substrate_bn::{AffineG1, Fq, Fr, G1};
+use substrate_bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 
 use crate::constants::precompiles::{
     identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST,
@@ -169,6 +169,7 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let x1 = Fq::from_slice(&calldata[..32]).unwrap();
     let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
     let s = Fr::from_slice(&calldata[64..96]).unwrap();
+    // TODO: check for infinity results
 
     let p: G1 = AffineG1::new(x1, y1).unwrap().into();
 
@@ -180,6 +181,51 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     sum.x().to_big_endian(&mut output[..32]).unwrap();
     sum.y().to_big_endian(&mut output[32..]).unwrap();
 
+    return Bytes::copy_from_slice(&output);
+}
+
+pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    if calldata.len() % 192 != 0 {
+        *consumed_gas += gas_limit;
+        return Bytes::new();
+    }
+    *consumed_gas += ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
+
+    let success = if calldata.is_empty() {
+        true
+    } else {
+        let rounds = calldata.len() / 192;
+        let mut mul = Gt::one();
+        for idx in 0..rounds {
+            let start = idx * 192;
+
+            let x1 = Fq::from_slice(&calldata[start..start + 32]).unwrap();
+            let y1 = Fq::from_slice(&calldata[start + 32..start + 64]).unwrap();
+            let x2 = Fq::from_slice(&calldata[start + 64..start + 96]).unwrap();
+            let y2 = Fq::from_slice(&calldata[start + 96..start + 128]).unwrap();
+            let x3 = Fq::from_slice(&calldata[start + 128..start + 160]).unwrap();
+            let y3 = Fq::from_slice(&calldata[start + 160..start + 192]).unwrap();
+
+            let p1: G1 = if x1.is_zero() && y1.is_zero() {
+                G1::zero()
+            } else {
+                G1::from(AffineG1::new(x1, y1).unwrap())
+            };
+            let p2 = Fq2::new(x2, y2);
+            let p3 = Fq2::new(x3, y3);
+
+            let b = if p2.is_zero() && p3.is_zero() {
+                G2::zero()
+            } else {
+                G2::from(AffineG2::new(p2, p3).unwrap())
+            };
+            mul = mul * pairing(p1, b);
+        }
+
+        mul == Gt::one()
+    };
+    let mut output = [0_u8; 32];
+    output[31] = success as u8;
     return Bytes::copy_from_slice(&output);
 }
 
@@ -241,5 +287,35 @@ mod tests {
         );
 
         assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_happy_path() {
+        let params = "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc";
+        let calldata = hex::decode(params).unwrap();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let mut res = [0_u8; 32];
+        res[31] = 1;
+        let expected_result = Bytes::copy_from_slice(&res);
+
+        let result = ecpairing(
+            &Bytes::copy_from_slice(&calldata),
+            gas_limit,
+            &mut consumed_gas,
+        );
+        assert_eq!(result, res);
     }
 }

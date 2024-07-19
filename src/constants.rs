@@ -173,6 +173,8 @@ pub mod precompiles {
     pub const ECADD_COST: u64 = 150;
     pub const ECMUL_ADDRESS: u64 = 0x07;
     pub const ECMUL_COST: u64 = 6000;
+    pub const ECPAIRING_ADDRESS: u64 = 0x08;
+    pub const ECPAIRING_COST: u64 = 45000;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
