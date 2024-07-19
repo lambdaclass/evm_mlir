@@ -136,21 +136,8 @@ impl Db {
             .collect()
     }
 
-    pub fn _store_contract(&mut self, account: &AccountInfo) {
-        if !account.has_code() {
-            return;
-        }
-        account.code.as_ref().map(|code| {
-            self.contracts
-                .entry(account.code_hash)
-                .or_insert_with(|| code.clone())
-        });
-    }
-
     pub fn commit(&mut self, changes: HashMap<Address, Account>) {
         for (address, mut account) in changes {
-            //NOTE: What happens if an account that was created and marked as selfdestructed
-            //receives a transfer? That balance will be lost since it wont be commited
             let not_modified =
                 !account.is_touched() && !account.is_created() && !account.is_selfdestructed();
             let created_and_destroyed = account.is_created() && account.is_selfdestructed();
@@ -160,7 +147,7 @@ impl Db {
             }
 
             if account.is_created() {
-                self._store_contract(&account.info);
+                self.store_contract(&account.info);
             }
 
             let mut db_account = self
@@ -178,6 +165,17 @@ impl Db {
                     .map(|(key, value)| (key, value.present_value)),
             );
         }
+    }
+
+    fn store_contract(&mut self, account: &AccountInfo) {
+        if !account.has_code() {
+            return;
+        }
+        account.code.as_ref().map(|code| {
+            self.contracts
+                .entry(account.code_hash)
+                .or_insert_with(|| code.clone())
+        });
     }
 }
 
