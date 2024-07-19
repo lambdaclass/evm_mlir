@@ -183,7 +183,7 @@ impl<'a> Journal<'a> {
     }
 
     pub fn prefetch_account_keys(&mut self, address: &Address, keys: &[U256]) {
-        let Some(_) = self._get_account(address) else {
+        if self._get_account(address).is_none() {
             return;
         };
 
