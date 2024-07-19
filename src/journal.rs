@@ -252,8 +252,6 @@ impl<'a> Journal<'a> {
 
     /* OTHER METHODS */
 
-    //NOTE: Here we are loosing the bytecode
-    //Idk why bytecode is separated from the Account
     pub fn into_state(&self) -> HashMap<Address, Account> {
         self.accounts
             .iter()

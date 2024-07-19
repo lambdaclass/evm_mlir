@@ -147,9 +147,6 @@ impl Db {
         });
     }
 
-    // NOTE: Here we are still losing bytecode and blockhashes
-    // TODO: We should do like revm, call self.insert_contract if account was created and holds
-    // code inside (hash is not empty) -> Maybe add method like Account::has_code() -> bool
     pub fn commit(&mut self, changes: HashMap<Address, Account>) {
         for (address, mut account) in changes {
             //NOTE: What happens if an account that was created and marked as selfdestructed
