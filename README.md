@@ -122,7 +122,7 @@ To only run the ethereum foundation tests, run the command `make test-eth`. if y
 
 To generate the necessary artifacts, you need to run `cargo run <filepath>`, with `<filepath>` being the path to a file containing the EVM bytecode to compile.
 
-Writing EVM bytecode directly can be a bit difficult, so you can edit [src/main.rs](../src/main.rs), modifying the `program` variable with the structure of your EVM program. After that you just run `cargo run`.
+Writing EVM bytecode directly can be a bit difficult, so you can edit [src/main.rs](./src/main.rs), modifying the `program` variable with the structure of your EVM program. After that you just run `cargo run`.
 
 An example edit would look like this:
 
