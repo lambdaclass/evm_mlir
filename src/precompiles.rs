@@ -6,10 +6,19 @@ use crate::{
     primitives::U256,
 };
 use bytes::Bytes;
+use lambdaworks_math::{
+    cyclic_group::IsGroup,
+    elliptic_curve::{
+        short_weierstrass::curves::bn_254::curve::{BN254Curve, BN254FieldElement},
+        traits::IsEllipticCurve,
+    },
+    traits::ByteConversion,
+    unsigned_integer::element::U256 as LambdaWorksU256,
+};
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use substrate_bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
+use substrate_bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Group, Gt, G1, G2};
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -134,23 +143,18 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     *consumed_gas += ECADD_COST;
 
     // Slice lengths are checked, so unwrap is safe
-    let x1 = Fq::from_slice(&calldata[..32]).unwrap();
-    let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
-    let x2 = Fq::from_slice(&calldata[64..96]).unwrap();
-    let y2 = Fq::from_slice(&calldata[96..128]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[64..96]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[96..128]).unwrap();
 
-    let p1: G1 = AffineG1::new(x1, y1).unwrap().into();
-    let p2: G1 = AffineG1::new(x2, y2).unwrap().into();
+    // TODO: check case when x == 0 && y == 0
+    let p1 = BN254Curve::create_point_from_affine(x1, y1).unwrap(); // TODO: handle unwrap
+    let p2 = BN254Curve::create_point_from_affine(x2, y2).unwrap(); // TODO: handle unwrap
 
-    let Some(sum) = AffineG1::from_jacobian(p1 + p2) else {
-        *consumed_gas += gas_limit - ECADD_COST;
-        return Bytes::new();
-    };
-    let mut output = [0_u8; 64];
-    sum.x().to_big_endian(&mut output[..32]).unwrap();
-    sum.y().to_big_endian(&mut output[32..]).unwrap();
-
-    Bytes::copy_from_slice(&output)
+    let sum = p1.operate_with(&p2);
+    let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
+    Bytes::from(res)
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -161,22 +165,16 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     *consumed_gas += ECMUL_COST;
 
     // Slice lengths are checked, so unwrap is safe
-    let x1 = Fq::from_slice(&calldata[..32]).unwrap();
-    let y1 = Fq::from_slice(&calldata[32..64]).unwrap();
-    let s = Fr::from_slice(&calldata[64..96]).unwrap();
-    // TODO: check for infinity results
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
+    let s = LambdaWorksU256::from_bytes_be(&calldata[64..96]).unwrap();
 
-    let p: G1 = AffineG1::new(x1, y1).unwrap().into(); // handle unwrap
+    // TODO: check case when x == 0 && y == 0
+    let p = BN254Curve::create_point_from_affine(x1, y1).unwrap(); // TODO: handle unwrap
 
-    let Some(sum) = AffineG1::from_jacobian(p * s) else {
-        *consumed_gas += gas_limit - ECMUL_COST;
-        return Bytes::new();
-    };
-    let mut output = [0_u8; 64];
-    sum.x().to_big_endian(&mut output[..32]).unwrap();
-    sum.y().to_big_endian(&mut output[32..]).unwrap();
-
-    Bytes::copy_from_slice(&output)
+    let mul = p.operate_with_self(s);
+    let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
+    Bytes::from(res)
 }
 
 pub fn ecpairing(
@@ -282,6 +280,63 @@ mod tests {
             &mut consumed_gas,
         );
 
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_happy_path() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3")
+                .unwrap();
+        let expected_y =
+            hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_happy_path() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3")
+                .unwrap();
+        let expected_y =
+            hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
