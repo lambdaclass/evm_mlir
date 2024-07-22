@@ -1,5 +1,8 @@
 use crate::{
-    constants::precompiles::{ECADD_COST, ECMUL_COST, ECPAIRING_COST},
+    constants::precompiles::{
+        identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECADD_COST,
+        ECMUL_COST, ECPAIRING_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+    },
     primitives::U256,
 };
 use bytes::Bytes;
@@ -7,11 +10,6 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 use substrate_bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
-
-use crate::constants::precompiles::{
-    identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECRECOVER_COST,
-    IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
-};
 
 pub fn ecrecover(
     calldata: &Bytes,
