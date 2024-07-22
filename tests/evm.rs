@@ -2691,7 +2691,7 @@ fn staticcall_on_precompile_ecrecover_happy_path() {
     let gas = 100_000_000_u32;
     let args_offset = 0_u8;
     let args_size = 128_u8;
-    let ret_offset = 0_u8;
+    let ret_offset = 128_u8;
     let ret_size = 32_u8;
     let hash =
         hex::decode("456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3").unwrap();
@@ -2703,9 +2703,10 @@ fn staticcall_on_precompile_ecrecover_happy_path() {
     let callee_address = Address::from_low_u64_be(ECRECOVER_ADDRESS);
     let caller_address = Address::from_low_u64_be(4040);
 
-    let expected_result = hex::decode("7156526fbd7a3c72969b54f64e42c10fbb768c8a").unwrap();
+    let expected_result =
+        hex::decode("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a").unwrap();
 
-    let mut caller_ops = vec![
+    let caller_ops = vec![
         // Place the parameters in memory
         Operation::Push((32_u8, BigUint::from_bytes_be(&hash))),
         Operation::Push((1_u8, BigUint::ZERO)),
@@ -2728,12 +2729,10 @@ fn staticcall_on_precompile_ecrecover_happy_path() {
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, 20_u8.into())),
-        Operation::Push((1_u8, 12_u8.into())),
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
         Operation::Return,
     ];
-
-    append_return_result_operations(&mut caller_ops);
 
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
@@ -2749,7 +2748,7 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
     let gas = 0_u32;
     let args_offset = 0_u8;
     let args_size = 128_u8;
-    let ret_offset = 0_u8;
+    let ret_offset = 128_u8;
     let ret_size = 32_u8;
     let hash =
         hex::decode("456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3").unwrap();
@@ -2761,9 +2760,9 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
     let callee_address = Address::from_low_u64_be(ECRECOVER_ADDRESS);
     let caller_address = Address::from_low_u64_be(4040);
 
-    let expected_result = [0_u8; 20];
+    let expected_result = [0_u8; 32];
 
-    let mut caller_ops = vec![
+    let caller_ops = vec![
         // Place the parameters in memory
         Operation::Push((32_u8, BigUint::from_bytes_be(&hash))),
         Operation::Push((1_u8, BigUint::ZERO)),
@@ -2786,12 +2785,10 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, 20_u8.into())),
-        Operation::Push((1_u8, 12_u8.into())),
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
         Operation::Return,
     ];
-
-    append_return_result_operations(&mut caller_ops);
 
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
@@ -2815,7 +2812,7 @@ fn staticcall_on_precompile_identity_happy_path() {
 
     let expected_result = [0xff];
 
-    let mut caller_ops = vec![
+    let caller_ops = vec![
         // Place the parameter in memory
         Operation::Push((1_u8, BigUint::from(data))),
         Operation::Push((1_u8, BigUint::ZERO)),
@@ -2829,12 +2826,10 @@ fn staticcall_on_precompile_identity_happy_path() {
         Operation::Push((32_u8, BigUint::from(gas))),     //Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, 1_u8.into())),
-        Operation::Push((1_u8, 63_u8.into())),
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
         Operation::Return,
     ];
-
-    append_return_result_operations(&mut caller_ops);
 
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());

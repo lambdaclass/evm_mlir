@@ -15,7 +15,7 @@ pub fn ecrecover(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, secp256k1::Error> {
     if gas_limit < ECRECOVER_COST || calldata.len() < 128 {
-        return Ok(Bytes::from_static(&[0_u8; 32]));
+        return Ok(Bytes::new());
     }
     *consumed_gas += ECRECOVER_COST;
     let hash = &calldata[0..32];
