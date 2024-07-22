@@ -129,7 +129,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
 }
 
 pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() < 128 {
+    if calldata.len() < 128 || gas_limit < ECADD_COST {
         *consumed_gas += gas_limit;
         return Bytes::new();
     }
@@ -156,7 +156,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() < 96 {
+    if calldata.len() < 96 || gas_limit < ECMUL_COST {
         *consumed_gas += gas_limit;
         return Bytes::new();
     }
@@ -168,7 +168,7 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let s = Fr::from_slice(&calldata[64..96]).unwrap();
     // TODO: check for infinity results
 
-    let p: G1 = AffineG1::new(x1, y1).unwrap().into();
+    let p: G1 = AffineG1::new(x1, y1).unwrap().into(); // handle unwrap
 
     let Some(sum) = AffineG1::from_jacobian(p * s) else {
         *consumed_gas += gas_limit - ECMUL_COST;
@@ -182,45 +182,42 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 }
 
 pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() % 192 != 0 {
+    let gas_cost = ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
+    if calldata.len() % 192 != 0 || gas_limit < gas_cost {
         *consumed_gas += gas_limit;
         return Bytes::new();
     }
-    *consumed_gas += ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
+    *consumed_gas += gas_cost;
 
-    let success = if calldata.is_empty() {
-        true
-    } else {
-        let rounds = calldata.len() / 192;
-        let mut mul = Gt::one();
-        for idx in 0..rounds {
-            let start = idx * 192;
+    let rounds = calldata.len() / 192;
+    let mut mul = Gt::one();
+    for idx in 0..rounds {
+        let start = idx * 192;
 
-            let x1 = Fq::from_slice(&calldata[start..start + 32]).unwrap();
-            let y1 = Fq::from_slice(&calldata[start + 32..start + 64]).unwrap();
-            let x2 = Fq::from_slice(&calldata[start + 64..start + 96]).unwrap();
-            let y2 = Fq::from_slice(&calldata[start + 96..start + 128]).unwrap();
-            let x3 = Fq::from_slice(&calldata[start + 128..start + 160]).unwrap();
-            let y3 = Fq::from_slice(&calldata[start + 160..start + 192]).unwrap();
+        let x1 = Fq::from_slice(&calldata[start..start + 32]).unwrap();
+        let y1 = Fq::from_slice(&calldata[start + 32..start + 64]).unwrap();
+        let x2 = Fq::from_slice(&calldata[start + 64..start + 96]).unwrap();
+        let y2 = Fq::from_slice(&calldata[start + 96..start + 128]).unwrap();
+        let x3 = Fq::from_slice(&calldata[start + 128..start + 160]).unwrap();
+        let y3 = Fq::from_slice(&calldata[start + 160..start + 192]).unwrap();
 
-            let p1: G1 = if x1.is_zero() && y1.is_zero() {
-                G1::zero()
-            } else {
-                G1::from(AffineG1::new(x1, y1).unwrap())
-            };
-            let p2 = Fq2::new(x2, y2);
-            let p3 = Fq2::new(x3, y3);
+        let p1: G1 = if x1.is_zero() && y1.is_zero() {
+            G1::zero()
+        } else {
+            G1::from(AffineG1::new(x1, y1).unwrap())
+        };
+        let p2 = Fq2::new(y2, x2); // TODO: check if this is OK, only works using (y,x) instead of (x,y)
+        let p3 = Fq2::new(y3, x3);
 
-            let b = if p2.is_zero() && p3.is_zero() {
-                G2::zero()
-            } else {
-                G2::from(AffineG2::new(p2, p3).unwrap())
-            };
-            mul = mul * pairing(p1, b);
-        }
+        let b = if p2.is_zero() && p3.is_zero() {
+            G2::zero()
+        } else {
+            G2::from(AffineG2::new(p2, p3).unwrap())
+        };
+        mul = mul * pairing(p1, b);
+    }
 
-        mul == Gt::one()
-    };
+    let success = mul == Gt::one();
     let mut output = [0_u8; 32];
     output[31] = success as u8;
     return Bytes::copy_from_slice(&output);
@@ -301,6 +298,8 @@ mod tests {
             091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
             2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
             23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc";
+        let expected_gas = 113000;
+
         let calldata = hex::decode(params).unwrap();
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
@@ -313,6 +312,9 @@ mod tests {
             gas_limit,
             &mut consumed_gas,
         );
-        assert_eq!(result, res);
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
     }
+
+    // TODO: add tests for not in curve cases, and zero values
 }
