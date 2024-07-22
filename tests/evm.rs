@@ -2874,7 +2874,6 @@ fn staticcall_on_precompile_blake2f_happy_path() {
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
-#[ignore]
 #[test]
 fn extcodehash_happy_path() {
     let address_number = 10;
