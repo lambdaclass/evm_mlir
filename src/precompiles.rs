@@ -334,7 +334,7 @@ mod tests {
             hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
