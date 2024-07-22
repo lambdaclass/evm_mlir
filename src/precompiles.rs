@@ -152,7 +152,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     sum.x().to_big_endian(&mut output[..32]).unwrap();
     sum.y().to_big_endian(&mut output[32..]).unwrap();
 
-    return Bytes::copy_from_slice(&output);
+    Bytes::copy_from_slice(&output)
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -178,14 +178,18 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     sum.x().to_big_endian(&mut output[..32]).unwrap();
     sum.y().to_big_endian(&mut output[32..]).unwrap();
 
-    return Bytes::copy_from_slice(&output);
+    Bytes::copy_from_slice(&output)
 }
 
-pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn ecpairing(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, substrate_bn::GroupError> {
     let gas_cost = ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
     if calldata.len() % 192 != 0 || gas_limit < gas_cost {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Ok(Bytes::new());
     }
     *consumed_gas += gas_cost;
 
@@ -204,7 +208,7 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
         let p1: G1 = if x1.is_zero() && y1.is_zero() {
             G1::zero()
         } else {
-            G1::from(AffineG1::new(x1, y1).unwrap())
+            G1::from(AffineG1::new(x1, y1)?)
         };
         let p2 = Fq2::new(y2, x2); // TODO: check if this is OK, only works using (y,x) instead of (x,y)
         let p3 = Fq2::new(y3, x3);
@@ -212,15 +216,15 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
         let b = if p2.is_zero() && p3.is_zero() {
             G2::zero()
         } else {
-            G2::from(AffineG2::new(p2, p3).unwrap())
+            G2::from(AffineG2::new(p2, p3)?)
         };
         mul = mul * pairing(p1, b);
     }
 
     let success = mul == Gt::one();
-    let mut output = [0_u8; 32];
+    let mut output = vec![0_u8; 32];
     output[31] = success as u8;
-    return Bytes::copy_from_slice(&output);
+    Ok(Bytes::from(output))
 }
 
 #[cfg(test)]
@@ -285,7 +289,9 @@ mod tests {
 
     #[test]
     fn ecpairing_happy_path() {
-        let params = "\
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
             2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
             2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
             1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
@@ -297,24 +303,63 @@ mod tests {
             1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
             091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
             2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
-            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc";
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc",
+            )
+            .unwrap(),
+        );
         let expected_gas = 113000;
-
-        let calldata = hex::decode(params).unwrap();
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let mut res = [0_u8; 32];
-        res[31] = 1;
-        let expected_result = Bytes::copy_from_slice(&res);
 
-        let result = ecpairing(
-            &Bytes::copy_from_slice(&calldata),
-            gas_limit,
-            &mut consumed_gas,
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
         );
-        assert_eq!(result, expected_result);
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
-    // TODO: add tests for not in curve cases, and zero values
+    #[test]
+    fn ecpairing_out_of_curve() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_err());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_invalid_calldata() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::new();
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, gas_limit);
+    }
 }
