@@ -162,6 +162,11 @@ pub mod call_opcode {
 pub mod precompiles {
     pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
+    pub const BLAKE2F_ADDRESS: u64 = 0x09;
+
+    pub fn blake2_gas_cost(rounds: u32) -> u64 {
+        rounds as u64
+    }
 }
 
 #[derive(PartialEq, Debug)]

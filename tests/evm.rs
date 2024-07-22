@@ -3,7 +3,11 @@ use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::{call_opcode, gas_cost, precompiles::ECRECOVER_ADDRESS, EMPTY_CODE_HASH_STR},
+    constants::{
+        call_opcode, gas_cost,
+        precompiles::{BLAKE2F_ADDRESS, ECRECOVER_ADDRESS},
+        EMPTY_CODE_HASH_STR,
+    },
     db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -2792,6 +2796,85 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
+#[test]
+fn staticcall_on_precompile_blake2f_happy_path() {
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let args_size = 213_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 64_u8;
+
+    // 4 bytes
+    let rounds = hex::decode("0000000c").unwrap();
+    // 64 bytes
+    let h = hex::decode("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b").unwrap();
+    // 128 bytes
+    let m = hex::decode("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap();
+    // 16 bytes
+    let t = hex::decode("03000000000000000000000000000000").unwrap();
+    // 1 bytes
+    let f = hex::decode("01").unwrap();
+
+    // Reach 32 bytes multiple
+    let padding = vec![0_u8; 11];
+
+    let calldata = [rounds, h, m, t, f, padding].concat();
+
+    let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let expected_result = hex::decode(
+        "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923"
+    ).unwrap();
+
+    let caller_ops = vec![
+        // Place the parameters in memory
+        // rounds - 4 bytes
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[..32]))),
+        Operation::Push((32_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[32..64]))),
+        Operation::Push((32_u8, 32_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[64..96]))),
+        Operation::Push((32_u8, 64_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[96..128]))),
+        Operation::Push((32_u8, 96_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[128..160]))),
+        Operation::Push((32_u8, 128_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[160..192]))),
+        Operation::Push((32_u8, 160_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[192..224]))),
+        Operation::Push((32_u8, 192_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[ignore]
 #[test]
 fn extcodehash_happy_path() {
     let address_number = 10;
