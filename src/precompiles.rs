@@ -19,7 +19,7 @@ pub fn ecrecover(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, secp256k1::Error> {
     if gas_limit < ECRECOVER_COST || calldata.len() < 128 {
-        return Ok(Bytes::from_static(&[0_u8; 32]));
+        return Ok(Bytes::new());
     }
     *consumed_gas += ECRECOVER_COST;
     let hash = &calldata[0..32];
@@ -121,10 +121,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     } else if e == BigUint::ZERO {
         BigUint::from(1_u8) % m
     } else {
-        // TODO: casting exp as u32, change pow to a more powerful method
-        // Maybe https://docs.rs/aurora-engine-modexp/latest/aurora_engine_modexp/
-        let e: u32 = e.try_into().unwrap();
-        b.pow(e) % m
+        b.modpow(&e, &m)
     };
 
     let output = &result.to_bytes_be()[..m_size];
