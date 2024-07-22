@@ -853,6 +853,7 @@ dependencies = [
  "mlir-sys",
  "num-bigint",
  "rstest",
+ "secp256k1",
  "serde",
  "serde_json",
  "sha3",
