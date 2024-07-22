@@ -2792,13 +2792,12 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
     let mut env = Env::default();
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
 fn staticcall_on_precompile_identity_happy_path() {
-    let db = Db::new();
-    let origin = Address::from_low_u64_be(79);
-
     let gas: u32 = 100_000_000;
     let args_offset: u8 = 31;
     let args_size: u8 = 1;
