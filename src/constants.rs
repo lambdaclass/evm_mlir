@@ -169,6 +169,7 @@ pub mod precompiles {
     pub const IDENTITY_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
     pub const MODEXP_ADDRESS: u64 = 0x05;
+    pub const BLAKE2F_ADDRESS: u64 = 0x09;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
@@ -180,6 +181,10 @@ pub mod precompiles {
 
     pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 120
+    }
+
+    pub fn blake2_gas_cost(rounds: u32) -> u64 {
+        rounds as u64
     }
 }
 
