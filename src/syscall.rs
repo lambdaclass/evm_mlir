@@ -20,14 +20,15 @@ use std::ffi::c_void;
 use crate::{
     constants::{call_opcode, gas_cost, precompiles, CallType},
     context::Context,
-    db::{AccountInfo, Database, Db},
+    db::AccountInfo,
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
-    precompiles::{blake2f, ecrecover},
+    journal::Journal,
+    precompiles::{blake2f, ecrecover, identity},
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
-    state::{AccountStatus, EvmStorageSlot},
+    state::AccountStatus,
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
@@ -114,7 +115,6 @@ pub struct InnerContext {
     gas_refund: u64,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
-    journaled_storage: HashMap<EU256, EvmStorageSlot>, // TODO: rename to journaled_state and move into a separate Struct
 }
 
 /// Information about current call frame
@@ -139,10 +139,10 @@ impl CallFrame {
 #[derive(Debug)]
 pub struct SyscallContext<'c> {
     pub env: Env,
-    pub db: &'c mut Db,
+    pub journal: Journal<'c>,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
-    pub transient_storage: HashMap<(Address, EU256), EU256>,
+    pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -159,10 +159,10 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, db: &'c mut Db, call_frame: CallFrame) -> Self {
+    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame) -> Self {
         Self {
             env,
-            db,
+            journal,
             call_frame,
             inner_context: Default::default(),
             transient_storage: Default::default(),
@@ -221,14 +221,8 @@ impl<'c> SyscallContext<'c> {
             },
         };
 
-        let mut state = self.db.clone().into_state();
-        let callee_address = self.env.tx.get_address();
-
-        state
-            .entry(callee_address)
-            .or_default()
-            .storage
-            .extend(self.inner_context.journaled_storage.clone());
+        // TODO: Check if this is ok
+        let state = self.journal.into_state();
 
         Ok(ResultAndState { result, state })
     }
@@ -285,18 +279,9 @@ impl<'c> SyscallContext<'c> {
     ) -> u8 {
         //TODO: Add call depth check
         //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
+        //TODO: This should instead add the account fetch (warm or cold) cost
+        //For the moment we consider warm access
         let callee_address = Address::from(call_to_address);
-        let this_address = self.env.tx.get_address();
-        let call_type =
-            CallType::try_from(call_type).expect("Error while parsing CallType on call syscall");
-        let value = value_to_transfer.to_primitive_u256();
-        let (new_frame_caller, new_value, transact_to) = match call_type {
-            CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
-            CallType::CallCode => (this_address, value, this_address),
-            CallType::DelegateCall => (self.call_frame.caller, self.env.tx.value, this_address),
-        };
-        let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
-
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
@@ -311,17 +296,27 @@ impl<'c> SyscallContext<'c> {
                 call_opcode::SUCCESS_RETURN_CODE,
                 blake2f(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
             ),
+            x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                identity(&calldata, gas_to_send, consumed_gas),
+            ),
             _ => {
                 // Execute subcontext
+                //TODO: Add call depth check
+                //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
+                let callee_address = Address::from(call_to_address);
+                let value = value_to_transfer.to_primitive_u256();
+                let call_type = CallType::try_from(call_type)
+                    .expect("Error while parsing CallType on call syscall");
 
                 //TODO: This should instead add the account fetch (warm or cold) cost
                 //For the moment we consider warm access
-                let callee_account = match self.db.basic(callee_address) {
-                    Ok(maybe_account) => {
+                let callee_account = match self.journal.get_account(&callee_address) {
+                    Some(acc) => {
                         *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                        maybe_account.unwrap_or_else(AccountInfo::empty)
+                        acc
                     }
-                    Err(_) => {
+                    None => {
                         *consumed_gas = 0;
                         return call_opcode::REVERT_RETURN_CODE;
                     }
@@ -329,9 +324,8 @@ impl<'c> SyscallContext<'c> {
 
                 let caller_address = self.env.tx.get_address();
                 let caller_account = self
-                    .db
-                    .basic(caller_address)
-                    .unwrap() //We are sure it exists
+                    .journal
+                    .get_account(&caller_address)
                     .unwrap_or_default();
 
                 let mut stipend = 0;
@@ -345,28 +339,18 @@ impl<'c> SyscallContext<'c> {
                         *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
                     }
                     if available_gas < *consumed_gas {
-                        return call_opcode::REVERT_RETURN_CODE; //It actually doesn't matter what we return here
+                        return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
                     }
                     stipend = call_opcode::STIPEND_GAS_ADDITION;
 
                     //TODO: Maybe we should increment the nonce too
                     let caller_balance = caller_account.balance;
-                    let caller_nonce = caller_account.nonce;
-                    self.db.set_account(
-                        caller_address,
-                        caller_nonce,
-                        caller_balance - value,
-                        Default::default(),
-                    );
+                    self.journal
+                        .set_balance(&caller_address, caller_balance - value);
 
                     let callee_balance = callee_account.balance;
-                    let callee_nonce = callee_account.nonce;
-                    self.db.set_account(
-                        callee_address,
-                        callee_nonce,
-                        callee_balance + value,
-                        Default::default(),
-                    );
+                    self.journal
+                        .set_balance(&callee_address, callee_balance + value);
                 }
 
                 let remaining_gas = available_gas - *consumed_gas;
@@ -378,17 +362,30 @@ impl<'c> SyscallContext<'c> {
                 gas_to_send += stipend;
 
                 let mut env = self.env.clone();
-                env.tx.transact_to = TransactTo::Call(transact_to);
+
+                //TODO: Check if calling `get_address()` here is ok
+                let this_address = self.env.tx.get_address();
+                let (new_frame_caller, new_value, transact_to) = match call_type {
+                    CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
+                    CallType::CallCode => (this_address, value, this_address),
+                    CallType::DelegateCall => {
+                        (self.call_frame.caller, self.env.tx.value, this_address)
+                    }
+                };
+
                 env.tx.value = new_value;
+                env.tx.transact_to = TransactTo::Call(transact_to);
                 env.tx.gas_limit = gas_to_send;
-                env.tx.data = calldata;
+
+                //Copy the calldata from memory
+                let off = args_offset as usize;
+                let size = args_size as usize;
+                env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+
                 //NOTE: We could optimize this by not making the call if the bytecode is zero.
                 //We would have to refund the stipend here
                 //TODO: Check if returning REVERT because of database fail is ok
-                let Ok(bytecode) = self.db.code_by_address(callee_address) else {
-                    *consumed_gas = 0;
-                    return call_opcode::REVERT_RETURN_CODE;
-                };
+                let bytecode = self.journal.code_by_address(&callee_address);
 
                 let program = Program::from_bytecode(&bytecode);
 
@@ -397,22 +394,32 @@ impl<'c> SyscallContext<'c> {
                     .compile(&program, Default::default())
                     .expect("failed to compile program");
 
+                let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
+
                 let call_frame = CallFrame {
                     caller: new_frame_caller,
                     ctx_is_static: is_static,
                     ..Default::default()
                 };
-                let mut context = SyscallContext::new(env.clone(), self.db, call_frame);
+
+                let journal = self.journal.eject_base();
+
+                let mut context = SyscallContext::new(env.clone(), journal, call_frame);
                 let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+
                 executor.execute(&mut context, env.tx.gas_limit);
+
                 let result = context.get_result().unwrap().result;
 
                 let unused_gas = gas_to_send - result.gas_used();
                 *consumed_gas -= unused_gas;
+                *consumed_gas -= result.gas_refunded();
                 let return_code = if result.is_success() {
+                    self.journal.extend_from_successful(context.journal);
                     call_opcode::SUCCESS_RETURN_CODE
                 } else {
                     //TODO: If we revert, should we still send the value to the called contract?
+                    self.journal.extend_from_reverted(context.journal);
                     call_opcode::REVERT_RETURN_CODE
                 };
                 let output = result.into_output().unwrap_or_default();
@@ -472,7 +479,7 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
-            TransactTo::Call(address) => self.db.basic(address).unwrap().unwrap_or_default(),
+            TransactTo::Call(address) => self.journal.get_account(&address).unwrap_or_default(),
             TransactTo::Create => AccountInfo::default(), //This branch should never happen
         };
         balance.hi = (account.balance >> 128).low_u128();
@@ -590,11 +597,10 @@ impl<'c> SyscallContext<'c> {
 
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
-            .inner_context
-            .journaled_storage
-            .get(&key)
-            .map(|slot| slot.present_value)
-            .unwrap_or_else(|| self.db.read_storage(address, key));
+            .journal
+            .read_storage(&address, &key)
+            .unwrap_or_default()
+            .present_value;
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
@@ -608,30 +614,13 @@ impl<'c> SyscallContext<'c> {
             return 0;
         };
 
-        // Update the journaled storage and retrieve the previous stored values.
-        let (original, current, is_cold) = match self.inner_context.journaled_storage.get_mut(&key)
-        {
-            Some(slot) => {
-                let current_value = slot.present_value;
-                let is_cold = slot.is_cold;
+        let is_cold = !self.journal.key_is_warm(&address, &key);
+        let slot = self.journal.read_storage(&address, &key);
+        self.journal.write_storage(&address, key, value);
 
-                slot.present_value = value;
-                slot.is_cold = false;
-
-                (slot.original_value, current_value, is_cold)
-            }
-            None => {
-                let original_value = self.db.read_storage(address, key);
-                self.inner_context.journaled_storage.insert(
-                    key,
-                    EvmStorageSlot {
-                        original_value,
-                        present_value: value,
-                        is_cold: false,
-                    },
-                );
-                (original_value, original_value, true)
-            }
+        let (original, current) = match slot {
+            Some(slot) => (slot.original_value, slot.present_value),
+            None => (value, value),
         };
 
         // Compute the gas cost
@@ -736,7 +725,7 @@ impl<'c> SyscallContext<'c> {
             // TODO: check if this is necessary. Db should only contain last 256 blocks, so number check would not be needed.
             B256::zero()
         } else {
-            self.db.block_hash(number_as_u256).unwrap_or(B256::zero())
+            self.journal.get_block_hash(&number_as_u256)
         };
 
         let (hi, lo) = hash.as_bytes().split_at(16);
@@ -758,14 +747,7 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        self.db
-            .code_by_address(Address::from(address))
-            .map_err(|e| {
-                eprintln!("{e}");
-                e
-            })
-            .unwrap_or_default()
-            .len() as _
+        self.journal.code_by_address(&Address::from(address)).len() as _
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
@@ -805,7 +787,7 @@ impl<'c> SyscallContext<'c> {
 
             let address = Address::from_slice(&address_slice);
 
-            match self.db.basic(address).unwrap() {
+            match self.journal.get_account(&address) {
                 Some(a) => {
                     balance.hi = (a.balance >> 128).low_u128();
                     balance.lo = a.balance.low_u128();
@@ -843,14 +825,7 @@ impl<'c> SyscallContext<'c> {
         let address = Address::from(address_value);
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
-        let code = self
-            .db
-            .code_by_address(address)
-            .map_err(|e| {
-                eprintln!("{e}");
-                e
-            })
-            .unwrap_or_default();
+        let code = self.journal.code_by_address(&address);
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];
@@ -864,8 +839,8 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
-        let hash = match self.db.basic(Address::from(address as &U256)) {
-            Ok(Some(account_info)) => account_info.code_hash,
+        let hash = match self.journal.get_account(&Address::from(address as &U256)) {
+            Some(account_info) => account_info.code_hash,
             _ => B256::zero(),
         };
 
@@ -889,7 +864,7 @@ impl<'c> SyscallContext<'c> {
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
-        let sender_account = self.db.basic(sender_address).unwrap().unwrap();
+        let sender_account = self.journal.get_account(&sender_address).unwrap();
 
         let (dest_addr, hash_cost) = match salt {
             Some(s) => (
@@ -907,7 +882,7 @@ impl<'c> SyscallContext<'c> {
         };
 
         // Check if there is already a contract stored in dest_address
-        if let Ok(Some(_)) = self.db.basic(dest_addr) {
+        if self.journal.get_account(&dest_addr).is_some() {
             return 1;
         }
 
@@ -916,7 +891,6 @@ impl<'c> SyscallContext<'c> {
         let mut new_env = self.env.clone();
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
         new_env.tx.gas_limit = *remaining_gas;
-        new_env.tx.caller = self.env.tx.caller;
         let call_frame = CallFrame::new(sender_address);
 
         // Execute initialization code
@@ -924,11 +898,16 @@ impl<'c> SyscallContext<'c> {
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
-        let mut context = SyscallContext::new(new_env.clone(), self.db, call_frame);
+
+        // NOTE: Here we are not taking into account what happens if the deployment code reverts
+        let ctx_journal = self.journal.eject_base();
+        let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
+
+        self.journal.extend_from_successful(context.journal);
 
         // Set the gas cost
         let init_code_cost = minimum_word_size * gas_cost::INIT_WORD_COST as u64;
@@ -944,13 +923,11 @@ impl<'c> SyscallContext<'c> {
         };
 
         // Create new contract and update sender account
-        self.db.insert_contract(dest_addr, bytecode, value_as_u256);
-        self.db.set_account(
-            sender_address,
-            sender_account.nonce + 1,
-            sender_balance,
-            Default::default(),
-        );
+        self.journal
+            .new_contract(dest_addr, bytecode, value_as_u256);
+        self.journal
+            .set_nonce(&sender_address, sender_account.nonce + 1);
+        self.journal.set_balance(&sender_address, sender_balance);
 
         value.copy_from(&dest_addr);
 
@@ -983,23 +960,33 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
 
-        let sender_balance = self.db.get_balance(sender_address).unwrap_or_default();
-        let receiver = self
-            .db
-            .basic(receiver_address)
-            .unwrap()
-            .unwrap_or_else(AccountInfo::empty);
+        let sender_balance = self
+            .journal
+            .get_account(&sender_address)
+            .unwrap_or_default()
+            .balance;
 
-        self.db.set_balance(sender_address, EU256::zero());
-        self.db
-            .set_balance(receiver_address, receiver.balance + sender_balance);
+        let receiver_is_empty = match self.journal.get_account(&receiver_address) {
+            Some(receiver) => {
+                let is_empty = receiver.is_empty();
+                self.journal
+                    .set_balance(&receiver_address, receiver.balance + sender_balance);
+                is_empty
+            }
+            None => {
+                self.journal.new_account(receiver_address, sender_balance);
+                true
+            }
+        };
 
-        if self.db.address_is_created(sender_address) {
-            self.db
-                .set_status(sender_address, AccountStatus::SelfDestructed);
+        self.journal.set_balance(&sender_address, EU256::zero());
+
+        if self.journal.get_account(&sender_address).is_some() {
+            self.journal
+                .set_status(&sender_address, AccountStatus::SelfDestructed);
         }
 
-        if !sender_balance.is_zero() && receiver.is_empty() {
+        if !sender_balance.is_zero() && receiver_is_empty {
             gas_cost::SELFDESTRUCT_DYNAMIC_GAS as u64
         } else {
             0

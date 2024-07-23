@@ -1,8 +1,9 @@
 use builder::EvmBuilder;
 use db::{Database, Db};
 use executor::{Executor, OptLevel};
+use journal::Journal;
 use program::Program;
-use result::{EVMError, ResultAndState};
+use result::{EVMError, ExecutionResult, ResultAndState};
 use syscall::{CallFrame, SyscallContext};
 
 use crate::context::Context;
@@ -21,6 +22,7 @@ pub mod program;
 pub mod syscall;
 pub mod utils;
 pub use env::Env;
+pub mod journal;
 pub mod precompiles;
 pub mod result;
 pub mod state;
@@ -65,7 +67,8 @@ impl Evm<Db> {
             .expect("failed to compile program");
 
         let call_frame = CallFrame::new(self.env.tx.caller);
-        let mut context = SyscallContext::new(self.env.clone(), &mut self.db, call_frame);
+        let journal = Journal::new(&mut self.db);
+        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
@@ -73,5 +76,11 @@ impl Evm<Db> {
         executor.execute(&mut context, self.env.tx.gas_limit);
 
         context.get_result()
+    }
+
+    pub fn transact_commit(&mut self) -> Result<ExecutionResult, EVMError> {
+        let ResultAndState { state, result } = self.transact()?;
+        self.db.commit(state);
+        Ok(result)
     }
 }

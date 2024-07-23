@@ -163,6 +163,12 @@ pub mod precompiles {
     pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
     pub const BLAKE2F_ADDRESS: u64 = 0x09;
+    pub const IDENTITY_COST: u64 = 15;
+    pub const IDENTITY_ADDRESS: u64 = 0x04;
+
+    pub fn identity_dynamic_cost(len: u64) -> u64 {
+        (len + 31) / 32 * 3
+    }
 
     pub fn blake2_gas_cost(rounds: u32) -> u64 {
         rounds as u64
