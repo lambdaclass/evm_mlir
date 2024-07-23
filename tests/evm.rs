@@ -5,7 +5,10 @@ use std::{collections::HashMap, str::FromStr};
 use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
-        precompiles::{ECRECOVER_ADDRESS, IDENTITY_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS},
+        precompiles::{
+            ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS,
+            SHA2_256_ADDRESS,
+        },
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
@@ -2914,6 +2917,63 @@ fn staticcall_on_precompile_ripemd_160_happy_path() {
     ];
 
     append_return_result_operations(&mut caller_ops);
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_modexp_happy_path() {
+    let ret_size: u8 = 2;
+    let ret_offset: u8 = 159;
+    let args_size: u8 = 100; // bsize (32) + esize (32) + msize (32) + b (1) + e (1) + m (2). In total, 100 bytes
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let b_size: u8 = 1;
+    let e_size: u8 = 1;
+    let m_size: u8 = 2;
+    // Word with b = 8, e = 9, m = 501
+    let params =
+        &hex::decode("080901F500000000000000000000000000000000000000000000000000000000").unwrap();
+
+    // 329 = (8 ^ 9) mod 501
+    let expected_result = 329_u16.to_be_bytes();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((1_u8, b_size.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, e_size.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((1_u8, m_size.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(params))),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), //Ret size
+        Operation::Push((1_u8, ret_offset.into())), //Ret offset
+        Operation::Push((1_u8, args_size.into())), //Args size
+        Operation::Push((1_u8, args_offset.into())), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, gas.into())),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
 
     let program = Program::from(caller_ops);
     let caller_bytecode = Bytecode::from(program.to_bytecode());
