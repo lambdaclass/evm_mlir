@@ -2973,6 +2973,7 @@ fn staticcall_on_precompile_modexp_happy_path() {
     run_program_assert_bytes_result(env, db, &expected_result);
 }
 
+#[test]
 fn staticcall_on_precompile_blake2f_happy_path() {
     let gas = 100_000_000_u32;
     let args_offset = 0_u8;
