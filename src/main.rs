@@ -5,6 +5,7 @@ use evm_mlir::{
     db::Db,
     env::Env,
     executor::{Executor, OptLevel},
+    journal::Journal,
     program::Program,
     syscall::SyscallContext,
 };
@@ -34,7 +35,8 @@ fn main() {
 
     let env = Env::default();
     let mut db = Db::default();
-    let mut context = SyscallContext::new(env, &mut db, Default::default());
+    let journal = Journal::new(&mut db);
+    let mut context = SyscallContext::new(env, journal, Default::default());
     let executor = Executor::new(&module, &context, opt_level);
 
     let initial_gas = 1000;

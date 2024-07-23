@@ -2250,6 +2250,7 @@ fn codegen_sload<'c, 'r>(
 
     // Check there's enough elements in the stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
+    //TODO: We have to take into account key warm/cold access
     // Check there's enough gas
     let gas_flag = consume_gas(context, &start_block, gas_cost::SLOAD)?;
 

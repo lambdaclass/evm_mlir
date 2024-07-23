@@ -13,6 +13,23 @@ pub struct Account {
     pub status: AccountStatus,
 }
 
+impl Account {
+    /// Is account marked for selfdestruction.
+    pub fn is_selfdestructed(&self) -> bool {
+        self.status.contains(AccountStatus::SelfDestructed)
+    }
+
+    /// Is account marked as created.
+    pub fn is_created(&self) -> bool {
+        self.status.contains(AccountStatus::Created)
+    }
+
+    /// If account status is marked as touched.
+    pub fn is_touched(&self) -> bool {
+        self.status.contains(AccountStatus::Touched)
+    }
+}
+
 // The `bitflags!` macro generates `struct`s that manage a set of flags.
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

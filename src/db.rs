@@ -135,6 +135,48 @@ impl Db {
             })
             .collect()
     }
+
+    pub fn commit(&mut self, changes: HashMap<Address, Account>) {
+        for (address, mut account) in changes {
+            let not_modified =
+                !account.is_touched() && !account.is_created() && !account.is_selfdestructed();
+            let created_and_destroyed = account.is_created() && account.is_selfdestructed();
+
+            if created_and_destroyed || not_modified {
+                continue;
+            }
+
+            if account.is_created() {
+                self.store_contract(&account.info);
+            }
+
+            let mut db_account = self
+                .accounts
+                .entry(address)
+                .or_insert_with(DbAccount::empty);
+            db_account.nonce = account.info.nonce;
+            db_account.balance = account.info.balance;
+            db_account.status = AccountStatus::Cold;
+            db_account.bytecode_hash = account.info.code_hash;
+            db_account.storage.extend(
+                account
+                    .storage
+                    .into_iter()
+                    .map(|(key, value)| (key, value.present_value)),
+            );
+        }
+    }
+
+    fn store_contract(&mut self, account: &AccountInfo) {
+        if !account.has_code() {
+            return;
+        }
+        account.code.as_ref().map(|code| {
+            self.contracts
+                .entry(account.code_hash)
+                .or_insert_with(|| code.clone())
+        });
+    }
 }
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
@@ -161,6 +203,11 @@ impl AccountInfo {
         self.balance.is_zero()
             && self.nonce == 0
             && self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap()
+    }
+
+    pub fn has_code(&self) -> bool {
+        !(self.code_hash == B256::zero()
+            || self.code_hash == B256::from_str(EMPTY_CODE_HASH_STR).unwrap())
     }
 }
 
