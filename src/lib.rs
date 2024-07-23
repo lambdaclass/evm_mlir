@@ -78,7 +78,7 @@ impl Evm<Db> {
         context.get_result()
     }
 
-    pub fn transact_and_commit(&mut self) -> Result<ExecutionResult, EVMError> {
+    pub fn transact_commit(&mut self) -> Result<ExecutionResult, EVMError> {
         let ResultAndState { state, result } = self.transact()?;
         self.db.commit(state);
         Ok(result)
