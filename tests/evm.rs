@@ -3,7 +3,11 @@ use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::{call_opcode, gas_cost, precompiles::ECRECOVER_ADDRESS, EMPTY_CODE_HASH_STR},
+    constants::{
+        call_opcode, gas_cost,
+        precompiles::{ECRECOVER_ADDRESS, IDENTITY_ADDRESS},
+        EMPTY_CODE_HASH_STR,
+    },
     db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -2757,6 +2761,47 @@ fn staticcall_on_precompile_ecrecover_without_gas() {
         Operation::Mstore,
         Operation::Push((32_u8, BigUint::from_bytes_be(&s))),
         Operation::Push((1_u8, BigUint::from(0x60_u8))),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_identity_happy_path() {
+    let gas: u32 = 100_000_000;
+    let args_offset: u8 = 31;
+    let args_size: u8 = 1;
+    let ret_offset: u8 = 63;
+    let ret_size: u8 = 1;
+    let data: u8 = 0xff;
+    let callee_address = Address::from_low_u64_be(IDENTITY_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let expected_result = [0xff];
+
+    let caller_ops = vec![
+        // Place the parameter in memory
+        Operation::Push((1_u8, BigUint::from(data))),
+        Operation::Push((1_u8, BigUint::ZERO)),
         Operation::Mstore,
         // Do the call
         Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size

@@ -18,13 +18,13 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost, precompiles::ECRECOVER_ADDRESS, CallType},
+    constants::{call_opcode, gas_cost, precompiles, CallType},
     context::Context,
     db::AccountInfo,
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
     journal::Journal,
-    precompiles::ecrecover,
+    precompiles::{ecrecover, identity},
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -288,9 +288,13 @@ impl<'c> SyscallContext<'c> {
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
         let (return_code, return_data) = match callee_address {
-            x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => (
+            x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 ecrecover(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                identity(&calldata, gas_to_send, consumed_gas),
             ),
             _ => {
                 // Execute subcontext
