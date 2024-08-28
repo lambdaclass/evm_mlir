@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     constants::{
         gas_cost::{
@@ -11,6 +13,54 @@ use crate::{
     result::InvalidTransaction,
     utils::calc_blob_gasprice,
 };
+
+#[derive(Clone, Debug, Default)]
+pub struct AccessList {
+    access_list: HashMap<Address, Vec<U256>>,
+}
+
+impl AccessList {
+    /// Checks if a specific storage slot within an account is present in the access list.
+    ///
+    /// Returns `true` if the storage slot is present in the access list, `false` otherwise.
+    pub fn contains_storage(&self, address: Address, slot: U256) -> bool {
+        let Some(storage) = self.access_list.get(&address) else {
+            return false;
+        };
+        storage
+            .into_iter()
+            .any(|storage_element| *storage_element == slot)
+    }
+
+    /// Checks if the access list contains the specified address.
+    pub fn contains_address(&self, address: Address) -> bool {
+        self.access_list.contains_key(&address)
+    }
+
+    /// Adds a new address to the access list.
+    pub fn add_address(&mut self, address: Address) {
+        self.access_list.insert(address, Vec::new());
+    }
+
+    /// Adds a new slot to the access list, if it is not already present, add a new entry.
+    pub fn add_storage(&mut self, address: Address, slot: U256) {
+        self.access_list
+            .entry(address)
+            .or_insert_with(Vec::new)
+            .push(slot);
+    }
+
+    pub fn access_list_cost(&self) -> u64 {
+        self.access_list.iter().fold(0, |acc, (_, keys)| {
+            acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
+        })
+    }
+}
+
+pub struct AccessListElement {
+    pub address: Address,
+    pub storage_keys: Vec<U256>,
+}
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
@@ -84,9 +134,7 @@ impl Env {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
-        let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
-            acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
-        });
+        let access_list_cost = self.tx.access_list.access_list_cost();
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }
@@ -186,7 +234,7 @@ pub struct TxEnv {
     // Added in [EIP-2930].
     //
     // [EIP-2930]: https://eips.ethereum.org/EIPS/eip-2930
-    pub access_list: Vec<(Address, Vec<U256>)>,
+    pub access_list: AccessList,
 
     // The priority fee per gas.
     //
@@ -223,7 +271,7 @@ impl Default for TxEnv {
             data: Bytes::new(),
             // chain_id: None,
             // nonce: None,
-            access_list: Vec::new(),
+            access_list: Default::default(),
             blob_hashes: Vec::new(),
             max_fee_per_blob_gas: None,
         }
