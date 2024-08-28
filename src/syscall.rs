@@ -264,6 +264,10 @@ impl<'c> SyscallContext<'c> {
         );
     }
 
+    pub extern "C" fn get_call_gas_cost() -> i64 {
+        1
+    }
+
     pub extern "C" fn call(
         &mut self,
         mut gas_to_send: u64,
@@ -1074,6 +1078,7 @@ pub mod symbols {
     pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
     pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
     pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
+    pub const GET_CALL_GAS_COST: &str = "evm_mlir__get_call_gas_cost";
 }
 
 impl<'c> SyscallContext<'c> {
@@ -1126,6 +1131,10 @@ impl<'c> SyscallContext<'c> {
                 SyscallContext::append_log_with_two_topics
                     as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
                     as *mut (),
+            );
+            engine.register_symbol(
+                symbols::GET_CALL_GAS_COST,
+                SyscallContext::get_call_gas_cost as *const fn(*mut c_void, *mut u64) as *mut (),
             );
             engine.register_symbol(
                 symbols::APPEND_LOG_THREE_TOPICS,
@@ -1422,6 +1431,15 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORE_IN_CALLER_PTR),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::GET_CALL_GAS_COST),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -2518,6 +2536,26 @@ pub(crate) mod mlir {
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
                 &[syscall_ctx, size, offset, value, remaining_gas],
                 &[uint8],
+                location,
+            ))
+            .result(0)?;
+        Ok(result.into())
+    }
+
+    pub(crate) fn call_gas_cost_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALL_GAS_COST),
+                &[syscall_ctx, address],
+                &[uint64.into()],
                 location,
             ))
             .result(0)?;
