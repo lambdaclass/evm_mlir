@@ -2250,20 +2250,11 @@ fn codegen_sload<'c, 'r>(
 
     // Check there's enough elements in the stack
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    //TODO: We have to take into account key warm/cold access
-    // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::SLOAD_COLD)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
-
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2307,10 +2298,22 @@ fn codegen_sload<'c, 'r>(
         .into();
 
     // storage_read_syscall returns a pointer to the value
-    op_ctx.storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location);
+    let gas_cost = op_ctx.storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     // get the value from the pointer
-    let read_value = ok_block
+    let read_value = end_block
         .append_operation(llvm::load(
             context,
             read_value_ptr,
@@ -2321,9 +2324,9 @@ fn codegen_sload<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, read_value)?;
+    stack_push(context, &end_block, read_value)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_sstore<'c, 'r>(
