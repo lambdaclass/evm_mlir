@@ -4947,16 +4947,32 @@ fn codegen_call<'c, 'r>(
             constant_value_from_i64(context, &stack_ok_block, 0)?
         }
     };
-    let args_offset = stack_pop(context, &stack_ok_block)?;
-    let args_size = stack_pop(context, &stack_ok_block)?;
-    let ret_offset = stack_pop(context, &stack_ok_block)?;
-    let ret_size = stack_pop(context, &stack_ok_block)?;
+
+    let address_ptr = allocate_and_store_value(op_ctx, &stack_ok_block, address, location)?;
+    let gas_cost = op_ctx.call_gas_cost_syscall(&stack_ok_block, address_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &stack_ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    stack_ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let args_offset = stack_pop(context, &end_block)?;
+    let args_size = stack_pop(context, &end_block)?;
+    let ret_offset = stack_pop(context, &end_block)?;
+    let ret_size = stack_pop(context, &end_block)?;
 
     // If the current context is static, value must be zero
     let ok_block = region.append_block(Block::new(&[]));
-    let ctx_is_static = context_is_static(op_ctx, &stack_ok_block)?;
-    let zero_value = constant_value_from_i64(context, &stack_ok_block, 0)?;
-    let value_is_not_zero = stack_ok_block
+    let ctx_is_static = context_is_static(op_ctx, &end_block)?;
+    let zero_value = constant_value_from_i64(context, &end_block, 0)?;
+    let value_is_not_zero = end_block
         .append_operation(arith::cmpi(
             context,
             CmpiPredicate::Ne,
@@ -4966,11 +4982,11 @@ fn codegen_call<'c, 'r>(
         ))
         .result(0)?
         .into();
-    let revert_flag = stack_ok_block
+    let revert_flag = end_block
         .append_operation(arith::andi(ctx_is_static, value_is_not_zero, location))
         .result(0)?
         .into();
-    stack_ok_block.append_operation(cf::cond_br(
+    end_block.append_operation(cf::cond_br(
         context,
         revert_flag,
         &op_ctx.revert_block,
@@ -5016,17 +5032,11 @@ fn codegen_call<'c, 'r>(
         .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
         .result(0)?
         .into();
-    extend_memory(
-        op_ctx,
-        &ok_block,
-        &mem_ext_block,
-        region,
-        req_mem_size,
-        gas_cost::CALL,
-    )?;
+    extend_memory(op_ctx, &ok_block, &mem_ext_block, region, req_mem_size, 0)?;
 
     // Invoke call syscall
     let finish_block = region.append_block(Block::new(&[]));
+
     let call_result = op_ctx.call_syscall(
         &mem_ext_block,
         &finish_block,
