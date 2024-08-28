@@ -57,11 +57,6 @@ impl AccessList {
     }
 }
 
-pub struct AccessListElement {
-    pub address: Address,
-    pub storage_keys: Vec<U256>,
-}
-
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
 //-> https://github.com/bluealloy/revm/blob/main/crates/primitives/src/env.rs
