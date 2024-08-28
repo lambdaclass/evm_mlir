@@ -154,7 +154,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let p1 = BN254Curve::create_point_from_affine(x1, y1).unwrap(); // TODO: handle unwrap
     let p2 = BN254Curve::create_point_from_affine(x2, y2).unwrap(); // TODO: handle unwrap
 
-    let sum = p1.operate_with(&p2);
+    let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
     Bytes::from(res)
 }
@@ -174,7 +174,7 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     // TODO: check case when x == 0 && y == 0
     let p = BN254Curve::create_point_from_affine(x1, y1).unwrap(); // TODO: handle unwrap
 
-    let mul = p.operate_with_self(s);
+    let mul = p.operate_with_self(s).to_affine();
     let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
     Bytes::from(res)
 }
