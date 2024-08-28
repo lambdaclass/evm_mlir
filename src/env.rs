@@ -28,7 +28,7 @@ impl AccessList {
             return false;
         };
         storage
-            .into_iter()
+            .iter()
             .any(|storage_element| *storage_element == slot)
     }
 
@@ -44,10 +44,7 @@ impl AccessList {
 
     /// Adds a new slot to the access list, if it is not already present, add a new entry.
     pub fn add_storage(&mut self, address: Address, slot: U256) {
-        self.access_list
-            .entry(address)
-            .or_insert_with(Vec::new)
-            .push(slot);
+        self.access_list.entry(address).or_default().push(slot);
     }
 
     pub fn access_list_cost(&self) -> u64 {
