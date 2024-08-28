@@ -7,7 +7,7 @@ use crate::{
             TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
             TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
         },
-        MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
+        precompiles, MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
@@ -54,6 +54,16 @@ impl AccessList {
         self.access_list.iter().fold(0, |acc, (_, keys)| {
             acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
         })
+    }
+
+    /// Adds the precompile addresses to the access list as they are always accessed as warm.
+    pub fn add_precompile_addresses(&mut self) {
+        self.add_address(Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS));
+        self.add_address(Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS));
+        self.add_address(Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS));
+        self.add_address(Address::from_low_u64_be(precompiles::MODEXP_ADDRESS));
+        self.add_address(Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS));
+        self.add_address(Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS));
     }
 }
 
