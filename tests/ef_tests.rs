@@ -154,16 +154,13 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = unit.transaction.data[test.indexes.data].clone();
-            let access_list_vector = if let Some(Some(access_list_vector)) = unit
+            let access_list_vector = unit
                 .transaction
                 .access_lists
                 .get(test.indexes.data)
                 .cloned()
-            {
-                access_list_vector
-            } else {
-                vec![]
-            };
+                .flatten()
+                .unwrap_or_default();
 
             let mut access_list = AccessList::default();
             for access_list_item in access_list_vector {

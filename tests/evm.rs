@@ -4318,7 +4318,7 @@ fn sload_warm_cold_gas() {
 #[test]
 fn coinbase_address_is_warm() {
     let coinbase_addr = Address::from_low_u64_be(8080);
-    let gas = 255 as u8;
+    let gas = 255_u8;
     let value = 0_u8;
     let args_offset = 0_u8;
     let args_size = 64_u8;
@@ -4402,7 +4402,7 @@ fn addresses_in_access_list_are_warm() {
     let address_in_access_list = Address::from_low_u64_be(10000);
     let mut access_list = AccessList::default();
     access_list.add_address(address_in_access_list);
-    let gas = 255 as u8;
+    let gas = 255_u8;
     let value = 0_u8;
     let args_offset = 0_u8;
     let args_size = 64_u8;
