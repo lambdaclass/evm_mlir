@@ -153,6 +153,9 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     // (0,0) represents infinity, in that case the other point (if valid) should be returned directly
     let zero_el = BN254FieldElement::from(0);
     if x1.eq(&zero_el) && y1.eq(&zero_el) {
+        if x2.eq(&zero_el) && y2.eq(&zero_el) {
+            return Bytes::from([0u8; 64].to_vec());
+        }
         if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
             let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
             return Bytes::from(res);
@@ -170,7 +173,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
             let sum = p1.operate_with(&p2).to_affine();
             let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
             return Bytes::from(res);
-        } 
+        }
         return Bytes::new();
     }
     Bytes::new()
@@ -509,7 +512,7 @@ mod tests {
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
-    
+
     #[test]
     fn ecadd_valid_point_with_infinity() {
         let calldata = Bytes::from(
@@ -537,6 +540,122 @@ mod tests {
 
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_infinity_twice() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let expected_y =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_first_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_second_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_calldata() {
+        // calldata's len = 127
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            00000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecadd_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 149;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
