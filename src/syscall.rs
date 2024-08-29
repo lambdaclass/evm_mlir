@@ -268,6 +268,7 @@ impl<'c> SyscallContext<'c> {
         let address = Address::from(address as &U256);
         let is_cold = !self.env.tx.access_list.contains_address(address);
         if is_cold {
+            self.env.tx.access_list.add_address(address);
             gas_cost::CALL_COLD
         } else {
             gas_cost::CALL_WARM
@@ -796,8 +797,9 @@ impl<'c> SyscallContext<'c> {
         basefee.lo = self.env.block.basefee.low_u128();
     }
 
-    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) {
+    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) -> i64 {
         // addresses longer than 20 bytes should be invalid
+        let mut gas_cost = gas_cost::BALANCE_COLD;
         if (address.hi >> 32) != 0 {
             balance.hi = 0;
             balance.lo = 0;
@@ -819,7 +821,16 @@ impl<'c> SyscallContext<'c> {
                     balance.lo = 0;
                 }
             };
+
+            let is_cold = !self.env.tx.access_list.contains_address(address);
+            if is_cold {
+                self.env.tx.access_list.add_address(address);
+                gas_cost = gas_cost::BALANCE_COLD
+            } else {
+                gas_cost = gas_cost::BALANCE_WARM
+            };
         }
+        gas_cost
     }
 
     pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
@@ -1690,7 +1701,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORE_IN_BALANCE),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -2398,7 +2409,6 @@ pub(crate) mod mlir {
         Ok(result.into())
     }
 
-    #[allow(unused)]
     pub(crate) fn store_in_balance_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -2406,15 +2416,19 @@ pub(crate) mod mlir {
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
-            &[syscall_ctx, address, balance],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
+                &[syscall_ctx, address, balance],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Receives an account address and copies the corresponding bytecode

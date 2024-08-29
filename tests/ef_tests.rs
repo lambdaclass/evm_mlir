@@ -4,7 +4,11 @@ use std::{
 };
 mod ef_tests_executor;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::{AccessList, TransactTo},
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -152,9 +156,11 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = unit.transaction.data[test.indexes.data].clone();
-
+            let mut access_list = AccessList::default();
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
+            access_list.add_address(env.block.coinbase);
+            env.tx.access_list = access_list;
             env.block.timestamp = unit.env.current_timestamp;
             let excess_blob_gas = unit
                 .env
@@ -218,4 +224,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests", r"^.*/*.json",);

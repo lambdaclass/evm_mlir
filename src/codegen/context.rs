@@ -962,7 +962,7 @@ impl<'c> OperationCtx<'c> {
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::store_in_balance_syscall(
             self.mlir_context,
             self.syscall_ctx,

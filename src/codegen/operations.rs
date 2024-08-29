@@ -2556,18 +2556,12 @@ fn codegen_balance<'c, 'r>(
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::BALANCE)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2608,10 +2602,24 @@ fn codegen_balance<'c, 'r>(
         .result(0)?
         .into();
 
-    op_ctx.store_in_balance_syscall(&ok_block, address_ptr, balance_ptr, location);
+    let gas_cost =
+        op_ctx.store_in_balance_syscall(&ok_block, address_ptr, balance_ptr, location)?;
+
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     // get the value from the pointer
-    let balance = ok_block
+    let balance = end_block
         .append_operation(llvm::load(
             context,
             balance_ptr,
@@ -2622,9 +2630,9 @@ fn codegen_balance<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, balance)?;
+    stack_push(context, &end_block, balance)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_byte<'c, 'r>(

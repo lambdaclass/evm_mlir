@@ -1327,7 +1327,7 @@ fn balance_static_gas_check() {
         Operation::Balance,
     ];
     let env = Env::default();
-    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE_COLD;
 
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -4362,4 +4362,18 @@ fn coinbase_address_is_warm() {
         needed_gas as _,
         refund_gas as _,
     );
+}
+
+#[test]
+fn balance_warm_cold_gas_cost() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let env = Env::default();
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::BALANCE_COLD + gas_cost::BALANCE_WARM;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
