@@ -12,7 +12,7 @@ use evm_mlir::{
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
-    env::TransactTo,
+    env::{AccessList, TransactTo},
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, U256},
@@ -4294,4 +4294,72 @@ fn tstore_tload_happy_path() {
     append_return_result_operations(&mut operations);
     let (env, db) = default_env_and_db_setup(operations);
     run_program_assert_num_result(env, db, BigUint::from(value));
+}
+
+#[test]
+fn coinbase_address_is_warm() {
+    let coinbase_addr = Address::from_low_u64_be(8080);
+    let gas = 255 as u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
+
+    let caller_ops = [
+        vec![
+            Operation::Push((32_u8, BigUint::default())), //Operand B
+            Operation::Push0,                             //
+            Operation::Mstore,                            //Store in mem address 0
+            Operation::Push((32_u8, BigUint::default())), //Operand A
+            Operation::Push((1_u8, BigUint::from(32_u8))), //
+            Operation::Mstore,                            //Store in mem address 32
+            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        ],
+        value_op_vec,
+        vec![
+            Operation::Push((16_u8, BigUint::from_bytes_be(coinbase_addr.as_bytes()))), //Address
+            Operation::Push((1_u8, BigUint::from(gas))),                                //Gas
+        ],
+        vec![Operation::Call],
+    ]
+    .concat();
+
+    let caller_gas_cost = gas_cost::PUSHN * (10)
+        + gas_cost::PUSH0
+        + gas_cost::MSTORE * 2
+        + gas_cost::memory_expansion_cost(0, 64)
+        + gas_cost::CALL_WARM;
+
+    let available_gas = 1e6;
+    let needed_gas = caller_gas_cost;
+    let refund_gas = 0;
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut access_list = AccessList::default();
+    access_list.add_address(coinbase_addr);
+    env.tx.access_list = access_list;
+    env.block.coinbase = coinbase_addr;
+    let mut db = Db::new().with_contract(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_and_refund(
+        env,
+        db,
+        available_gas as _,
+        needed_gas as _,
+        refund_gas as _,
+    );
 }
