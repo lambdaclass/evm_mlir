@@ -85,6 +85,8 @@ pub mod gas_cost {
     pub const LOG: i64 = 375;
     pub const BLOCKHASH: i64 = 20;
     pub const CALL: i64 = 0;
+    pub const CALL_WARM: i64 = 100;
+    pub const CALL_COLD: i64 = 2600;
     pub const EXTCODESIZE_WARM: i64 = 100;
     pub const EXTCODECOPY_WARM: i64 = 100;
     pub const RETURNDATASIZE: i64 = 2;

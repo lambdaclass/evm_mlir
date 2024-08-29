@@ -264,8 +264,14 @@ impl<'c> SyscallContext<'c> {
         );
     }
 
-    pub extern "C" fn get_call_gas_cost() -> i64 {
-        1
+    pub extern "C" fn get_call_gas_cost(&mut self, address: &mut U256) -> i64 {
+        let address = Address::from(address as &U256);
+        let is_cold = !self.env.tx.access_list.contains_address(address);
+        if is_cold {
+            gas_cost::CALL_COLD
+        } else {
+            gas_cost::CALL_WARM
+        }
     }
 
     pub extern "C" fn call(
