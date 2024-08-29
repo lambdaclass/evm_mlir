@@ -769,6 +769,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+        self.env.tx.access_list.add_address(Address::from(address));
         //TODO: Here we are returning 0 if a Database error occurs. Check this
         self.journal.code_by_address(&Address::from(address)).len() as _
     }
@@ -856,6 +857,7 @@ impl<'c> SyscallContext<'c> {
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
         let address = Address::from(address_value);
+        self.env.tx.access_list.add_address(Address::from(address));
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
         let code = self.journal.code_by_address(&address);
@@ -872,6 +874,10 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
+        self.env
+            .tx
+            .access_list
+            .add_address(Address::from(address as &U256));
         let hash = match self.journal.get_account(&Address::from(address as &U256)) {
             Some(account_info) => account_info.code_hash,
             _ => B256::zero(),
@@ -989,9 +995,22 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
+    pub extern "C" fn add_create_address(&mut self, address: &U256) -> u64 {
+        self.env.tx.access_list.add_address(Address::from(address));
+        1
+    }
+
     pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
+        self.env
+            .tx
+            .access_list
+            .add_address(Address::from(receiver_address));
+        self.env
+            .tx
+            .access_list
+            .add_address(Address::from(sender_address));
 
         let sender_balance = self
             .journal
@@ -1096,6 +1115,7 @@ pub mod symbols {
     pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
     pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
     pub const GET_CALL_GAS_COST: &str = "evm_mlir__get_call_gas_cost";
+    pub const ADD_CREATE_ADDRESS: &str = "evm_mlir__add_create_address";
 }
 
 impl<'c> SyscallContext<'c> {
@@ -1328,6 +1348,12 @@ impl<'c> SyscallContext<'c> {
             engine.register_symbol(
                 symbols::SELFDESTRUCT,
                 SyscallContext::selfdestruct as *const fn(*mut c_void, *mut U256) as *mut (),
+            );
+
+            engine.register_symbol(
+                symbols::ADD_CREATE_ADDRESS,
+                SyscallContext::add_create_address as *const fn(*mut c_void, *const U256)
+                    as *mut (),
             );
 
             engine.register_symbol(
@@ -1804,6 +1830,15 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::SELFDESTRUCT),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            Region::new(),
+            attributes,
+            location,
+        ));
+
+        module.body().append_operation(func::func(
+            context,
+            StringAttribute::new(context, symbols::ADD_CREATE_ADDRESS),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
@@ -2643,6 +2678,28 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
+    }
+
+    pub(crate) fn add_create_address_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
+                &[syscall_ctx, address],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+
+        Ok(result.into())
     }
 
     pub(crate) fn selfdestruct_syscall<'c>(

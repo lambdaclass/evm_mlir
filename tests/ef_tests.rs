@@ -159,7 +159,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut access_list = AccessList::default();
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
-            access_list.add_address(env.block.coinbase);
+            access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
+            access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
+            access_list.add_address(to);
             env.tx.access_list = access_list;
             env.block.timestamp = unit.env.current_timestamp;
             let excess_blob_gas = unit

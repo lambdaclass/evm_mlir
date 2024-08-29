@@ -5454,6 +5454,8 @@ fn codegen_create<'c, 'r>(
         ))
         .result(0)?
         .into();
+    let address_ptr = allocate_and_store_value(op_ctx, &end_block, code_address, location)?;
+    op_ctx.add_create_address_syscall(&end_block, address_ptr, location)?;
 
     stack_push(context, &end_block, code_address)?;
 
