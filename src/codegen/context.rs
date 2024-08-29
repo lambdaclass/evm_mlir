@@ -1222,7 +1222,7 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
+    ) {
         syscall::mlir::add_create_address_syscall(
             self.mlir_context,
             self.syscall_ctx,

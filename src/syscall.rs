@@ -637,7 +637,8 @@ impl<'c> SyscallContext<'c> {
             return 0;
         };
 
-        let is_cold = !self.journal.key_is_warm(&address, &key);
+        let is_cold = !(self.journal.key_is_warm(&address, &key)
+            || self.env.tx.access_list.contains_storage(address, key));
         let slot = self.journal.read_storage(&address, &key);
         self.journal.write_storage(&address, key, value);
 
@@ -995,9 +996,8 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
-    pub extern "C" fn add_create_address(&mut self, address: &U256) -> u64 {
+    pub extern "C" fn add_create_address(&mut self, address: &U256) {
         self.env.tx.access_list.add_address(Address::from(address));
-        1
     }
 
     pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
@@ -1839,7 +1839,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::ADD_CREATE_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -2686,20 +2686,14 @@ pub(crate) mod mlir {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64).into();
-
-        let result = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
-                &[syscall_ctx, address],
-                &[uint64],
-                location,
-            ))
-            .result(0)?;
-
-        Ok(result.into())
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
+            &[syscall_ctx, address],
+            &[],
+            location,
+        ));
     }
 
     pub(crate) fn selfdestruct_syscall<'c>(
