@@ -150,31 +150,36 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let x2 = BN254FieldElement::from_bytes_be(&calldata[64..96]).unwrap();
     let y2 = BN254FieldElement::from_bytes_be(&calldata[96..128]).unwrap();
 
-    // (0,0) represents infinity, in that case the other point (if valid) should be returned directly
+    // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
     let zero_el = BN254FieldElement::from(0);
-    if x1.eq(&zero_el) && y1.eq(&zero_el) {
-        if x2.eq(&zero_el) && y2.eq(&zero_el) {
-            return Bytes::from([0u8; 64].to_vec());
+    let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
+    let p2_is_infinity = x2.eq(&zero_el) && y2.eq(&zero_el);
+
+    match (p1_is_infinity, p2_is_infinity) {
+        (true, true) => return Bytes::from([0u8; 64].to_vec()),
+        (true, false) => {
+            if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
+                let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
+                return Bytes::from(res);
+            }
+            return Bytes::new();
         }
-        if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
-            let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
-            return Bytes::from(res);
+        (false, true) => {
+            if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+                let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
+                return Bytes::from(res);
+            }
+            return Bytes::new();
         }
-        return Bytes::new();
+        _ => {}
     }
 
     if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
-        if x2.eq(&zero_el) && y2.eq(&zero_el) {
-            let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
-            return Bytes::from(res);
-        }
-
         if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
             let sum = p1.operate_with(&p2).to_affine();
             let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
             return Bytes::from(res);
         }
-        return Bytes::new();
     }
     Bytes::new()
 }
@@ -191,12 +196,25 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
     let s = LambdaWorksU256::from_bytes_be(&calldata[64..96]).unwrap();
 
-    // TODO: check case when x == 0 && y == 0
-    let p = BN254Curve::create_point_from_affine(x1, y1).unwrap(); // TODO: handle unwrap
+    // if the point is infinity it is directly returned
+    let zero_el = BN254FieldElement::from(0);
+    let zero_u256 = LambdaWorksU256::from(0_u16);
+    let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
 
-    let mul = p.operate_with_self(s).to_affine();
-    let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
-    Bytes::from(res)
+    if p1_is_infinity {
+        return Bytes::from([0u8; 64].to_vec());
+    }
+    // scalar is 0 and the point is valid
+    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
+        return Bytes::from([0u8; 64].to_vec());
+    }
+
+    if let Ok(p) = BN254Curve::create_point_from_affine(x1, y1) {
+        let mul = p.operate_with_self(s).to_affine();
+        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
+        return Bytes::from(res);
+    }
+    Bytes::new()
 }
 
 pub fn ecpairing(
@@ -558,16 +576,9 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_x =
-            hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
-                .unwrap();
-        let expected_y =
-            hex::decode("0000000000000000000000000000000000000000000000000000000000000000")
-                .unwrap();
-        let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -684,6 +695,131 @@ mod tests {
 
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_by_zero() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_invalid_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_invalid_point_by_zero() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_with_invalid_calldata() {
+        // calldata's len = 95
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            00000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecmul_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 149;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
