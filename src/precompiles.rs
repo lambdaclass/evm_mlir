@@ -274,6 +274,26 @@ pub fn blake2f(
     Ok(Bytes::from(out))
 }
 
+pub fn point_eval(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) {
+    /*
+       The calldata is encoded as follows:
+
+       RANGE        NAME            DESCRIPTION
+       [0: 32]      versioned_hash  Reference to a blob in the execution layer.
+       [32: 64]     x               x-coordinate at which the blob is being evaluated.
+       [64: 96]     y               y-coordinate at which the blob is being evaluated.
+       [96: 144]    commitment      Commitment to the blob being evaluated
+       [144: 192]   proof           Proof associated with the commitment
+    */
+    let versioned_hash = &calldata[..32];
+    let x = &calldata[32..64];
+    let y = &calldata[64..96];
+    let commitment = &calldata[96..144];
+    let proof = &calldata[144..192];
+
+    unimplemented!()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::U256;
