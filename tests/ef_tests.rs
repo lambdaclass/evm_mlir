@@ -63,7 +63,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stSpecialTest".into(),
         "stEIP150Specific".into(),
         "eip3651_warm_coinbase".into(),
-        "stSLoadTest".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
         "stRandom2".into(),

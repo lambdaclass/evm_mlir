@@ -672,7 +672,7 @@ impl<'c> OperationCtx<'c> {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::storage_read_syscall(
             self.mlir_context,
             self.syscall_ctx,
