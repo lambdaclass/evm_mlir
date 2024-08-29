@@ -185,7 +185,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     access_list.add_address(to);
                     Db::new().with_contract(to, unit.pre.get(&to).unwrap().code.clone())
                 }
-                _ => Db::new(),
+                _ => Db::new().with_contract(
+                    env.tx.get_address(),
+                    unit.pre.get(&env.tx.caller).unwrap().code.clone(),
+                ),
             };
             env.tx.access_list = access_list;
             env.block.timestamp = unit.env.current_timestamp;
