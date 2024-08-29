@@ -2271,7 +2271,8 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_
         + gas_cost::PUSH0
         + gas_cost::MSTORE * 2
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
-        + gas_cost::memory_expansion_cost(0, 64);
+        + gas_cost::memory_expansion_cost(0, 64)
+        + gas_cost::CALL_COLD;
 
     let available_gas = 1e6;
     let needed_gas = caller_gas_cost + callee_gas_cost;
@@ -2452,7 +2453,7 @@ fn call_gas_check_with_value_and_empty_account(#[case] call_type: Operation) {
     let caller_call_cost = call_opcode::WARM_MEMORY_ACCESS_COST
         + call_opcode::NOT_ZERO_VALUE_COST
         + call_opcode::EMPTY_CALLEE_COST;
-    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost as i64;
+    let needed_gas = gas_cost::CALL_COLD + gas_cost::PUSHN * 7 + caller_call_cost as i64;
 
     let caller_balance: u8 = 5;
     let program = Program::from(caller_ops);
@@ -3509,7 +3510,7 @@ fn returndatacopy_gas_check() {
         + gas_cost::MSTORE
         + gas_cost::memory_expansion_cost(0, 32_u32); // Return data
     let caller_gas_cost = gas_cost::PUSHN * 10
-        + gas_cost::CALL
+        + gas_cost::CALL_COLD
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
         + gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
