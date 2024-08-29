@@ -4,6 +4,7 @@ use std::{
 };
 mod ef_tests_executor;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
+use ethereum_types::U256;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
@@ -155,7 +156,26 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
                     env.tx.value = unit.transaction.value[test.indexes.value];
                     env.tx.data = unit.transaction.data[test.indexes.data].clone();
+                    let access_list_vector = if let Some(Some(access_list_vector)) = unit
+                        .transaction
+                        .access_lists
+                        .get(test.indexes.data)
+                        .cloned()
+                    {
+                        access_list_vector
+                    } else {
+                        vec![]
+                    };
+
                     let mut access_list = AccessList::default();
+                    for access_list_item in access_list_vector {
+                        access_list.add_address(access_list_item.address);
+                        for storage_key in access_list_item.storage_keys {
+                            let storage_key = U256::from(storage_key.as_bytes());
+                            access_list.add_storage(access_list_item.address, storage_key);
+                        }
+                    }
+
                     env.block.number = unit.env.current_number;
                     env.block.coinbase = unit.env.current_coinbase;
                     access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
@@ -223,7 +243,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                 }
             }
             None => {
-                println!("VAMOOOOO");
                 let sender = unit.transaction.sender.unwrap_or_default();
                 let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
@@ -306,8 +325,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stEIP2930",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests", r"^.*/*.json",);
