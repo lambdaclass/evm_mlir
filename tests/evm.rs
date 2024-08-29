@@ -86,7 +86,8 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
-    env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env_success.tx.gas_limit =
+        needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
@@ -96,7 +97,8 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
-    env_halt.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
+    env_halt.tx.gas_limit =
+        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
@@ -111,7 +113,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact_commit().unwrap();
@@ -4463,4 +4465,27 @@ fn addresses_in_access_list_are_warm() {
         needed_gas as _,
         refund_gas as _,
     );
+}
+
+#[test]
+fn keys_in_access_list_are_warm() {
+    let address = Address::from_low_u64_be(5000);
+    let mut access_list = AccessList::default();
+    access_list.add_storage(address, ethereum_types::U256::from(1_u8));
+
+    let used_gas = gas_cost::PUSHN * 2 + gas_cost::SLOAD_WARM * 2;
+
+    let program = vec![
+        // first sload: gas_cost = cost_warm + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+        // second sload: gas_cost = cost_warm + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(address);
+    env.tx.access_list = access_list;
+    run_program_assert_gas_exact(program, env, used_gas as _);
 }
