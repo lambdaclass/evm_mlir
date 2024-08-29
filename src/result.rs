@@ -41,7 +41,6 @@ impl ExecutionResult {
     /// 1 indicates success, 0 indicates revert.
     /// <https://eips.ethereum.org/EIPS/eip-658>
     pub fn is_success(&self) -> bool {
-        println!("BOCA: {:?}", self);
         matches!(self, Self::Success { .. })
     }
 
