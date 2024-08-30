@@ -175,6 +175,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.block.coinbase = unit.env.current_coinbase;
             access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
             access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
+            access_list.add_precompile_addresses(); // precompiled address are always warm
 
             let mut db = match to.clone() {
                 TransactTo::Call(to) => {

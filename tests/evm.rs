@@ -4495,7 +4495,7 @@ fn keys_in_access_list_are_warm() {
 fn staticcall_on_precompile_with_access_list_is_warm() {
     let address_in_access_list = Address::from_low_u64_be(IDENTITY_ADDRESS);
     let mut access_list = AccessList::default();
-    access_list.add_precompile_addresses();
+    access_list.add_address(address_in_access_list);
     let gas = 255_u8;
     let value = 0_u8;
     let args_offset = 0_u8;
@@ -4503,7 +4503,7 @@ fn staticcall_on_precompile_with_access_list_is_warm() {
     let ret_offset = 0_u8;
     let ret_size = 32_u8;
 
-    let caller_address = Address::from_low_u64_be(5000);
+    let caller_address = Address::from_low_u64_be(8080);
 
     let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
 
