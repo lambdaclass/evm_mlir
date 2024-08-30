@@ -4539,11 +4539,9 @@ fn staticcall_on_precompile_with_access_list_is_warm() {
         + precompiles::IDENTITY_COST as i64
         + gas_cost::CALL_WARM;
 
-    let available_gas = 1e6;
     let needed_gas = caller_gas_cost;
-    let refund_gas = 0;
 
-    let caller_balance: u8 = 0;
+    let caller_balance = 100_u8;
     let program = Program::from(caller_ops);
     let bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
@@ -4553,11 +4551,5 @@ fn staticcall_on_precompile_with_access_list_is_warm() {
     let mut db = Db::new().with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
-    run_program_assert_gas_and_refund(
-        env,
-        db,
-        available_gas as _,
-        needed_gas as _,
-        refund_gas as _,
-    );
+    run_program_assert_gas_exact_with_db(env, db, needed_gas as _);
 }
