@@ -5048,7 +5048,6 @@ fn codegen_call<'c, 'r>(
 
     // Invoke call syscall
     let finish_block = region.append_block(Block::new(&[]));
-
     let call_result = op_ctx.call_syscall(
         &mem_ext_block,
         &finish_block,

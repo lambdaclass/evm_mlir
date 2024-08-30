@@ -39,7 +39,7 @@ impl AccessList {
 
     /// Adds a new address to the access list.
     pub fn add_address(&mut self, address: Address) {
-        self.access_list.insert(address, Vec::new());
+        self.access_list.entry(address).or_default();
     }
 
     /// Adds a new slot to the access list, if it is not already present, add a new entry.
