@@ -4492,7 +4492,7 @@ fn keys_in_access_list_are_warm() {
 }
 
 #[test]
-fn staticcall_on_precompile_with_access_list_is_warm() {
+fn precompile_staticcall_with_access_list_is_warm() {
     let address_in_access_list = Address::from_low_u64_be(IDENTITY_ADDRESS);
     let mut access_list = AccessList::default();
     access_list.add_address(address_in_access_list);
