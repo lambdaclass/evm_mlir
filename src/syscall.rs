@@ -320,7 +320,7 @@ impl<'c> SyscallContext<'c> {
             ),
             x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
-                ecpairing(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
+                ecpairing(&calldata, gas_to_send, consumed_gas),
             ),
             x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,

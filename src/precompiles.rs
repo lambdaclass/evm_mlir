@@ -10,9 +10,14 @@ use bytes::Bytes;
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
-        short_weierstrass::curves::bn_254::curve::{BN254Curve, BN254FieldElement},
-        traits::IsEllipticCurve,
+        short_weierstrass::curves::bn_254::{
+            curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+            pairing::BN254AtePairing,
+            twist::BN254TwistCurve,
+        },
+        traits::{IsEllipticCurve, IsPairing},
     },
+    field::extensions::quadratic::QuadraticExtensionFieldElement,
     traits::ByteConversion,
     unsigned_integer::element::U256 as LambdaWorksU256,
 };
@@ -20,7 +25,6 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 use std::array::TryFromSliceError;
-use substrate_bn::{pairing, AffineG1, AffineG2, Fq, Fq2, Group, Gt, G1, G2};
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -217,50 +221,74 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     Bytes::new()
 }
 
-pub fn ecpairing(
-    calldata: &Bytes,
-    gas_limit: u64,
-    consumed_gas: &mut u64,
-) -> Result<Bytes, substrate_bn::GroupError> {
+pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
     let gas_cost = ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
     if calldata.len() % 192 != 0 || gas_limit < gas_cost {
         *consumed_gas += gas_limit;
-        return Ok(Bytes::new());
+        return Bytes::new();
     }
     *consumed_gas += gas_cost;
 
     let rounds = calldata.len() / 192;
-    let mut mul = Gt::one();
+    let mut mul = QuadraticExtensionFieldElement::one();
     for idx in 0..rounds {
         let start = idx * 192;
 
-        let x1 = Fq::from_slice(&calldata[start..start + 32]).unwrap();
-        let y1 = Fq::from_slice(&calldata[start + 32..start + 64]).unwrap();
-        let x2 = Fq::from_slice(&calldata[start + 64..start + 96]).unwrap();
-        let y2 = Fq::from_slice(&calldata[start + 96..start + 128]).unwrap();
-        let x3 = Fq::from_slice(&calldata[start + 128..start + 160]).unwrap();
-        let y3 = Fq::from_slice(&calldata[start + 160..start + 192]).unwrap();
+        // Slice lengths are checked, so unwrap is safe
+        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + 32]).unwrap();
+        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + 32..start + 64]).unwrap();
 
-        let p1: G1 = if x1.is_zero() && y1.is_zero() {
-            G1::zero()
-        } else {
-            G1::from(AffineG1::new(x1, y1)?)
-        };
-        let p2 = Fq2::new(y2, x2); // TODO: check if this is OK, only works using (y,x) instead of (x,y)
-        let p3 = Fq2::new(y3, x3);
+        // G2 point: ((x_0, x_1), (y_0, y_1))
+        // both x and y have a real and an imaginary part of 32 bytes each
+        let g2_x_bytes = [
+            &calldata[start + 96..start + 128],
+            &calldata[start + 64..start + 96],
+        ]
+        .concat();
+        let g2_y_bytes = [
+            &calldata[start + 160..start + 192],
+            &calldata[start + 128..start + 160],
+        ]
+        .concat();
 
-        let b = if p2.is_zero() && p3.is_zero() {
-            G2::zero()
-        } else {
-            G2::from(AffineG2::new(p2, p3)?)
+        let g2_x = BN254TwistCurveFieldElement::from_bytes_be(&g2_x_bytes);
+        let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
+
+        let (g2_x, g2_y) = match (g2_x, g2_y) {
+            (Ok(x), Ok(y)) => (x, y),
+            _ => return Bytes::from([0u8; 32].to_vec()),
         };
-        mul = mul * pairing(p1, b);
+
+        // if any point is (0,0) the pairing is ok
+        let zero_el = BN254FieldElement::from(0);
+        let tw_zero_el = BN254TwistCurveFieldElement::from(0);
+        let p1_is_infinity = g1_x.eq(&zero_el) && g1_y.eq(&zero_el);
+        let p2_is_infinity = g2_x.eq(&tw_zero_el) && g2_y.eq(&tw_zero_el);
+        if p1_is_infinity || p2_is_infinity {
+            continue;
+        }
+
+        let p1 = match BN254Curve::create_point_from_affine(g1_x, g1_y) {
+            Ok(point) => point,
+            Err(_) => return Bytes::from([0u8; 32].to_vec()),
+        };
+        let p2 = match BN254TwistCurve::create_point_from_affine(g2_x, g2_y) {
+            Ok(point) => point,
+            Err(_) => return Bytes::from([0u8; 32].to_vec()),
+        };
+
+        let pairing_result = match BN254AtePairing::compute_batch(&[(&p1, &p2)]) {
+            Ok(result) => result,
+            Err(_) => return Bytes::from([0u8; 32].to_vec()),
+        };
+        mul = mul * pairing_result;
     }
 
-    let success = mul == Gt::one();
+    let success = mul.eq(&QuadraticExtensionFieldElement::one());
     let mut output = vec![0_u8; 32];
     output[31] = success as u8;
-    Ok(Bytes::from(output))
+
+    Bytes::from(output)
 }
 
 // Extracted from https://datatracker.ietf.org/doc/html/rfc7693#section-2.7
@@ -842,7 +870,7 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 113000;
+        let expected_gas = 113_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -852,10 +880,97 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
+    #[test]
+    fn ecpairing_invalid_points() {
+        // changed last byte from `fc` to `fd`
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fd",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 113_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from([0u8; 32].to_vec());
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_p1_is_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_p2_is_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
     #[test]
     fn ecpairing_out_of_curve() {
         let calldata = Bytes::from(
@@ -870,13 +985,14 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 79000;
+        let expected_gas = 79_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let expected_result = Bytes::from([0u8; 32].to_vec());
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -894,7 +1010,52 @@ mod tests {
         let expected_result = Bytes::new();
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecpairing_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, ECPAIRING_COST);
+    }
+
+    #[test]
+    fn ecpairing_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc",
+            )
+            .unwrap(),
+        );
+        // needs 113_000
+        let gas_limit = 100_000;
+        let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
         assert_eq!(consumed_gas, gas_limit);
     }
 
