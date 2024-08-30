@@ -23,7 +23,7 @@ impl AccessList {
     /// Checks if a specific storage slot within an account is present in the access list.
     ///
     /// Returns `true` in the first element of the tuple if the address is present in the access list.
-    /// in the second retturns `true` if the storage slot is present in the access list.
+    /// in the second returns `true` if the storage slot is present in the access list.
     pub fn contains_storage(&self, address: Address, slot: U256) -> (bool, bool) {
         let Some(storage) = self.access_list.get(&address) else {
             return (false, false);
