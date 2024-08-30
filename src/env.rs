@@ -78,16 +78,14 @@ impl AccessList {
 
     /// Consumes the type and returns an iterator over the list's addresses and storage keys.
     pub fn into_flatten(self) -> impl Iterator<Item = (Address, Vec<U256>)> {
-        self.access_list
-            .into_iter()
-            .map(|(address, storage_keys)| (address, storage_keys))
+        self.access_list.into_iter()
     }
 
     /// Returns an iterator over the list's addresses and storage keys.
     pub fn flatten(&self) -> impl Iterator<Item = (Address, Vec<U256>)> + '_ {
         self.access_list
             .iter()
-            .map(|(address, storage_keys)| (address.clone(), storage_keys.clone()))
+            .map(|(address, storage_keys)| (*address, storage_keys.clone()))
     }
 }
 
