@@ -4,6 +4,24 @@ use crate::constants::precompiles::{
 };
 use crate::primitives::U256;
 use bytes::Bytes;
+use lambdaworks_crypto::commitments::{
+    kzg::{KateZaveruchaGoldberg, StructuredReferenceString},
+    traits::IsCommitmentScheme,
+};
+use lambdaworks_math::elliptic_curve::{
+    short_weierstrass::{
+        curves::bls12_381::{
+            compression::decompress_g1_point,
+            curve::BLS12381Curve,
+            default_types::{FrElement, FrField},
+            pairing::BLS12381AtePairing,
+            twist::BLS12381TwistCurve,
+        },
+        point::ShortWeierstrassProjectivePoint,
+    },
+    traits::IsEllipticCurve,
+};
+use lambdaworks_math::traits::ByteConversion;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
@@ -274,7 +292,37 @@ pub fn blake2f(
     Ok(Bytes::from(out))
 }
 
-pub fn point_eval(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) {
+type G1 = ShortWeierstrassProjectivePoint<BLS12381Curve>;
+type G2Point = <BLS12381TwistCurve as IsEllipticCurve>::PointRepresentation;
+type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
+
+fn load_trusted_setup_to_points() -> (Vec<G1>, Vec<G2Point>) {
+    unimplemented!()
+}
+
+fn points_to_structured_reference_string(
+    g1_points: &[G1],
+    g2_points: &[G2Point],
+) -> StructuredReferenceString<G1, G2Point> {
+    unimplemented!()
+}
+
+// Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values.
+// FIELD_ELEMENTS_PER_BLOB = 4096 = 0x1000;
+// BLS_MODULUS = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+// = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001;
+const POINT_EVAL_RETURN: &str =
+    "000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
+// TODO: alias as the actual return type (bytes encoded).
+// TODO: define better error.
+pub struct PointEvalErr;
+
+pub fn point_eval(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PointEvalErr> {
     /*
        The calldata is encoded as follows:
 
@@ -285,13 +333,26 @@ pub fn point_eval(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) {
        [96: 144]    commitment      Commitment to the blob being evaluated
        [144: 192]   proof           Proof associated with the commitment
     */
-    let versioned_hash = &calldata[..32];
-    let x = &calldata[32..64];
-    let y = &calldata[64..96];
-    let commitment = &calldata[96..144];
-    let proof = &calldata[144..192];
+    let versioned_hash: &[u8; 32] = &calldata[..32].try_into().map_err(|_| PointEvalErr {})?;
+    let x: &[u8; 32] = &calldata[32..64].try_into().map_err(|_| PointEvalErr {})?;
+    let y: &[u8; 32] = &calldata[64..96].try_into().map_err(|_| PointEvalErr {})?;
+    let mut commitment: [u8; 48] = calldata[96..144].try_into().map_err(|_| PointEvalErr {})?;
+    let mut proof: [u8; 48] = calldata[144..192].try_into().unwrap();
 
-    unimplemented!()
+    let x_fr = FrElement::from_bytes_be(x).map_err(|_| PointEvalErr {})?;
+    let y_fr = FrElement::from_bytes_be(y).map_err(|_| PointEvalErr {})?;
+
+    let commitment_g1 = decompress_g1_point(&mut commitment).map_err(|_| PointEvalErr {})?;
+    let proof_g1 = decompress_g1_point(&mut proof).map_err(|_| PointEvalErr {})?;
+
+    let (g1_points, g2_points) = load_trusted_setup_to_points();
+    let srs = points_to_structured_reference_string(&g1_points, &g2_points);
+    let kzg = KZG::new(srs);
+
+    match kzg.verify(&x_fr, &y_fr, &commitment_g1, &proof_g1) {
+        false => Err(PointEvalErr {}),
+        true => Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes())),
+    }
 }
 
 #[cfg(test)]
