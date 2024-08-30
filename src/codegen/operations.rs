@@ -5043,6 +5043,7 @@ fn codegen_call<'c, 'r>(
         .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
         .result(0)?
         .into();
+    // 0 cost, because we no longer consume gas here, we consumed it with the call_gas_cost_syscall
     extend_memory(op_ctx, &ok_block, &mem_ext_block, region, req_mem_size, 0)?;
 
     // Invoke call syscall

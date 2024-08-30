@@ -189,6 +189,7 @@ impl<'c> SyscallContext<'c> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
         let gas_refunded = self.inner_context.gas_refund;
         let gas_initial = self.env.tx.gas_limit;
+        // TODO: Probably here we need to add the access_list_cost to gas_used, but we need a refactor of most tests
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let exit_status = self
             .inner_context
@@ -264,7 +265,7 @@ impl<'c> SyscallContext<'c> {
         );
     }
 
-    pub extern "C" fn get_call_gas_cost(&mut self, address: &mut U256) -> i64 {
+    pub extern "C" fn get_call_gas_cost(&mut self, address: &U256) -> i64 {
         let address = Address::from(address as &U256);
         let is_cold = !self.env.tx.access_list.contains_address(address);
         if is_cold {
@@ -1179,7 +1180,7 @@ impl<'c> SyscallContext<'c> {
             );
             engine.register_symbol(
                 symbols::GET_CALL_GAS_COST,
-                SyscallContext::get_call_gas_cost as *const fn(*mut c_void, *mut u64) as *mut (),
+                SyscallContext::get_call_gas_cost as *const fn(*mut c_void, *const u64) as *mut (),
             );
             engine.register_symbol(
                 symbols::APPEND_LOG_THREE_TOPICS,
