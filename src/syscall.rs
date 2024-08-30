@@ -619,7 +619,7 @@ impl<'c> SyscallContext<'c> {
 
         let key = stg_key.to_primitive_u256();
         let is_cold = !(self.journal.key_is_warm(&address, &key)
-            || self.env.tx.access_list.contains_storage(address, key));
+            || self.env.tx.access_list.contains_storage(address, key).1);
 
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
@@ -647,7 +647,7 @@ impl<'c> SyscallContext<'c> {
         };
 
         let is_cold = !(self.journal.key_is_warm(&address, &key)
-            || self.env.tx.access_list.contains_storage(address, key));
+            || self.env.tx.access_list.contains_storage(address, key).1);
         let slot = self.journal.read_storage(&address, &key);
         self.journal.write_storage(&address, key, value);
 
