@@ -114,7 +114,6 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    let used_gas = used_gas + env.tx.access_list.access_list_cost();
     env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env, db);
 
