@@ -62,6 +62,30 @@ impl AccessList {
         self.add_address(Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS));
         self.add_address(Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS));
     }
+
+    /// Converts the list into a vec
+    pub fn flattened(&self) -> Vec<(Address, Vec<U256>)> {
+        self.flatten().collect()
+    }
+
+    /// Consumes the type and converts the list into a vec
+    pub fn into_flattened(self) -> Vec<(Address, Vec<U256>)> {
+        self.into_flatten().collect()
+    }
+
+    /// Consumes the type and returns an iterator over the list's addresses and storage keys.
+    pub fn into_flatten(self) -> impl Iterator<Item = (Address, Vec<U256>)> {
+        self.access_list
+            .into_iter()
+            .map(|(address, storage_keys)| (address, storage_keys))
+    }
+
+    /// Returns an iterator over the list's addresses and storage keys.
+    pub fn flatten(&self) -> impl Iterator<Item = (Address, Vec<U256>)> + '_ {
+        self.access_list
+            .iter()
+            .map(|(address, storage_keys)| (address.clone(), storage_keys.clone()))
+    }
 }
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
