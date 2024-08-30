@@ -6,7 +6,7 @@ use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
         precompiles::{
-            BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
+            self, BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
             RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
         EMPTY_CODE_HASH_STR,
@@ -68,7 +68,7 @@ fn run_program_assert_halt(env: Env, db: Db) {
 
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
@@ -4488,4 +4488,75 @@ fn keys_in_access_list_are_warm() {
     env.tx.transact_to = TransactTo::Call(address);
     env.tx.access_list = access_list;
     run_program_assert_gas_exact(program, env, used_gas as _);
+}
+
+#[test]
+fn staticcall_on_precompile_with_access_list_is_warm() {
+    let address_in_access_list = Address::from_low_u64_be(IDENTITY_ADDRESS);
+    let mut access_list = AccessList::default();
+    access_list.add_precompile_addresses();
+    let gas = 255_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(5000);
+
+    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
+
+    let caller_ops = [
+        vec![
+            Operation::Push((32_u8, BigUint::default())), //Operand B
+            Operation::Push0,                             //
+            Operation::Mstore,                            //Store in mem address 0
+            Operation::Push((32_u8, BigUint::default())), //Operand A
+            Operation::Push((1_u8, BigUint::from(32_u8))), //
+            Operation::Mstore,                            //Store in mem address 32
+            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        ],
+        value_op_vec,
+        vec![
+            Operation::Push((
+                16_u8,
+                BigUint::from_bytes_be(address_in_access_list.as_bytes()),
+            )), //Address
+            Operation::Push((1_u8, BigUint::from(gas))), //Gas
+        ],
+        vec![Operation::StaticCall],
+    ]
+    .concat();
+
+    let caller_gas_cost = gas_cost::PUSHN * (10)
+        + gas_cost::PUSH0
+        + gas_cost::MSTORE * 2
+        + gas_cost::memory_expansion_cost(0, 64)
+        + precompiles::IDENTITY_COST as i64
+        + gas_cost::CALL_WARM;
+
+    let available_gas = 1e6;
+    let needed_gas = caller_gas_cost;
+    let refund_gas = 0;
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    env.tx.access_list = access_list;
+    let mut db = Db::new().with_contract(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_and_refund(
+        env,
+        db,
+        available_gas as _,
+        needed_gas as _,
+        refund_gas as _,
+    );
 }
