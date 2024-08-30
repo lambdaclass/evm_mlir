@@ -6,7 +6,7 @@ use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
         precompiles::{
-            self, BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
+            BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
             RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
         EMPTY_CODE_HASH_STR,
