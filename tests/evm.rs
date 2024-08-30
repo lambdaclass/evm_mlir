@@ -74,7 +74,8 @@ fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     assert!(result.is_success());
 
     // Halt run
-    env.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit =
+        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact_commit().unwrap();
     assert!(result.is_halt());
@@ -113,6 +114,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
+    let used_gas = used_gas + env.tx.access_list.access_list_cost();
     env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env, db);
 
