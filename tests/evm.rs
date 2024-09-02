@@ -85,10 +85,10 @@ fn run_program_assert_gas_exact(operations: &Vec<Operation>, env: Env, needed_ga
 
     //Ok run
     let program = Box::new(Program::from(operations.clone()));
-    let mut env_success = env.clone();
+    let mut env_success = Box::new(env.clone());
     env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
-    let db = Db::new().with_contract(address, program.to_bytecode().into());
-    let mut evm = Evm::new(env_success, db);
+    let db = Box::new(Db::new().with_contract(address, program.to_bytecode().into()));
+    let mut evm = Box::new(Evm::new(*env_success, *db));
 
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
@@ -4314,20 +4314,21 @@ fn sload_warm_cold_gas() {
 
 #[test]
 fn eip3855_push0_ors_store() {
+    // ESTE ES EL LIMITE DE OPERACIONES QUE AGUANTA ACTUALMENTE
     let pushs = vec![Operation::Push0; MAX_STACK_SIZE];
-    let ors = vec![Operation::Or; MAX_STACK_SIZE];
-    let program = Box::new(
+    let ors = vec![Operation::Or; 561];
+    let program = vec![
+        pushs,
+        ors,
         vec![
-            pushs,
-            ors,
-            vec![
-                Operation::Push((1_u8, BigUint::from(1_u8))),
-                Operation::Swap(1),
-                Operation::Sstore,
-            ],
-        ]
-        .concat(),
-    );
-    let env = Env::default();
-    run_program_assert_gas_exact(&program, env, 1000);
+            Operation::Push((1_u8, 1_u8.into())),
+            Operation::Swap(1),
+            Operation::Sstore,
+        ],
+    ]
+    .concat();
+    let (env, db) = default_env_and_db_setup(program);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
 }

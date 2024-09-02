@@ -138,7 +138,7 @@ impl CallFrame {
 /// The context passed to syscalls
 #[derive(Debug)]
 pub struct SyscallContext<'c> {
-    pub env: Env,
+    pub env: Box<Env>,
     pub journal: Journal<'c>,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
@@ -159,7 +159,7 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame) -> Self {
+    pub fn new(env: Box<Env>, journal: Journal<'c>, call_frame: CallFrame) -> Self {
         Self {
             env,
             journal,

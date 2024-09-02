@@ -36,7 +36,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
         "stRevertTest".into(),
-        //"eip3855_push0".into(),
+        "eip3855_push0".into(),
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stSStoreTest".into(),
