@@ -62,13 +62,17 @@ impl Evm<Db> {
         self.env.validate_transaction()?;
         // validate transaction
 
-        let module = context
-            .compile(&program, Default::default())
-            .expect("failed to compile program");
+        let module = Box::new(
+            context
+                .compile(&program, Default::default())
+                .expect("failed to compile program"),
+        );
 
         let call_frame = CallFrame::new(self.env.tx.caller);
+
         let journal = Journal::new(&mut self.db);
-        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
+        let mut context = Box::new(SyscallContext::new(self.env.clone(), journal, call_frame));
+        // aca pincha
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit

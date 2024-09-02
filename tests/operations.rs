@@ -3,7 +3,10 @@
 //! These don't receive any input, and the CODE* opcodes
 //! may not work properly.
 use evm_mlir::{
-    constants::gas_cost::{self, log_dynamic_gas_cost},
+    constants::{
+        gas_cost::{self, log_dynamic_gas_cost},
+        MAX_STACK_SIZE,
+    },
     context::Context,
     db::Db,
     env::Env,
@@ -244,7 +247,7 @@ fn push_fill_stack() {
     let stack_top = BigUint::from(88_u8);
 
     // Push 1024 times
-    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1024];
+    let program = vec![Operation::Push((1_u8, stack_top.clone())); MAX_STACK_SIZE];
     run_program_assert_result(program, &[]);
 }
 

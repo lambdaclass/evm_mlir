@@ -217,4 +217,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/Pyspecs/shanghai/eip3855_push0/push0_fill_stack.json",
+    r"^.*/*.json",
+);

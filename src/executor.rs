@@ -16,12 +16,18 @@ pub enum OptLevel {
 }
 
 pub struct Executor {
-    engine: ExecutionEngine,
+    engine: Box<ExecutionEngine>,
 }
 
 impl Executor {
     pub fn new(module: &MLIRModule, syscall_ctx: &SyscallContext, opt_level: OptLevel) -> Self {
-        let engine = ExecutionEngine::new(module.module(), opt_level as usize, &[], false);
+        let module = Box::new(module.module());
+        let engine = Box::new(ExecutionEngine::new(
+            &module,
+            opt_level as usize,
+            &[],
+            false,
+        ));
         syscall_ctx.register_symbols(&engine);
         Self { engine }
     }

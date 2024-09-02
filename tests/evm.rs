@@ -9,7 +9,7 @@ use evm_mlir::{
             BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
             RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
-        EMPTY_CODE_HASH_STR,
+        EMPTY_CODE_HASH_STR, MAX_STACK_SIZE,
     },
     db::{Bytecode, Database, Db},
     env::TransactTo,
@@ -80,11 +80,11 @@ fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     assert!(result.is_halt());
 }
 
-fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas: u64) {
+fn run_program_assert_gas_exact(operations: &Vec<Operation>, env: Env, needed_gas: u64) {
     let address = env.tx.get_address();
 
     //Ok run
-    let program = Program::from(operations.clone());
+    let program = Box::new(Program::from(operations.clone()));
     let mut env_success = env.clone();
     env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let db = Db::new().with_contract(address, program.to_bytecode().into());
@@ -256,12 +256,12 @@ fn test_opcode_origin_gas_check() {
     let operations = vec![Operation::Origin];
     let needed_gas = gas_cost::ORIGIN;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn test_opcode_origin_with_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Origin);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -867,12 +867,12 @@ fn callvalue_gas_check() {
     let operations = vec![Operation::Callvalue];
     let needed_gas = gas_cost::CALLVALUE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn callvalue_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Callvalue);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -899,12 +899,12 @@ fn coinbase_gas_check() {
     let operations = vec![Operation::Coinbase];
     let needed_gas = gas_cost::COINBASE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn coinbase_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Coinbase);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -926,12 +926,12 @@ fn timestamp_gas_check() {
     let operations = vec![Operation::Timestamp];
     let needed_gas = gas_cost::TIMESTAMP;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn timestamp_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Timestamp);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -953,12 +953,12 @@ fn basefee_gas_check() {
     let program = vec![Operation::Basefee];
     let needed_gas = gas_cost::BASEFEE;
     let env = Env::default();
-    run_program_assert_gas_exact(program, env, needed_gas as _);
+    run_program_assert_gas_exact(&program, env, needed_gas as _);
 }
 
 #[test]
 fn basefee_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Basefee);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -980,12 +980,12 @@ fn block_number_check_gas() {
     let env = Env::default();
     let gas_needed = gas_cost::NUMBER;
 
-    run_program_assert_gas_exact(program, env, gas_needed as _);
+    run_program_assert_gas_exact(&program, env, gas_needed as _);
 }
 
 #[test]
 fn block_number_with_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Number);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1054,12 +1054,12 @@ fn gasprice_gas_check() {
     let operations = vec![Operation::Gasprice];
     let needed_gas = gas_cost::GASPRICE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn gasprice_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Gasprice);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1081,12 +1081,12 @@ fn chainid_gas_check() {
     let operations = vec![Operation::Chainid];
     let needed_gas = gas_cost::CHAINID;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn chainid_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Chainid);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1113,12 +1113,12 @@ fn caller_gas_check() {
     let operations = vec![Operation::Caller];
     let needed_gas = gas_cost::CALLER;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn caller_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Caller);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1133,7 +1133,7 @@ fn sload_gas_consumption() {
     let result = gas_cost::PUSHN + gas_cost::SLOAD_COLD;
     let env = Env::default();
 
-    run_program_assert_gas_exact(program, env, result as _);
+    run_program_assert_gas_exact(&program, env, result as _);
 }
 
 #[test]
@@ -1216,12 +1216,12 @@ fn address_with_gas_cost() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(address);
     let needed_gas = gas_cost::ADDRESS;
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn address_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Address);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1329,7 +1329,7 @@ fn balance_static_gas_check() {
     let env = Env::default();
     let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
 
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
@@ -1373,7 +1373,7 @@ fn selfbalance_and_balance_with_address_check() {
 
 #[test]
 fn selfbalance_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::SelfBalance);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1386,7 +1386,7 @@ fn selfbalance_gas_check() {
     env.tx.gas_limit = 999_999;
     let needed_gas = gas_cost::SELFBALANCE;
 
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
@@ -1405,12 +1405,12 @@ fn blobbasefee_gas_check() {
     let operations = vec![Operation::BlobBaseFee];
     let needed_gas = gas_cost::BLOBBASEFEE;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn blobbasefee_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::BlobBaseFee);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1432,12 +1432,12 @@ fn gaslimit_gas_check() {
     let operations = vec![Operation::Gaslimit];
     let needed_gas = gas_cost::GASLIMIT;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
 fn gaslimit_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Gaslimit);
     let (env, db) = default_env_and_db_setup(program);
     run_program_assert_halt(env, db);
@@ -1742,12 +1742,12 @@ fn prevrandao_check_gas() {
     let env = Env::default();
     let gas_needed = gas_cost::PREVRANDAO;
 
-    run_program_assert_gas_exact(program, env, gas_needed as _);
+    run_program_assert_gas_exact(&program, env, gas_needed as _);
 }
 
 #[test]
 fn prevrandao_with_stack_overflow() {
-    let mut program = vec![Operation::Push0; 1024];
+    let mut program = vec![Operation::Push0; MAX_STACK_SIZE];
     program.push(Operation::Prevrandao);
     let (env, db) = default_env_and_db_setup(program);
 
@@ -1801,7 +1801,7 @@ fn extcodesize_gas_check() {
     ];
     let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
@@ -1848,7 +1848,7 @@ fn blobhash_check_gas() {
     env.tx.blob_hashes = vec![B256::default()];
     let gas_needed = gas_cost::PUSHN + gas_cost::BLOBHASH;
 
-    run_program_assert_gas_exact(program, env, gas_needed as _);
+    run_program_assert_gas_exact(&program, env, gas_needed as _);
 }
 
 #[test]
@@ -4207,7 +4207,7 @@ fn selfdestruct_gas_cost_on_empty_account() {
         Operation::SelfDestruct,
     ];
     let env = Env::default();
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
+    run_program_assert_gas_exact(&operations, env, needed_gas as _);
 }
 
 #[test]
@@ -4236,7 +4236,7 @@ fn tload_gas_consumption() {
     let needed_gas = gas_cost::PUSHN + gas_cost::TLOAD;
     let env = Env::default();
 
-    run_program_assert_gas_exact(program, env, needed_gas as _);
+    run_program_assert_gas_exact(&program, env, needed_gas as _);
 }
 
 #[test]
@@ -4267,7 +4267,7 @@ fn tstore_gas_consumption() {
     let needed_gas = gas_cost::PUSHN * 2 + gas_cost::TSTORE;
     let env = Env::default();
 
-    run_program_assert_gas_exact(program, env, needed_gas as _);
+    run_program_assert_gas_exact(&program, env, needed_gas as _);
 }
 
 #[test]
@@ -4309,5 +4309,25 @@ fn sload_warm_cold_gas() {
     ];
 
     let env = Env::default();
-    run_program_assert_gas_exact(program, env, used_gas as _);
+    run_program_assert_gas_exact(&program, env, used_gas as _);
+}
+
+#[test]
+fn eip3855_push0_ors_store() {
+    let pushs = vec![Operation::Push0; MAX_STACK_SIZE];
+    let ors = vec![Operation::Or; MAX_STACK_SIZE];
+    let program = Box::new(
+        vec![
+            pushs,
+            ors,
+            vec![
+                Operation::Push((1_u8, BigUint::from(1_u8))),
+                Operation::Swap(1),
+                Operation::Sstore,
+            ],
+        ]
+        .concat(),
+    );
+    let env = Env::default();
+    run_program_assert_gas_exact(&program, env, 1000);
 }
