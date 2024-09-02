@@ -255,9 +255,8 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
         let g2_x = BN254TwistCurveFieldElement::from_bytes_be(&g2_x_bytes);
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
-        let (g2_x, g2_y) = match (g2_x, g2_y) {
-            (Ok(x), Ok(y)) => (x, y),
-            _ => return Bytes::from([0u8; 32].to_vec()),
+        let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
+            return Bytes::from([0u8; 32].to_vec()),
         };
 
         // if any point is (0,0) the pairing is ok
