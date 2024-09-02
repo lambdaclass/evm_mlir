@@ -4,9 +4,10 @@ use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
     constants::{
-        call_opcode, gas_cost,
+        call_opcode,
+        gas_cost::{self, memory_expansion_cost},
         precompiles::{
-            BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
+            self, BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
             RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
         EMPTY_CODE_HASH_STR,
@@ -4489,4 +4490,49 @@ fn keys_in_access_list_are_warm() {
     env.tx.transact_to = TransactTo::Call(address);
     env.tx.access_list = access_list;
     run_program_assert_gas_exact(program, env, used_gas as _);
+}
+
+#[test]
+fn staticcall_on_precompile_identity_with_access_list_is_warm() {
+    let gas: u32 = 100_000_000;
+    let args_offset: u8 = 31;
+    let args_size: u8 = 1;
+    let ret_offset: u8 = 63;
+    let ret_size: u8 = 1;
+    let data: u8 = 0xff;
+    let callee_address = Address::from_low_u64_be(IDENTITY_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let caller_ops = vec![
+        // Place the parameter in memory
+        Operation::Push((1_u8, BigUint::from(data))),
+        Operation::Push((1_u8, BigUint::ZERO)),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.access_list.add_address(callee_address);
+    let used_gas = gas_cost::PUSHN * 10
+        + gas_cost::MSTORE
+        + gas_cost::CALL_WARM
+        + memory_expansion_cost(0, 96)
+        + precompiles::IDENTITY_COST as i64;
+
+    run_program_assert_gas_exact_with_db(env, db, used_gas as _);
 }
