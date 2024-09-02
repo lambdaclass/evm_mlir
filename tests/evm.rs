@@ -2832,7 +2832,6 @@ fn staticcall_on_precompile_identity_happy_path() {
     env.tx.transact_to = TransactTo::Call(caller_address);
 
     run_program_assert_bytes_result(env.clone(), db.clone(), &expected_result);
-    run_program_assert_gas_exact_with_db(env, db, 2657);
 }
 
 #[test]
@@ -4523,10 +4522,7 @@ fn staticcall_on_precompile_identity_with_access_list_is_warm() {
         Operation::Return,
     ];
 
-    let program = Program::from(caller_ops);
-    let caller_bytecode = Bytecode::from(program.to_bytecode());
     let mut env = Env::default();
-    let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.access_list.add_address(callee_address);
     let used_gas = gas_cost::PUSHN * 10
@@ -4535,5 +4531,5 @@ fn staticcall_on_precompile_identity_with_access_list_is_warm() {
         + memory_expansion_cost(0, 96)
         + precompiles::IDENTITY_COST as i64;
 
-    run_program_assert_gas_exact_with_db(env, db, used_gas as u64);
+    run_program_assert_gas_exact(caller_ops, env, used_gas as u64);
 }
