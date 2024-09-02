@@ -4534,5 +4534,5 @@ fn staticcall_on_precompile_identity_with_access_list_is_warm() {
         + memory_expansion_cost(0, 96)
         + precompiles::IDENTITY_COST as i64;
 
-    run_program_assert_gas_exact_with_db(env, db, used_gas as _);
+    run_program_assert_gas_exact_with_db(env, db, used_gas as u64);
 }
