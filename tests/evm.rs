@@ -1130,7 +1130,7 @@ fn sload_gas_consumption() {
         Operation::Push((1_u8, BigUint::from(1_u8))),
         Operation::Sload,
     ];
-    let result = gas_cost::PUSHN + gas_cost::SLOAD;
+    let result = gas_cost::PUSHN + gas_cost::SLOAD_COLD;
     let env = Env::default();
 
     run_program_assert_gas_exact(program, env, result as _);
@@ -4405,4 +4405,21 @@ fn tstore_tload_happy_path() {
     append_return_result_operations(&mut operations);
     let (env, db) = default_env_and_db_setup(operations);
     run_program_assert_num_result(env, db, BigUint::from(value));
+}
+
+#[test]
+fn sload_warm_cold_gas() {
+    let used_gas = gas_cost::PUSHN * 2 + gas_cost::SLOAD_COLD + gas_cost::SLOAD_WARM;
+
+    let program = vec![
+        // first sload: gas_cost = cost_cold + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+        // second sload: gas_cost = cost_warm + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+
+    let env = Env::default();
+    run_program_assert_gas_exact(program, env, used_gas as _);
 }

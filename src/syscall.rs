@@ -616,10 +616,11 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
     }
 
-    pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+    pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
         let address = self.env.tx.get_address();
 
         let key = stg_key.to_primitive_u256();
+        let is_cold = !self.journal.key_is_warm(&address, &key);
 
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
@@ -630,6 +631,12 @@ impl<'c> SyscallContext<'c> {
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
+
+        if is_cold {
+            gas_cost::SLOAD_COLD
+        } else {
+            gas_cost::SLOAD_WARM
+        }
     }
 
     pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
@@ -1118,7 +1125,7 @@ impl<'c> SyscallContext<'c> {
             );
             engine.register_symbol(
                 symbols::STORAGE_READ,
-                SyscallContext::read_storage as *const fn(*const c_void, *const U256, *mut U256)
+                SyscallContext::read_storage as *const fn(*mut c_void, *const U256, *mut U256)
                     as *mut (),
             );
             engine.register_symbol(
@@ -1501,7 +1508,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORAGE_READ),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -2038,14 +2045,18 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
-            &[syscall_ctx, key, value],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORAGE_READ),
+                &[syscall_ctx, key, value],
+                &[uint64.into()],
+                location,
+            ))
+            .result(0)?;
+        Ok(result.into())
     }
 
     /// Writes the storage given a key value pair

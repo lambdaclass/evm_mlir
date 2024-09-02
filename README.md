@@ -80,7 +80,7 @@ ninja install
 
 </details>
 
-Setup a environment variable called `MLIR_SYS_180_PREFIX`, `LLVM_SYS_180_PREFIX` and `TABLEGEN_180_PREFIX` pointing to the llvm directory:
+Setup an environment variable called `MLIR_SYS_180_PREFIX`, `LLVM_SYS_180_PREFIX` and `TABLEGEN_180_PREFIX` pointing to the llvm directory:
 
 ```bash
 # For Debian/Ubuntu using the repository, the path will be /usr/lib/llvm-18
