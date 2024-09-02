@@ -4,28 +4,33 @@ use crate::constants::precompiles::{
 };
 use crate::primitives::U256;
 use bytes::Bytes;
-use lambdaworks_crypto::commitments::{
-    kzg::{KateZaveruchaGoldberg, StructuredReferenceString},
-    traits::IsCommitmentScheme,
-};
+use hex;
+use lambdaworks_crypto::commitments::kzg::{KateZaveruchaGoldberg, StructuredReferenceString};
+use lambdaworks_crypto::commitments::traits::IsCommitmentScheme;
+use lambdaworks_math::cyclic_group::IsGroup;
+use lambdaworks_math::elliptic_curve::short_weierstrass::curves::bls12_381::compression::BLS12381FieldElement;
+use lambdaworks_math::elliptic_curve::short_weierstrass::curves::bls12_381::field_extension::Degree2ExtensionField;
+use lambdaworks_math::elliptic_curve::short_weierstrass::curves::bls12_381::pairing::BLS12381AtePairing;
+use lambdaworks_math::elliptic_curve::short_weierstrass::curves::bls12_381::sqrt;
+use lambdaworks_math::elliptic_curve::traits::FromAffine;
 use lambdaworks_math::elliptic_curve::{
     short_weierstrass::{
         curves::bls12_381::{
-            compression::decompress_g1_point,
             curve::BLS12381Curve,
             default_types::{FrElement, FrField},
-            pairing::BLS12381AtePairing,
             twist::BLS12381TwistCurve,
         },
         point::ShortWeierstrassProjectivePoint,
     },
     traits::IsEllipticCurve,
 };
+use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 use std::array::TryFromSliceError;
+use std::io;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -293,18 +298,163 @@ pub fn blake2f(
 }
 
 type G1 = ShortWeierstrassProjectivePoint<BLS12381Curve>;
+type G1Point = ShortWeierstrassProjectivePoint<BLS12381Curve>;
 type G2Point = <BLS12381TwistCurve as IsEllipticCurve>::PointRepresentation;
 type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
-fn load_trusted_setup_to_points() -> (Vec<G1>, Vec<G2Point>) {
-    unimplemented!()
+const BYTES_PER_G1_POINT: usize = 48;
+const BYTES_PER_G2_POINT: usize = 96;
+
+enum EllipticCurveError {
+    InvalidPoint,
+}
+
+fn load_trusted_setup_to_points() -> io::Result<(Vec<G1>, Vec<G2Point>)> {
+    // https://github.com/lambdaclass/lambdaworks_kzg/blob/8f031b1f32e170c1af06029e46c73404f4c85e2e/src/srs.rs#L25
+    let lines = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/official_trusted_setup.txt"
+    ));
+    let mut lines = lines.lines();
+
+    let mut g1_bytes: [u8; BYTES_PER_G1_POINT] = [0; BYTES_PER_G1_POINT];
+    let mut g1_points: Vec<G1> = Vec::new();
+
+    let mut g2_bytes: [u8; BYTES_PER_G2_POINT] = [0; BYTES_PER_G2_POINT];
+    let mut g2_points: Vec<G2Point> = Vec::new();
+
+    // Read the number of g1 points
+    let num_g1_points = lines
+        .next()
+        .ok_or(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid file format",
+        ))?
+        .parse::<usize>()
+        .map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+    let num_g2_points = lines
+        .next()
+        .ok_or(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid file format",
+        ))?
+        .parse::<usize>()
+        .map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+    let num_total_points = num_g1_points + num_g2_points;
+
+    // read all g1 points
+    for (pos, line) in lines.enumerate() {
+        if pos < num_g1_points {
+            // read g1 point
+            hex::decode_to_slice(line, &mut g1_bytes)
+                .map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+            let g1_point =
+                decompress_g1_point(&mut g1_bytes).map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+            g1_points.push(g1_point);
+        } else if pos < num_total_points {
+            // read g2 point
+            hex::decode_to_slice(line, &mut g2_bytes)
+                .map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+            let g2_point =
+                decompress_g2_point(&mut g2_bytes).map_err(|_| std::io::ErrorKind::InvalidData)?;
+
+            g2_points.push(g2_point);
+        } else {
+            // all the points were already parsed
+            break;
+        }
+    }
+
+    Ok((g1_points, g2_points))
 }
 
 fn points_to_structured_reference_string(
     g1_points: &[G1],
     g2_points: &[G2Point],
 ) -> StructuredReferenceString<G1, G2Point> {
-    unimplemented!()
+    let g2_points_arr = [g2_points[0].clone(), g2_points[1].clone()];
+
+    StructuredReferenceString::new(g1_points, &g2_points_arr)
+}
+
+fn decompress_g1_point(input_bytes: &mut [u8; 48]) -> Result<G1Point, EllipticCurveError> {
+    let first_byte = input_bytes.first().unwrap();
+    // We get the first 3 bits
+    let prefix_bits = first_byte >> 5;
+    let first_bit = (prefix_bits & 4_u8) >> 2;
+    // If first bit is not 1, then the value is not compressed.
+    if first_bit != 1 {
+        return Err(EllipticCurveError::InvalidPoint);
+    }
+    let second_bit = (prefix_bits & 2_u8) >> 1;
+    // If the second bit is 1, then the compressed point is the
+    // point at infinity and we return it directly.
+    if second_bit == 1 {
+        return Ok(G1Point::neutral_element());
+    }
+    let third_bit = prefix_bits & 1_u8;
+
+    let first_byte_without_contorl_bits = (first_byte << 3) >> 3;
+    input_bytes[0] = first_byte_without_contorl_bits;
+
+    let x = BLS12381FieldElement::from_bytes_be(input_bytes)
+        .map_err(|_e| EllipticCurveError::InvalidPoint)?;
+
+    // We apply the elliptic curve formula to know the y^2 value.
+    let y_squared = x.pow(3_u16) + BLS12381FieldElement::from(4);
+
+    let (y_sqrt_1, y_sqrt_2) = &y_squared.sqrt().ok_or(EllipticCurveError::InvalidPoint)?;
+
+    // we call "negative" to the greate root,
+    // if the third bit is 1, we take this grater value.
+    // Otherwise, we take the second one.
+    let y = sqrt::select_sqrt_value_from_third_bit(y_sqrt_1.clone(), y_sqrt_2.clone(), third_bit);
+    let point = G1Point::from_affine(x, y).map_err(|_| EllipticCurveError::InvalidPoint)?;
+
+    point
+        .is_in_subgroup()
+        .then_some(point)
+        .ok_or(EllipticCurveError::InvalidPoint)
+}
+
+fn decompress_g2_point(input_bytes: &mut [u8; 96]) -> Result<G2Point, EllipticCurveError> {
+    let first_byte = input_bytes.first().unwrap();
+
+    // We get the first 3 bits
+    let prefix_bits = first_byte >> 5;
+    let first_bit = (prefix_bits & 4_u8) >> 2;
+    // If first bit is not 1, then the value is not compressed.
+    if first_bit != 1 {
+        return Err(EllipticCurveError::InvalidPoint);
+    }
+    let second_bit = (prefix_bits & 2_u8) >> 1;
+    // If the second bit is 1, then the compressed point is the
+    // point at infinity and we return it directly.
+    if second_bit == 1 {
+        return Ok(G2Point::neutral_element());
+    }
+
+    let first_byte_without_contorl_bits = (first_byte << 3) >> 3;
+    input_bytes[0] = first_byte_without_contorl_bits;
+
+    let input0 = &input_bytes[48..];
+    let input1 = &input_bytes[0..48];
+    let x0 = BLS12381FieldElement::from_bytes_be(input0).unwrap();
+    let x1 = BLS12381FieldElement::from_bytes_be(input1).unwrap();
+    let x: FieldElement<Degree2ExtensionField> = FieldElement::new([x0, x1]);
+
+    const VALUE: BLS12381FieldElement = BLS12381FieldElement::from_hex_unchecked("4");
+    let b_param_qfe = FieldElement::<Degree2ExtensionField>::new([VALUE, VALUE]);
+
+    let y =
+        sqrt::sqrt_qfe(&(x.pow(3_u64) + b_param_qfe), 0).ok_or(EllipticCurveError::InvalidPoint)?;
+
+    G2Point::from_affine(x, y).map_err(|_| EllipticCurveError::InvalidPoint)
 }
 
 // Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values.
@@ -345,7 +495,7 @@ pub fn point_eval(
     let commitment_g1 = decompress_g1_point(&mut commitment).map_err(|_| PointEvalErr {})?;
     let proof_g1 = decompress_g1_point(&mut proof).map_err(|_| PointEvalErr {})?;
 
-    let (g1_points, g2_points) = load_trusted_setup_to_points();
+    let (g1_points, g2_points) = load_trusted_setup_to_points().map_err(|_| PointEvalErr {})?;
     let srs = points_to_structured_reference_string(&g1_points, &g2_points);
     let kzg = KZG::new(srs);
 
