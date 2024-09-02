@@ -2831,7 +2831,8 @@ fn staticcall_on_precompile_identity_happy_path() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_bytes_result(env, db, &expected_result);
+    run_program_assert_bytes_result(env.clone(), db.clone(), &expected_result);
+    run_program_assert_gas_exact_with_db(env, db, 2657);
 }
 
 #[test]
