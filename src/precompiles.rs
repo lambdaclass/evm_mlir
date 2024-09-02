@@ -458,6 +458,14 @@ fn decompress_g2_point(input_bytes: &mut [u8; 96]) -> Result<G2Point, EllipticCu
     G2Point::from_affine(x, y).map_err(|_| EllipticCurveError::InvalidPoint)
 }
 
+pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+
+pub fn kzg_to_versioned_hash(commitment: &[u8]) -> [u8; 32] {
+    let mut hash: [u8; 32] = sha2::Sha256::digest(commitment).into();
+    hash[0] = VERSIONED_HASH_VERSION_KZG;
+    hash
+}
+
 // Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values.
 // FIELD_ELEMENTS_PER_BLOB = 4096 = 0x1000;
 // BLS_MODULUS = 52435875175126190479447740508185965837690552500527637822603658699938581184513
@@ -493,9 +501,14 @@ pub fn point_eval(
        [144: 192]   proof           Proof associated with the commitment
     */
     let versioned_hash: &[u8; 32] = &calldata[..32].try_into().map_err(|_| PointEvalErr {})?;
+    let mut commitment: [u8; 48] = calldata[96..144].try_into().map_err(|_| PointEvalErr {})?;
+
+    if kzg_to_versioned_hash(&commitment) != *versioned_hash {
+        return Err(PointEvalErr {});
+    }
+
     let x: &[u8; 32] = &calldata[32..64].try_into().map_err(|_| PointEvalErr {})?;
     let y: &[u8; 32] = &calldata[64..96].try_into().map_err(|_| PointEvalErr {})?;
-    let mut commitment: [u8; 48] = calldata[96..144].try_into().map_err(|_| PointEvalErr {})?;
     let mut proof: [u8; 48] = calldata[144..192].try_into().unwrap();
 
     let x_fr = FrElement::from_bytes_be(x).map_err(|_| PointEvalErr {})?;
