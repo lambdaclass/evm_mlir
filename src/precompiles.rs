@@ -12,12 +12,13 @@ use lambdaworks_math::{
     elliptic_curve::{
         short_weierstrass::curves::bn_254::{
             curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+            field_extension::Degree12ExtensionField,
             pairing::BN254AtePairing,
             twist::BN254TwistCurve,
         },
         traits::{IsEllipticCurve, IsPairing},
     },
-    field::extensions::quadratic::QuadraticExtensionFieldElement,
+    field::{element::FieldElement, extensions::quadratic::QuadraticExtensionFieldElement},
     traits::ByteConversion,
     unsigned_integer::element::U256 as LambdaWorksU256,
 };
@@ -230,7 +231,7 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
     *consumed_gas += gas_cost;
 
     let rounds = calldata.len() / 192;
-    let mut mul = QuadraticExtensionFieldElement::one();
+    let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
     for idx in 0..rounds {
         let start = idx * 192;
 
@@ -281,7 +282,7 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
             Ok(result) => result,
             Err(_) => return Bytes::from([0u8; 32].to_vec()),
         };
-        mul = mul * pairing_result;
+        mul *= pairing_result;
     }
 
     let success = mul.eq(&QuadraticExtensionFieldElement::one());
