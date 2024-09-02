@@ -304,6 +304,7 @@ type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
 const BYTES_PER_G1_POINT: usize = 48;
 const BYTES_PER_G2_POINT: usize = 96;
+const POINT_EVAL_CALLDATA_LEN: usize = 192;
 
 enum EllipticCurveError {
     InvalidPoint,
@@ -474,6 +475,10 @@ pub fn point_eval(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PointEvalErr> {
     if gas_limit < POINT_EVAL_COST {
+        return Err(PointEvalErr {});
+    }
+
+    if calldata.len() != POINT_EVAL_CALLDATA_LEN {
         return Err(PointEvalErr {});
     }
 
