@@ -179,13 +179,15 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
         _ => {}
     }
 
-    let (Ok(p1), Ok(p2)) = (BN254Curve::create_point_from_affine(x1, y1), BN254Curve::create_point_from_affine(x2, y2)) else {
+    let (Ok(p1), Ok(p2)) = (
+        BN254Curve::create_point_from_affine(x1, y1),
+        BN254Curve::create_point_from_affine(x2, y2),
+    ) else {
         return Bytes::new();
-      }
+    };
     let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
     Bytes::from(res)
-    Bytes::new()
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -267,18 +269,15 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
             continue;
         }
 
-        let Ok(p1) = BN254Curve::create_point_from_affine(g1_x, g1_y) else {
+        let (Ok(p1), Ok(p2)) = (
+            BN254Curve::create_point_from_affine(g1_x, g1_y),
+            BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
+        ) else {
             return Bytes::from([0u8; 32].to_vec());
-            }
-        };
-        let p2 = match BN254TwistCurve::create_point_from_affine(g2_x, g2_y) {
-            Ok(point) => point,
-            Err(_) => return Bytes::from([0u8; 32].to_vec()),
         };
 
-        let pairing_result = match BN254AtePairing::compute_batch(&[(&p1, &p2)]) {
-            Ok(result) => result,
-            Err(_) => return Bytes::from([0u8; 32].to_vec()),
+        let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
+            return Bytes::from([0u8; 32].to_vec());
         };
         mul *= pairing_result;
     }
