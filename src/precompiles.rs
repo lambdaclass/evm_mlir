@@ -1,6 +1,6 @@
 use crate::constants::precompiles::{
     blake2_gas_cost, identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost,
-    ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+    ECRECOVER_COST, IDENTITY_COST, POINT_EVAL_COST, RIPEMD_160_COST, SHA2_256_COST,
 };
 use crate::primitives::U256;
 use bytes::Bytes;
@@ -473,6 +473,10 @@ pub fn point_eval(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PointEvalErr> {
+    if gas_limit < POINT_EVAL_COST {
+        return Err(PointEvalErr {});
+    }
+
     /*
        The calldata is encoded as follows:
 
