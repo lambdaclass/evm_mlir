@@ -1,8 +1,8 @@
 use crate::{
     constants::precompiles::{
-        blake2_gas_cost, identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost,
-        ECADD_COST, ECMUL_COST, ECPAIRING_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST,
-        SHA2_256_COST,
+        blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
+        sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
+        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
     },
     primitives::U256,
 };
@@ -223,7 +223,7 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 }
 
 pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = ECPAIRING_COST + (34_000 * (calldata.len() as u64 / 192));
+    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
     if calldata.len() % 192 != 0 || gas_limit < gas_cost {
         *consumed_gas += gas_limit;
         return Bytes::new();
@@ -1027,7 +1027,7 @@ mod tests {
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, ECPAIRING_COST);
+        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
     }
 
     #[test]
