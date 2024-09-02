@@ -169,6 +169,18 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
+                /*
+                        let hex_str = std::str::from_utf8(&bytecode[2..]).unwrap();
+                let mut values = Vec::new();
+                for i in (0..hex_str.len()).step_by(2) {
+                    let pair = &hex_str[i..i + 2];
+                    let value = u8::from_str_radix(pair, 16).unwrap();
+                    values.push(value);
+                }
+                let program = Box::new(Program::from_bytecode(&values));
+                ACA ESTA EL ERROR, LEEMOS EL VALOR ASCII Y NO EL POSTA DE IR AGARRANDO DE A BYTE XD
+                         */
+
                 db = db.with_contract(address.to_owned(), account_info.code.clone());
                 db.set_account(
                     address.to_owned(),
