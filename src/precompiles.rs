@@ -756,4 +756,31 @@ mod tests {
         assert_eq!(output, Err(PointEvalErr::NotEnoughGas));
         assert_eq!(consumed_gas, 0);
     }
+
+    #[test]
+    fn test_point_eval_consumes_gas() {
+        let input = Bytes::from([0 as u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let _ = point_eval(&input, 50001, &mut consumed_gas);
+
+        assert_eq!(consumed_gas, 50000);
+    }
+
+    #[test]
+    fn test_point_eval_mismatched_versioned_hash() {
+        let commitment = hex::decode("8f59a8d2a1a625a17f3fea0fe5eb8c896db3764f3185481bc22f91b4aaffcca25f26936857bc3a7c2539ea8ec3a952b7").unwrap();
+        let mut versioned_hash = sha2::Sha256::digest(&commitment).to_vec();
+        versioned_hash[0] = VERSIONED_HASH_VERSION_KZG + 1;
+        let z = Vec::from([0 as u8; 32]);
+        let y = Vec::from([0 as u8; 32]);
+        let proof = Vec::from([0 as u8; 48]);
+        let input = Bytes::from([versioned_hash, z, y, commitment, proof].concat());
+        let mut consumed_gas: u64 = 0;
+
+        let output = point_eval(&input, 999999, &mut consumed_gas);
+        assert_eq!(output, Err(PointEvalErr::MismatchedVersionedHash));
+        assert_eq!(consumed_gas, 50000);
+    }
 }
