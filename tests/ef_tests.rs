@@ -6,6 +6,7 @@ use std::{
 };
 mod ef_tests_executor;
 use bytes::Bytes;
+use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
 use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
 
@@ -34,10 +35,9 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
-        "stEIP1153-transientStorage".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
+        "stTimeConsuming".into(),
         "stRevertTest".into(),
         //"eip3855_push0".into(), //todo test
         "eip4844_blobs".into(),
@@ -55,31 +55,24 @@ fn get_ignored_groups() -> HashSet<String> {
         "stPreCompiledContracts2".into(),
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
-        "stTimeConsuming".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stTransitionTest".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        "stSLoadTest".into(),           // this 3 stopped working
-        "stRecursiveCreate".into(),     //
-        "vmIOandFlowOperations".into(), //
+        "stSLoadTest".into(),
+        "stRecursiveCreate".into(),
+        "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
-        "eip3651_warm_coinbase".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
         "stRandom2".into(),
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
-        //"opcodes".into(), this also works
         "stEIP158Specific".into(),
         "stZeroKnowledge".into(),
-        //"stShift".into(), now this works!
         "stLogTests".into(),
-        "eip7516_blobgasfee".into(),
         "stBugs".into(),
         "stEIP1559".into(),
-        //"stSelfBalance".into(), now this works!
         "stStaticCall".into(),
         "stCallDelegateCodesHomestead".into(),
         "stMemExpandingEIP150Calls".into(),
@@ -88,10 +81,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCodeCopyTest".into(),
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
-        "stChainId".into(),
-        "vmLogTest".into(),
         "stMemoryTest".into(),
-        "stWalletTest".into(),
         "stRandom".into(),
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
@@ -102,7 +92,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP3607".into(),
         "stCreateTest".into(),
         "eip198_modexp_precompile".into(),
-        "stCodeSizeLimit".into(),
         "stRefundTest".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
@@ -118,6 +107,17 @@ fn get_ignored_suites() -> HashSet<String> {
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
     ])
+}
+
+fn convert_to_hex(account_info_code: Bytes) -> Bytes {
+    let hex_string = std::str::from_utf8(&account_info_code[2..]).unwrap(); // we don't need the 0x
+    let mut opcodes = Vec::new();
+    for i in (0..hex_string.len()).step_by(2) {
+        let pair = &hex_string[i..i + 2];
+        let value = u8::from_str_radix(pair, 16).unwrap();
+        opcodes.push(value);
+    }
+    Bytes::from(opcodes)
 }
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
@@ -140,18 +140,17 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
-        let Some(to) = unit.transaction.to else {
-            return Err("`to` field is None".into());
+        let to = match unit.transaction.to {
+            Some(to) => TransactTo::Call(to),
+            None => TransactTo::Create,
         };
-        let Some(account) = unit.pre.get(&to) else {
-            return Err("Callee doesn't exist".into());
-        };
+
         let sender = unit.transaction.sender.unwrap_or_default();
         let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         for test in tests {
             let mut env = Env::default();
-            env.tx.transact_to = TransactTo::Call(to);
+            env.tx.transact_to = to.clone();
             env.tx.gas_price = gas_price;
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
@@ -171,21 +170,22 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-            let mut db = Db::new().with_contract(to, account.code.clone());
+            let mut db = match to.clone() {
+                TransactTo::Call(to) => {
+                    let opcodes = convert_to_hex(unit.pre.get(&to).unwrap().code.clone());
+                    Db::new().with_contract(to, opcodes)
+                }
+                TransactTo::Create => {
+                    let opcodes =
+                        convert_to_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone());
+                    Db::new().with_contract(env.tx.get_address(), opcodes)
+                }
+            };
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
-                let account_info_code = account_info.code.clone();
-                let hex_str = std::str::from_utf8(&account_info_code[2..]).unwrap();
-                let mut values = Vec::new();
-                for i in (0..hex_str.len()).step_by(2) {
-                    let pair = &hex_str[i..i + 2];
-                    let value = u8::from_str_radix(pair, 16).unwrap();
-                    values.push(value);
-                }
-                //db = db.with_contract(address.to_owned(), Bytes::from(values));
-                println!("This is in account_info.code: {:?}", account_info.code);
-                db = db.with_contract(address.to_owned(), account_info.code.clone());
+                let opcodes = convert_to_hex(account_info.code.clone());
+                db = db.with_contract(address.to_owned(), opcodes);
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
@@ -212,11 +212,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut result_state = HashMap::new();
             for address in test.post_state.keys() {
                 let account = res.state.get(address).unwrap();
+                let opcodes = convert_to_hex(account.info.code.clone().unwrap());
                 result_state.insert(
                     address.to_owned(),
                     AccountInfo {
                         balance: account.info.balance,
-                        code: account.info.code.clone().unwrap(),
+                        code: opcodes,
                         nonce: account.info.nonce,
                         storage: account
                             .storage
