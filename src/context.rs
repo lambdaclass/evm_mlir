@@ -237,7 +237,7 @@ fn compile_program(
 
     let mut op_ctx = OperationCtx::new(context, module, &main_region, &setup_block, program)?;
 
-    let mut last_block = setup_block;
+    let mut last_block = Box::new(setup_block);
 
     // Generate code for the program
     for op in &op_ctx.program.operations {
