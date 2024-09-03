@@ -50,10 +50,8 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCallCreateCallCodeTest".into(),
         "stPreCompiledContracts2".into(),
         "stZeroKnowledge2".into(),
-        //"stDelegatecallTestHomestead".into(),
-        "stTimeConsuming".into(), //works!
+        "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stTransitionTest".into(), // works!
         "stCreate2".into(),
         "stSpecialTest".into(),
         "stSLoadTest".into(),
@@ -80,7 +78,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
         "stMemoryTest".into(),
-        "stWalletTest".into(), //works!
         "stRandom".into(),
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
@@ -89,12 +86,8 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCallDelegateCodesCallCodeHomestead".into(),
         "yul".into(),
         "stEIP3607".into(),
-        "stEIP3860-limitmeterinitcode".into(), //WORKS! but takes a long time
-        "eip7516_blobgasfee".into(),           //WORKS! but takes a long time
-        "stSelfBalance".into(),                //WORKS! but takes a long time
         "stCreateTest".into(),
         "eip198_modexp_precompile".into(),
-        "stCodeSizeLimit".into(), //works!
         "stRefundTest".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
