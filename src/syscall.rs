@@ -24,7 +24,9 @@ use crate::{
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
     journal::Journal,
-    precompiles::{blake2f, ecrecover, identity, modexp, ripemd_160, sha2_256},
+    precompiles::{
+        blake2f, ecadd, ecmul, ecpairing, ecrecover, identity, modexp, ripemd_160, sha2_256,
+    },
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -307,6 +309,18 @@ impl<'c> SyscallContext<'c> {
             x if x == Address::from_low_u64_be(precompiles::MODEXP_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 modexp(&calldata, gas_to_send, consumed_gas),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                ecadd(&calldata, gas_to_send, consumed_gas),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::ECMUL_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                ecmul(&calldata, gas_to_send, consumed_gas),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                ecpairing(&calldata, gas_to_send, consumed_gas),
             ),
             x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
