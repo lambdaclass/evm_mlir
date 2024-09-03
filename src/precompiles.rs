@@ -167,14 +167,14 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 return Bytes::from(res);
             }
-            return Bytes::new();
+            return Bytes::from([0u8; 64].to_vec());
         }
         (false, true) => {
             if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 return Bytes::from(res);
             }
-            return Bytes::new();
+            return Bytes::from([0u8; 64].to_vec());
         }
         _ => {}
     }
@@ -186,7 +186,7 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
             return Bytes::from(res);
         }
     }
-    Bytes::new()
+    Bytes::from([0u8; 64].to_vec())
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -629,7 +629,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -651,7 +651,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
