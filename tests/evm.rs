@@ -4444,3 +4444,38 @@ fn eip3855_push0_ors_store() {
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
 }
+
+#[test]
+fn eip3855_push0_stack_overflow() {
+    let program = vec![Operation::Push0; MAX_STACK_SIZE + 1];
+    let (env, db) = default_env_and_db_setup(program);
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn eip3855_push0_key_sstore() {
+    let program = vec![
+        Operation::Push0,
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::Sstore,
+    ];
+
+    let (env, db) = default_env_and_db_setup(program);
+    let mut evm = Box::new(Evm::new(env, db));
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
+}
+
+#[test]
+fn eip3855_push0_storage_overwrite() {
+    let program = vec![
+        Operation::Push0,
+        Operation::Push((1_u8, 1_u8.into())),
+        Operation::Sstore,
+    ];
+
+    let (env, db) = default_env_and_db_setup(program);
+    let mut evm = Box::new(Evm::new(env, db));
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
+}
