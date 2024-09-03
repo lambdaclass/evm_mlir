@@ -475,7 +475,16 @@ const POINT_EVAL_RETURN: &str =
 
 // TODO: alias as the actual return type (bytes encoded).
 // TODO: define better error.
-pub struct PointEvalErr;
+#[derive(Debug, PartialEq)]
+pub enum PointEvalErr {
+    NotEnoughGas,
+    CalldataLengthInvalid,
+    CalldataParseError,
+    MismatchedVersionedHash,
+    PointDecompressionError,
+    TrustedSetupError,
+    VerificationFalse,
+}
 
 pub fn point_eval(
     calldata: &Bytes,
@@ -483,11 +492,11 @@ pub fn point_eval(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PointEvalErr> {
     if gas_limit < POINT_EVAL_COST {
-        return Err(PointEvalErr {});
+        return Err(PointEvalErr::NotEnoughGas);
     }
 
     if calldata.len() != POINT_EVAL_CALLDATA_LEN {
-        return Err(PointEvalErr {});
+        return Err(PointEvalErr::CalldataLengthInvalid);
     }
 
     /*
@@ -500,29 +509,42 @@ pub fn point_eval(
        [96: 144]    commitment      Commitment to the blob being evaluated
        [144: 192]   proof           Proof associated with the commitment
     */
-    let versioned_hash: &[u8; 32] = &calldata[..32].try_into().map_err(|_| PointEvalErr {})?;
-    let mut commitment: [u8; 48] = calldata[96..144].try_into().map_err(|_| PointEvalErr {})?;
+    let versioned_hash: &[u8; 32] = &calldata[..32]
+        .try_into()
+        .map_err(|_| PointEvalErr::CalldataParseError)?;
+    let mut commitment: [u8; 48] = calldata[96..144]
+        .try_into()
+        .map_err(|_| PointEvalErr::CalldataParseError)?;
 
     if kzg_to_versioned_hash(&commitment) != *versioned_hash {
-        return Err(PointEvalErr {});
+        return Err(PointEvalErr::MismatchedVersionedHash);
     }
 
-    let x: &[u8; 32] = &calldata[32..64].try_into().map_err(|_| PointEvalErr {})?;
-    let y: &[u8; 32] = &calldata[64..96].try_into().map_err(|_| PointEvalErr {})?;
-    let mut proof: [u8; 48] = calldata[144..192].try_into().unwrap();
+    let x: &[u8; 32] = &calldata[32..64]
+        .try_into()
+        .map_err(|_| PointEvalErr::CalldataParseError)?;
+    let y: &[u8; 32] = &calldata[64..96]
+        .try_into()
+        .map_err(|_| PointEvalErr::CalldataParseError)?;
+    let mut proof: [u8; 48] = calldata[144..192]
+        .try_into()
+        .map_err(|_| PointEvalErr::CalldataParseError)?;
 
-    let x_fr = FrElement::from_bytes_be(x).map_err(|_| PointEvalErr {})?;
-    let y_fr = FrElement::from_bytes_be(y).map_err(|_| PointEvalErr {})?;
+    let x_fr = FrElement::from_bytes_be(x).map_err(|_| PointEvalErr::CalldataParseError)?;
+    let y_fr = FrElement::from_bytes_be(y).map_err(|_| PointEvalErr::CalldataParseError)?;
 
-    let commitment_g1 = decompress_g1_point(&mut commitment).map_err(|_| PointEvalErr {})?;
-    let proof_g1 = decompress_g1_point(&mut proof).map_err(|_| PointEvalErr {})?;
+    let commitment_g1 =
+        decompress_g1_point(&mut commitment).map_err(|_| PointEvalErr::PointDecompressionError)?;
+    let proof_g1 =
+        decompress_g1_point(&mut proof).map_err(|_| PointEvalErr::PointDecompressionError)?;
 
-    let (g1_points, g2_points) = load_trusted_setup_to_points().map_err(|_| PointEvalErr {})?;
+    let (g1_points, g2_points) =
+        load_trusted_setup_to_points().map_err(|_| PointEvalErr::TrustedSetupError)?;
     let srs = points_to_structured_reference_string(&g1_points, &g2_points);
     let kzg = KZG::new(srs);
 
     match kzg.verify(&x_fr, &y_fr, &commitment_g1, &proof_g1) {
-        false => Err(PointEvalErr {}),
+        false => Err(PointEvalErr::VerificationFalse),
         true => Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes())),
     }
 }
