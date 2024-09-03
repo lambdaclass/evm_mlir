@@ -140,18 +140,17 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
-        let Some(to) = unit.transaction.to else {
-            return Err("`to` field is None".into());
+        let to = match unit.transaction.to {
+            Some(to) => TransactTo::Call(to),
+            None => TransactTo::Create,
         };
-        let Some(account) = unit.pre.get(&to) else {
-            return Err("Callee doesn't exist".into());
-        };
+
         let sender = unit.transaction.sender.unwrap_or_default();
         let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         for test in tests {
             let mut env = Env::default();
-            env.tx.transact_to = TransactTo::Call(to);
+            env.tx.transact_to = to.clone();
             env.tx.gas_price = gas_price;
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
@@ -171,8 +170,17 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-            let opcodes = convert_to_hex(account.code.clone());
-            let mut db = Db::new().with_contract(to, opcodes);
+            let mut db = match to.clone() {
+                TransactTo::Call(to) => {
+                    let opcodes = convert_to_hex(unit.pre.get(&to).unwrap().code.clone());
+                    Db::new().with_contract(to, opcodes)
+                }
+                TransactTo::Create => {
+                    let opcodes =
+                        convert_to_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone());
+                    Db::new().with_contract(env.tx.get_address(), opcodes)
+                }
+            };
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
