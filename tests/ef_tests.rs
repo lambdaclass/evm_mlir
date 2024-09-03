@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 mod ef_tests_executor;
+use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
 use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
 
@@ -31,9 +32,7 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
-        "stEIP1153-transientStorage".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
         "stRevertTest".into(),
         "eip3855_push0".into(),
@@ -57,23 +56,21 @@ fn get_ignored_groups() -> HashSet<String> {
         "stTransitionTest".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
+        "stSLoadTest".into(),           //
+        "stRecursiveCreate".into(),     //
+        "vmIOandFlowOperations".into(), //
         "stEIP150Specific".into(),
-        "eip3651_warm_coinbase".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
         "stRandom2".into(),
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
-        "opcodes".into(),
         "stEIP158Specific".into(),
         "stZeroKnowledge".into(),
-        "stShift".into(),
         "stLogTests".into(),
-        "eip7516_blobgasfee".into(),
         "stBugs".into(),
         "stEIP1559".into(),
-        "stSelfBalance".into(),
         "stStaticCall".into(),
         "stCallDelegateCodesHomestead".into(),
         "stMemExpandingEIP150Calls".into(),
@@ -82,8 +79,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCodeCopyTest".into(),
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
-        "stChainId".into(),
-        "vmLogTest".into(),
         "stMemoryTest".into(),
         "stWalletTest".into(),
         "stRandom".into(),
@@ -112,6 +107,17 @@ fn get_ignored_suites() -> HashSet<String> {
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
     ])
+}
+
+fn convert_to_hex(account_info_code: Bytes) -> Bytes {
+    let hex_string = std::str::from_utf8(&account_info_code[2..]).unwrap(); // we don't need the 0x
+    let mut opcodes = Vec::new();
+    for i in (0..hex_string.len()).step_by(2) {
+        let pair = &hex_string[i..i + 2];
+        let value = u8::from_str_radix(pair, 16).unwrap();
+        opcodes.push(value);
+    }
+    Bytes::from(opcodes)
 }
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
@@ -165,11 +171,13 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-            let mut db = Db::new().with_contract(to, account.code.clone());
+            let opcodes = convert_to_hex(account.code.clone());
+            let mut db = Db::new().with_contract(to, opcodes);
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
-                db = db.with_contract(address.to_owned(), account_info.code.clone());
+                let opcodes = convert_to_hex(account_info.code.clone());
+                db = db.with_contract(address.to_owned(), Bytes::from(opcodes));
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
