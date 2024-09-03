@@ -56,9 +56,9 @@ fn get_ignored_groups() -> HashSet<String> {
         "stTransitionTest".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        "stSLoadTest".into(),           //
-        "stRecursiveCreate".into(),     //
-        "vmIOandFlowOperations".into(), //
+        "stSLoadTest".into(),
+        "stRecursiveCreate".into(),
+        "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
@@ -204,11 +204,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut result_state = HashMap::new();
             for address in test.post_state.keys() {
                 let account = res.state.get(address).unwrap();
+                let opcodes = convert_to_hex(account.info.code.clone().unwrap());
                 result_state.insert(
                     address.to_owned(),
                     AccountInfo {
                         balance: account.info.balance,
-                        code: account.info.code.clone().unwrap(),
+                        code: opcodes,
                         nonce: account.info.nonce,
                         storage: account
                             .storage
