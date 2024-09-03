@@ -499,6 +499,8 @@ pub fn point_eval(
         return Err(PointEvalErr::CalldataLengthInvalid);
     }
 
+    *consumed_gas += POINT_EVAL_COST;
+
     /*
        The calldata is encoded as follows:
 
