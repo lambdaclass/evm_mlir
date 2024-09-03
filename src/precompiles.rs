@@ -744,4 +744,16 @@ mod tests {
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
     }
+
+    #[test]
+    fn test_point_eval_not_enough_gas() {
+        let input = Bytes::from([0 as u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let output = point_eval(&input, 49999, &mut consumed_gas);
+
+        assert_eq!(output, Err(PointEvalErr::NotEnoughGas));
+        assert_eq!(consumed_gas, 0);
+    }
 }
