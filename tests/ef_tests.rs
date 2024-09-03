@@ -181,7 +181,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
                 let opcodes = convert_to_hex(account_info.code.clone());
-                db = db.with_contract(address.to_owned(), Bytes::from(opcodes));
+                db = db.with_contract(address.to_owned(), opcodes);
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
