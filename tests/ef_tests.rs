@@ -1,11 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::OpenOptions,
-    io::Write,
     path::Path,
 };
 mod ef_tests_executor;
-use bytes::Bytes;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
 use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
@@ -39,7 +36,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stArgsZeroOneBalance".into(),
         "stTimeConsuming".into(),
         "stRevertTest".into(),
-        //"eip3855_push0".into(), //todo test
+        "eip3855_push0".into(), //todo test
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stSStoreTest".into(),
