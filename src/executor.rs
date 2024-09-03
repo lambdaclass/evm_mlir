@@ -20,8 +20,8 @@ pub struct Executor {
 }
 
 impl Executor {
-    pub fn new(module: &MLIRModule, syscall_ctx: &SyscallContext, opt_level: OptLevel) -> Self {
-        let module = Box::new(module.module());
+    pub fn new(module: Box<MLIRModule>, syscall_ctx: &SyscallContext, opt_level: OptLevel) -> Self {
+        let module = Box::new(module.melior_module);
         // Aca es lo ultimo que llega a ejecutar
         let engine = Box::new(ExecutionEngine::new(
             &module,

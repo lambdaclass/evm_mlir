@@ -416,9 +416,11 @@ impl<'c> SyscallContext<'c> {
                 let program = Program::from_bytecode(&bytecode);
 
                 let context = Context::new();
-                let module = context
-                    .compile(&program, Default::default())
-                    .expect("failed to compile program");
+                let module = Box::new(
+                    context
+                        .compile(&program, Default::default())
+                        .expect("failed to compile program"),
+                );
 
                 let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
 
@@ -431,7 +433,7 @@ impl<'c> SyscallContext<'c> {
                 let journal = self.journal.eject_base();
 
                 let mut context = SyscallContext::new(env.clone(), journal, call_frame);
-                let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+                let executor = Executor::new(module, &context, OptLevel::Aggressive);
 
                 executor.execute(&mut context, env.tx.gas_limit);
 
@@ -928,14 +930,16 @@ impl<'c> SyscallContext<'c> {
 
         // Execute initialization code
         let context = Context::new();
-        let module = context
-            .compile(&program, Default::default())
-            .expect("failed to compile program");
+        let module = Box::new(
+            context
+                .compile(&program, Default::default())
+                .expect("failed to compile program"),
+        );
 
         // NOTE: Here we are not taking into account what happens if the deployment code reverts
         let ctx_journal = self.journal.eject_base();
         let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
-        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+        let executor = Executor::new(module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();

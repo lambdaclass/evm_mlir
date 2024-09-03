@@ -77,7 +77,7 @@ impl Evm<Db> {
         let journal = Journal::new(&mut self.db);
         let mut context = Box::new(SyscallContext::new(self.env.clone(), journal, call_frame));
         // aca pincha
-        let executor = Box::new(Executor::new(&module, &context, OptLevel::Aggressive));
+        let executor = Box::new(Executor::new(module, &context, OptLevel::Aggressive));
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();

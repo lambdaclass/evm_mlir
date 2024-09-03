@@ -29,16 +29,18 @@ fn run_program_get_result_with_gas(
     let program = Program::from(operations);
 
     let context = Context::new();
-    let module = context
-        .compile(&program, Default::default())
-        .expect("failed to compile program");
+    let module = Box::new(
+        context
+            .compile(&program, Default::default())
+            .expect("failed to compile program"),
+    );
 
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
     let journal = Journal::new(&mut db);
     let mut context = SyscallContext::new(Box::new(env), journal, Default::default());
-    let executor = Executor::new(&module, &context, Default::default());
+    let executor = Executor::new(module, &context, Default::default());
 
     let _result = executor.execute(&mut context, initial_gas);
 

@@ -4428,7 +4428,7 @@ fn sload_warm_cold_gas() {
 fn eip3855_push0_ors_store() {
     // Este es el limite de operaciones que se llega a poner despues de mover todo lo posible al heap
     let pushs = vec![Operation::Push0; MAX_STACK_SIZE];
-    let ors = vec![Operation::Or; 500];
+    let ors = vec![Operation::Or; 560];
     let program = vec![
         pushs,
         ors,
@@ -4478,4 +4478,13 @@ fn eip3855_push0_storage_overwrite() {
     let mut evm = Box::new(Evm::new(env, db));
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
+}
+
+#[test]
+fn eip3855_push0_gas_cost() {
+    let program = vec![Operation::Push0, Operation::Push0, Operation::Push0];
+    let used_gas = gas_cost::PUSH0 * 3;
+
+    let env = Env::default();
+    run_program_assert_gas_exact(&program, env, used_gas as _);
 }
