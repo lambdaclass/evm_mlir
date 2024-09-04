@@ -5,6 +5,7 @@ use crate::{
         IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
     },
     primitives::U256,
+    result::PrecompileError,
 };
 use bytes::Bytes;
 use lambdaworks_math::{
@@ -142,10 +143,18 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     Bytes::copy_from_slice(output)
 }
 
-pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() < 128 || gas_limit < ECADD_COST {
+pub fn ecadd(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 128 {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    if gas_limit < ECADD_COST {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += ECADD_COST;
 
@@ -161,20 +170,20 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
     let p2_is_infinity = x2.eq(&zero_el) && y2.eq(&zero_el);
 
     match (p1_is_infinity, p2_is_infinity) {
-        (true, true) => return Bytes::from([0u8; 64].to_vec()),
+        (true, true) => return Ok(Bytes::from([0u8; 64].to_vec())),
         (true, false) => {
             if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
-                return Bytes::from(res);
+                return Ok(Bytes::from(res));
             }
-            return Bytes::new();
+            return Err(PrecompileError::InvalidEcPoint);
         }
         (false, true) => {
             if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
-                return Bytes::from(res);
+                return Ok(Bytes::from(res));
             }
-            return Bytes::new();
+            return Err(PrecompileError::InvalidEcPoint);
         }
         _ => {}
     }
@@ -183,11 +192,11 @@ pub fn ecadd(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
         BN254Curve::create_point_from_affine(x1, y1),
         BN254Curve::create_point_from_affine(x2, y2),
     ) else {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidEcPoint);
     };
     let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
-    Bytes::from(res)
+    Ok(Bytes::from(res))
 }
 
 pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -524,7 +533,7 @@ mod tests {
         let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -553,7 +562,7 @@ mod tests {
         let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -582,7 +591,7 @@ mod tests {
         let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -604,7 +613,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -626,7 +635,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(result.is_err());
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -648,7 +657,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(result.is_err());
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -670,7 +679,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(result.is_err());
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -691,7 +700,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(result.is_err());
         assert_eq!(consumed_gas, gas_limit);
     }
 
