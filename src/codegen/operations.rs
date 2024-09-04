@@ -128,9 +128,9 @@ pub fn generate_code_for_op<'c>(
     }
 }
 
-fn codegen_blockhash<'c, 'r>(
+fn codegen_blockhash<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -180,9 +180,9 @@ fn codegen_blockhash<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_origin<'c, 'r>(
+fn codegen_origin<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -251,9 +251,9 @@ fn codegen_origin<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_callvalue<'c, 'r>(
+fn codegen_callvalue<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -314,9 +314,9 @@ fn codegen_callvalue<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_keccak256<'c, 'r>(
+fn codegen_keccak256<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -439,9 +439,9 @@ fn codegen_keccak256<'c, 'r>(
     Ok((Box::new(start_block), Box::new(memory_access_block)))
 }
 
-fn codegen_calldatacopy<'c, 'r>(
+fn codegen_calldatacopy<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -615,9 +615,9 @@ fn codegen_calldatacopy<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_calldatasize<'c, 'r>(
+fn codegen_calldatasize<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -649,9 +649,9 @@ fn codegen_calldatasize<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_exp<'c, 'r>(
+fn codegen_exp<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -760,9 +760,9 @@ fn codegen_exp<'c, 'r>(
     Ok((Box::new(start_block), Box::new(enough_gas_block)))
 }
 
-fn codegen_iszero<'c, 'r>(
+fn codegen_iszero<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -814,9 +814,9 @@ fn codegen_iszero<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_and<'c, 'r>(
+fn codegen_and<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -855,9 +855,9 @@ fn codegen_and<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_gt<'c, 'r>(
+fn codegen_gt<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -908,9 +908,9 @@ fn codegen_gt<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_or<'c, 'r>(
+fn codegen_or<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -949,9 +949,9 @@ fn codegen_or<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_lt<'c, 'r>(
+fn codegen_lt<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1003,9 +1003,9 @@ fn codegen_lt<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_sgt<'c, 'r>(
+fn codegen_sgt<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1057,9 +1057,9 @@ fn codegen_sgt<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_eq<'c, 'r>(
+fn codegen_eq<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1110,9 +1110,9 @@ fn codegen_eq<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_push<'c, 'r>(
+fn codegen_push<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     value_to_push: BigUint,
     is_zero: bool,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
@@ -1156,9 +1156,9 @@ fn codegen_push<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_dup<'c, 'r>(
+fn codegen_dup<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     nth: u8,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
@@ -1194,9 +1194,9 @@ fn codegen_dup<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_swap<'c, 'r>(
+fn codegen_swap<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     nth: u8,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     debug_assert!(nth > 0 && nth <= 16);
@@ -1231,9 +1231,9 @@ fn codegen_swap<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_add<'c, 'r>(
+fn codegen_add<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1274,9 +1274,9 @@ fn codegen_add<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_sub<'c, 'r>(
+fn codegen_sub<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1317,9 +1317,9 @@ fn codegen_sub<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_div<'c, 'r>(
+fn codegen_div<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1384,9 +1384,9 @@ fn codegen_div<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_sdiv<'c, 'r>(
+fn codegen_sdiv<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1448,9 +1448,9 @@ fn codegen_sdiv<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_mul<'c, 'r>(
+fn codegen_mul<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1491,9 +1491,9 @@ fn codegen_mul<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_mod<'c, 'r>(
+fn codegen_mod<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1562,9 +1562,9 @@ fn codegen_mod<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_smod<'c, 'r>(
+fn codegen_smod<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1633,9 +1633,9 @@ fn codegen_smod<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_addmod<'c, 'r>(
+fn codegen_addmod<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1728,9 +1728,9 @@ fn codegen_addmod<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_mulmod<'c, 'r>(
+fn codegen_mulmod<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1822,9 +1822,9 @@ fn codegen_mulmod<'c, 'r>(
     Ok((Box::new(start_block), Box::new(return_block)))
 }
 
-fn codegen_xor<'c, 'r>(
+fn codegen_xor<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1865,9 +1865,9 @@ fn codegen_xor<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_shr<'c, 'r>(
+fn codegen_shr<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -1952,9 +1952,9 @@ fn codegen_shr<'c, 'r>(
     Ok((Box::new(start_block), Box::new(empty_block)))
 }
 
-fn codegen_shl<'c, 'r>(
+fn codegen_shl<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2039,9 +2039,9 @@ fn codegen_shl<'c, 'r>(
     Ok((Box::new(start_block), Box::new(empty_block)))
 }
 
-fn codegen_number<'c, 'r>(
+fn codegen_number<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2076,9 +2076,9 @@ fn codegen_number<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_pop<'c, 'r>(
+fn codegen_pop<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2111,9 +2111,9 @@ fn codegen_pop<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_mload<'c, 'r>(
+fn codegen_mload<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2230,9 +2230,9 @@ fn codegen_mload<'c, 'r>(
     Ok((Box::new(start_block), Box::new(memory_access_block)))
 }
 
-fn codegen_sload<'c, 'r>(
+fn codegen_sload<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2329,9 +2329,9 @@ fn codegen_sload<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_sstore<'c, 'r>(
+fn codegen_sstore<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2439,9 +2439,9 @@ fn codegen_sstore<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_codesize<'c, 'r>(
+fn codegen_codesize<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2484,9 +2484,9 @@ fn codegen_codesize<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_sar<'c, 'r>(
+fn codegen_sar<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2544,9 +2544,9 @@ fn codegen_sar<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_balance<'c, 'r>(
+fn codegen_balance<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2630,9 +2630,9 @@ fn codegen_balance<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_byte<'c, 'r>(
+fn codegen_byte<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2779,7 +2779,7 @@ fn codegen_jumpdest<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
     pc: usize,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let landing_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -2805,9 +2805,9 @@ fn codegen_jumpdest<'c>(
     Ok((Box::new(landing_block), Box::new(ok_block)))
 }
 
-fn codegen_jumpi<'c, 'r: 'c>(
+fn codegen_jumpi<'c: 'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -2873,9 +2873,9 @@ fn codegen_jumpi<'c, 'r: 'c>(
     Ok((Box::new(start_block), Box::new(false_block)))
 }
 
-fn codegen_jump<'c, 'r: 'c>(
+fn codegen_jump<'c: 'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     // it reverts if Counter offset is not a JUMPDEST.
     // The error is generated even if the JUMP would not have been done
@@ -2923,7 +2923,7 @@ fn codegen_pc<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
     pc: usize,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -2965,7 +2965,7 @@ fn codegen_pc<'c>(
 fn codegen_msize<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -3029,7 +3029,7 @@ fn codegen_msize<'c>(
 fn codegen_return<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -3065,7 +3065,7 @@ fn codegen_return<'c>(
 fn codegen_revert<'c>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'c Region<'c>,
-) -> Result<(BlockRef<'c, 'c>, BlockRef<'c, 'c>), CodegenError> {
+) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
 
@@ -3091,9 +3091,9 @@ fn codegen_revert<'c>(
     Ok((Box::new(start_block), Box::new(empty_block)))
 }
 
-fn codegen_stop<'c, 'r>(
+fn codegen_stop<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3106,9 +3106,9 @@ fn codegen_stop<'c, 'r>(
     Ok((Box::new(start_block), Box::new(empty_block)))
 }
 
-fn codegen_signextend<'c, 'r>(
+fn codegen_signextend<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3190,9 +3190,9 @@ fn codegen_signextend<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_gas<'c, 'r>(
+fn codegen_gas<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3237,9 +3237,9 @@ fn codegen_gas<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_slt<'c, 'r>(
+fn codegen_slt<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3294,9 +3294,9 @@ fn codegen_slt<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_mstore<'c, 'r>(
+fn codegen_mstore<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3419,9 +3419,9 @@ fn codegen_mstore<'c, 'r>(
     Ok((Box::new(start_block), Box::new(memory_access_block)))
 }
 
-fn codegen_mstore8<'c, 'r>(
+fn codegen_mstore8<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3539,9 +3539,9 @@ fn codegen_mstore8<'c, 'r>(
     Ok((Box::new(start_block), Box::new(memory_access_block)))
 }
 
-fn codegen_mcopy<'c, 'r>(
+fn codegen_mcopy<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3683,9 +3683,9 @@ fn codegen_mcopy<'c, 'r>(
     Ok((Box::new(start_block), Box::new(memory_access_block)))
 }
 
-fn codegen_calldataload<'c, 'r>(
+fn codegen_calldataload<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -3860,9 +3860,9 @@ fn codegen_calldataload<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_log<'c, 'r>(
+fn codegen_log<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     nth: u8,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     debug_assert!(nth <= 4);
@@ -3982,9 +3982,9 @@ fn codegen_log<'c, 'r>(
     Ok((Box::new(start_block), Box::new(log_block)))
 }
 
-fn codegen_coinbase<'c, 'r>(
+fn codegen_coinbase<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4046,9 +4046,9 @@ fn codegen_coinbase<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_timestamp<'c, 'r>(
+fn codegen_timestamp<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4109,9 +4109,9 @@ fn codegen_timestamp<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_gasprice<'c, 'r>(
+fn codegen_gasprice<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4172,9 +4172,9 @@ fn codegen_gasprice<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_extcodesize<'c, 'r>(
+fn codegen_extcodesize<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4214,9 +4214,9 @@ fn codegen_extcodesize<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_chaind<'c, 'r>(
+fn codegen_chaind<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4249,9 +4249,9 @@ fn codegen_chaind<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_caller<'c, 'r>(
+fn codegen_caller<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4320,9 +4320,9 @@ fn codegen_caller<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_basefee<'c, 'r>(
+fn codegen_basefee<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4356,9 +4356,9 @@ fn codegen_basefee<'c, 'r>(
 }
 
 // from the understanding of the not operator , A xor 1 == Not A
-fn codegen_not<'c, 'r>(
+fn codegen_not<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4408,9 +4408,9 @@ fn codegen_not<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_address<'c, 'r>(
+fn codegen_address<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4472,9 +4472,9 @@ fn codegen_address<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_codecopy<'c, 'r>(
+fn codegen_codecopy<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4552,9 +4552,9 @@ fn codegen_codecopy<'c, 'r>(
     Ok((Box::new(start_block), Box::new(copy_block)))
 }
 
-fn codegen_invalid<'c, 'r>(
+fn codegen_invalid<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let context = op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -4566,9 +4566,9 @@ fn codegen_invalid<'c, 'r>(
     Ok((Box::new(start_block), Box::new(empty_block)))
 }
 
-fn codegen_selfbalance<'c, 'r>(
+fn codegen_selfbalance<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4629,9 +4629,9 @@ fn codegen_selfbalance<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_blobbasefee<'c, 'r>(
+fn codegen_blobbasefee<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4706,9 +4706,9 @@ fn codegen_blobbasefee<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_gaslimit<'c, 'r>(
+fn codegen_gaslimit<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4748,9 +4748,9 @@ fn codegen_gaslimit<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_extcodecopy<'c, 'r>(
+fn codegen_extcodecopy<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4839,9 +4839,9 @@ fn codegen_extcodecopy<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_prevrandao<'c, 'r>(
+fn codegen_prevrandao<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4876,9 +4876,9 @@ fn codegen_prevrandao<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_blobhash<'c, 'r>(
+fn codegen_blobhash<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -4911,9 +4911,9 @@ fn codegen_blobhash<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_call<'c, 'r>(
+fn codegen_call<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     call_type: CallType,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
@@ -5050,9 +5050,9 @@ fn codegen_call<'c, 'r>(
     Ok((Box::new(start_block), Box::new(finish_block)))
 }
 
-fn codegen_extcodehash<'c, 'r>(
+fn codegen_extcodehash<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5095,9 +5095,9 @@ fn codegen_extcodehash<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_returndatasize<'c, 'r>(
+fn codegen_returndatasize<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5139,9 +5139,9 @@ fn codegen_returndatasize<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_returndatacopy<'c, 'r>(
+fn codegen_returndatacopy<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5245,9 +5245,9 @@ fn codegen_returndatacopy<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_create<'c, 'r>(
+fn codegen_create<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
     is_create2: bool,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
@@ -5445,9 +5445,9 @@ fn codegen_create<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_selfdestruct<'c, 'r>(
+fn codegen_selfdestruct<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5496,9 +5496,9 @@ fn codegen_selfdestruct<'c, 'r>(
     Ok((Box::new(start_block), Box::new(end_block)))
 }
 
-fn codegen_tload<'c, 'r>(
+fn codegen_tload<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
@@ -5570,9 +5570,9 @@ fn codegen_tload<'c, 'r>(
     Ok((Box::new(start_block), Box::new(ok_block)))
 }
 
-fn codegen_tstore<'c, 'r>(
+fn codegen_tstore<'c>(
     op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
+    region: &'c Region<'c>,
 ) -> Result<(Box<BlockRef<'c, 'c>>, Box<BlockRef<'c, 'c>>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;

@@ -4428,7 +4428,7 @@ fn sload_warm_cold_gas() {
 fn eip3855_push0_ors_store() {
     // Este es el limite de operaciones que se llega a poner despues de mover todo lo posible al heap
     let pushs = vec![Operation::Push0; MAX_STACK_SIZE];
-    let ors = vec![Operation::Or; 560];
+    let ors = vec![Operation::Or; MAX_STACK_SIZE - 1];
     let program = vec![
         pushs,
         ors,
