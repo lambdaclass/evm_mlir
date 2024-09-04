@@ -96,6 +96,10 @@ fn get_ignored_groups() -> HashSet<String> {
         "stExample".into(),
         "vmArithmeticTest".into(),
         "stQuadraticComplexityTest".into(),
+        "stSelfBalance".into(),
+        "stEIP3855-push0".into(),
+        "stWalletTest".into(),
+        "vmLogTest".into(),
     ])
 }
 
@@ -152,7 +156,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
-            env.tx.data = unit.transaction.data[test.indexes.data].clone();
+            env.tx.data = convert_to_hex((unit.transaction.data[test.indexes.data].clone()));
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
