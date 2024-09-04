@@ -5,7 +5,7 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
+use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -207,12 +207,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     return Ok(()); //Halt and want an error
                 }
                 _ => {}
-            }
-
-            if test.expect_exception.is_some() {
-                assert!(!res.result.is_success());
-                // NOTE: the expect_exception string is an error description, we don't check the expected error
-                continue;
             }
 
             // TODO: use rlp and hash to check logs
