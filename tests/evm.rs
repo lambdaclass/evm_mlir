@@ -3311,7 +3311,7 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
 }
 
 #[test]
-fn staticcall_on_precompile_ecadd_with_invalid_stack_input() {
+fn staticcall_on_precompile_ecadd_with_missing_stack_parameter() {
     let ret_size: u8 = 64;
     let ret_offset: u8 = 128;
     let args_size: u8 = 128;
