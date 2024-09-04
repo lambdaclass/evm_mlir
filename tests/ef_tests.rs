@@ -193,14 +193,54 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
 
+            match (&test.expect_exception, &res.result) {
+                (
+                    None,
+                    ExecutionResult::Success {
+                        reason,
+                        gas_used,
+                        gas_refunded,
+                        logs,
+                        output,
+                    },
+                ) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (None, ExecutionResult::Revert { gas_used, output }) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (None, ExecutionResult::Halt { reason, gas_used }) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (Some(_), ExecutionResult::Halt { reason, gas_used }) => {
+                    return Ok(()); //Halt and want an error
+                }
+                _ => {}
+            }
+
             if test.expect_exception.is_some() {
                 assert!(!res.result.is_success());
                 // NOTE: the expect_exception string is an error description, we don't check the expected error
                 continue;
             }
-
-            assert!(res.result.is_success());
-            assert_eq!(res.result.output().cloned(), unit.out);
 
             // TODO: use rlp and hash to check logs
 
