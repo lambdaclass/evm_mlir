@@ -3362,57 +3362,54 @@ fn staticcall_on_precompile_ecadd_with_missing_stack_parameter() {
     run_program_assert_halt(env, db);
 }
 
-// #[test]
-// fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
-//     let ret_size: u8 = 64;
-//     let ret_offset: u8 = 128;
-//     let args_size: u8 = 128;
-//     let args_offset: u8 = 0;
-//     let gas: u32 = 149;
-//     let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
-//     let caller_address = Address::from_low_u64_be(4040);
+#[test]
+fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 149;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
 
-//     let x1: u8 = 1;
-//     let y1: u8 = 2;
-//     let x2: u8 = 1;
-//     let y2: u8 = 2;
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
 
-//     let caller_ops = vec![
-//         // Store the parameters in memory
-//         Operation::Push((32_u8, x1.into())),
-//         Operation::Push((1_u8, 0_u8.into())),
-//         Operation::Mstore,
-//         Operation::Push((32_u8, y1.into())),
-//         Operation::Push((1_u8, 0x20_u8.into())),
-//         Operation::Mstore,
-//         Operation::Push((32_u8, x2.into())),
-//         Operation::Push((1_u8, 0x40_u8.into())),
-//         Operation::Mstore,
-//         Operation::Push((32_u8, y2.into())),
-//         Operation::Push((1_u8, 0x60_u8.into())),
-//         Operation::Mstore,
-//         // Do the call
-//         Operation::Push((1_u8, ret_size.into())), // Ret size
-//         Operation::Push((1_u8, ret_offset.into())), // Ret offset
-//         Operation::Push((1_u8, args_size.into())), // Args size
-//         Operation::Push((1_u8, args_offset.into())), // Args offset
-//         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
-//         Operation::Push((32_u8, gas.into())),     // Gas
-//         Operation::StaticCall,
-//         // Return
-//         Operation::Push((1_u8, ret_size.into())),
-//         Operation::Push((1_u8, ret_offset.into())),
-//         Operation::Return,
-//     ];
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+    ];
 
-//     let program = Program::from(caller_ops);
-//     let caller_bytecode = Bytecode::from(program.to_bytecode());
-//     let mut env = Env::default();
-//     let db = Db::new().with_contract(caller_address, caller_bytecode);
-//     env.tx.transact_to = TransactTo::Call(caller_address);
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
 
-//     run_program_assert_halt(env, db);
-// }
+    run_program_assert_num_result(env, db, BigUint::ZERO);
+}
 
 #[test]
 fn staticcall_on_precompile_ecmul_happy_path() {
