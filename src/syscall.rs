@@ -379,7 +379,7 @@ impl<'c> SyscallContext<'c> {
                         .set_balance(&callee_address, callee_balance + value);
                 }
 
-                let remaining_gas = available_gas.checked_sub(*consumed_gas).unwrap_or(0);
+                let remaining_gas = available_gas.saturating_sub(*consumed_gas);
                 gas_to_send = std::cmp::min(
                     remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
                     gas_to_send,
@@ -694,7 +694,8 @@ impl<'c> SyscallContext<'c> {
         if gas_refund > 0 {
             self.inner_context.gas_refund += gas_refund as u64;
         } else {
-            self.inner_context
+            self.inner_context.gas_refund = self
+                .inner_context
                 .gas_refund
                 .checked_sub(gas_refund.unsigned_abs())
                 .unwrap_or(0);

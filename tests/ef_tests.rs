@@ -39,7 +39,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
-        "stSStoreTest".into(), // works!
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
@@ -55,7 +54,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150singleCodeGasPrices".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        "stSLoadTest".into(), //works
         "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
@@ -65,13 +63,11 @@ fn get_ignored_groups() -> HashSet<String> {
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
-        "stEIP158Specific".into(), // works
         "stZeroKnowledge".into(),
         "stLogTests".into(),
         "stBugs".into(),
         "stEIP1559".into(),
         "stStaticCall".into(),
-        "stCallDelegateCodesHomestead".into(), // works
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
@@ -84,7 +80,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
-        "stCallDelegateCodesCallCodeHomestead".into(), //works
         "yul".into(),
         "stEIP3607".into(),
         "stCreateTest".into(),
