@@ -77,7 +77,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stMemoryTest".into(),
         "stRandom".into(),
         "stInitCodeTest".into(),
-        "stBadOpcode".into(),
+        //"stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
         "yul".into(),
@@ -212,7 +212,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                 ) => {
                     return Ok(()); //Halt and want an error
                 }
-                _ => {}
+                _ => {
+                    return Err("Expected exception but got none".into());
+                }
             }
 
             // TODO: use rlp and hash to check logs
