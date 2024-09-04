@@ -379,7 +379,7 @@ impl<'c> SyscallContext<'c> {
                         .set_balance(&callee_address, callee_balance + value);
                 }
 
-                let remaining_gas = available_gas.saturating_sub(*consumed_gas);
+                let remaining_gas = available_gas.checked_sub(*consumed_gas).unwrap_or(0);
                 gas_to_send = std::cmp::min(
                     remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
                     gas_to_send,

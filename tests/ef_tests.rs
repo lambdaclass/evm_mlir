@@ -55,7 +55,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150singleCodeGasPrices".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        //"stSLoadTest".into(),NOW THIS WORKS!
+        "stSLoadTest".into(), //works
         "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
@@ -71,7 +71,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stBugs".into(),
         "stEIP1559".into(),
         "stStaticCall".into(),
-        "stCallDelegateCodesHomestead".into(),
+        "stCallDelegateCodesHomestead".into(), // works
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
@@ -84,7 +84,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
-        //"stCallDelegateCodesCallCodeHomestead".into(), works
+        "stCallDelegateCodesCallCodeHomestead".into(), //works
         "yul".into(),
         "stEIP3607".into(),
         "stCreateTest".into(),
