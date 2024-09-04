@@ -194,34 +194,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let res = evm.transact().unwrap();
 
             match (&test.expect_exception, &res.result) {
-                (
-                    None,
-                    ExecutionResult::Success {
-                        reason,
-                        gas_used,
-                        gas_refunded,
-                        logs,
-                        output,
-                    },
-                ) => {
-                    if let Some((expected_output, output)) =
-                        unit.out.as_ref().zip(res.result.output())
-                    {
-                        if expected_output != output {
-                            return Err("Wrong output".into());
-                        }
-                    }
-                }
-                (None, ExecutionResult::Revert { gas_used, output }) => {
-                    if let Some((expected_output, output)) =
-                        unit.out.as_ref().zip(res.result.output())
-                    {
-                        if expected_output != output {
-                            return Err("Wrong output".into());
-                        }
-                    }
-                }
-                (None, ExecutionResult::Halt { reason, gas_used }) => {
+                (None, _) => {
                     if let Some((expected_output, output)) =
                         unit.out.as_ref().zip(res.result.output())
                     {
