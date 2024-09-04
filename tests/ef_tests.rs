@@ -55,7 +55,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150singleCodeGasPrices".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        "stSLoadTest".into(),
+        //"stSLoadTest".into(),NOW THIS WORKS!
         "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
@@ -84,7 +84,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
-        "stCallDelegateCodesCallCodeHomestead".into(),
+        //"stCallDelegateCodesCallCodeHomestead".into(), works
         "yul".into(),
         "stEIP3607".into(),
         "stCreateTest".into(),
@@ -156,7 +156,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
-            env.tx.data = convert_to_hex((unit.transaction.data[test.indexes.data].clone()));
+            env.tx.data = convert_to_hex(unit.transaction.data[test.indexes.data].clone());
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
