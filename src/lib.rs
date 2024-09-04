@@ -29,8 +29,8 @@ pub mod state;
 
 #[derive(Debug)]
 pub struct Evm<DB: Database> {
-    pub env: Env,
-    pub db: DB,
+    pub env: Box<Env>,
+    pub db: Box<DB>,
 }
 
 impl<DB: Database + Default> Evm<DB> {
@@ -41,35 +41,43 @@ impl<DB: Database + Default> Evm<DB> {
 
     /// Creates a new EVM instance with the given environment and database.
     pub fn new(env: Env, db: DB) -> Self {
-        Self { env, db }
+        Self {
+            env: Box::new(env),
+            db: Box::new(db),
+        }
     }
 }
 
 impl Evm<Db> {
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
-        let context = Context::new();
+        let context = Box::new(Context::new());
         let code_address = self.env.tx.get_address();
 
         //TODO: Improve error handling
-        let bytecode = self
-            .db
-            .code_by_address(code_address)
-            .expect("Failed to get code from address");
-        let program = Program::from_bytecode(&bytecode);
+        let bytecode = Box::new(
+            self.db
+                .code_by_address(code_address)
+                .expect("Failed to get code from address"),
+        );
+        let program = Box::new(Program::from_bytecode(&bytecode));
 
         self.env.consume_intrinsic_cost()?;
         self.env.validate_transaction()?;
         // validate transaction
 
-        let module = context
-            .compile(&program, Default::default())
-            .expect("failed to compile program");
+        let module = Box::new(
+            context
+                .compile(&program, Default::default())
+                .expect("failed to compile program"),
+        );
 
         let call_frame = CallFrame::new(self.env.tx.caller);
+
         let journal = Journal::new(&mut self.db);
-        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
-        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+        let mut context = Box::new(SyscallContext::new(self.env.clone(), journal, call_frame));
+        // aca pincha
+        let executor = Box::new(Executor::new(module, &context, OptLevel::Aggressive));
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();

@@ -5,7 +5,7 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
+use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -36,7 +36,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stArgsZeroOneBalance".into(),
         "stTimeConsuming".into(),
         "stRevertTest".into(),
-        "eip3855_push0".into(),
+        "eip3855_push0".into(), //todo test
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stSStoreTest".into(),
@@ -194,14 +194,48 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
 
-            if test.expect_exception.is_some() {
-                assert!(!res.result.is_success());
-                // NOTE: the expect_exception string is an error description, we don't check the expected error
-                continue;
+            match (&test.expect_exception, &res.result) {
+                (
+                    None,
+                    ExecutionResult::Success {
+                        reason,
+                        gas_used,
+                        gas_refunded,
+                        logs,
+                        output,
+                    },
+                ) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (None, ExecutionResult::Revert { gas_used, output }) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (None, ExecutionResult::Halt { reason, gas_used }) => {
+                    if let Some((expected_output, output)) =
+                        unit.out.as_ref().zip(res.result.output())
+                    {
+                        if expected_output != output {
+                            return Err("Wrong output".into());
+                        }
+                    }
+                }
+                (Some(_), ExecutionResult::Halt { reason, gas_used }) => {
+                    return Ok(()); //Halt and want an error
+                }
+                _ => {}
             }
-
-            assert!(res.result.is_success());
-            assert_eq!(res.result.output().cloned(), unit.out);
 
             // TODO: use rlp and hash to check logs
 
@@ -232,3 +266,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 }
 
 datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+//datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

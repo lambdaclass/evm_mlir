@@ -3,7 +3,10 @@
 //! These don't receive any input, and the CODE* opcodes
 //! may not work properly.
 use evm_mlir::{
-    constants::gas_cost::{self, log_dynamic_gas_cost},
+    constants::{
+        gas_cost::{self, log_dynamic_gas_cost},
+        MAX_STACK_SIZE,
+    },
     context::Context,
     db::Db,
     env::Env,
@@ -26,16 +29,18 @@ fn run_program_get_result_with_gas(
     let program = Program::from(operations);
 
     let context = Context::new();
-    let module = context
-        .compile(&program, Default::default())
-        .expect("failed to compile program");
+    let module = Box::new(
+        context
+            .compile(&program, Default::default())
+            .expect("failed to compile program"),
+    );
 
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
     let journal = Journal::new(&mut db);
-    let mut context = SyscallContext::new(env, journal, Default::default());
-    let executor = Executor::new(&module, &context, Default::default());
+    let mut context = SyscallContext::new(Box::new(env), journal, Default::default());
+    let executor = Executor::new(module, &context, Default::default());
 
     let _result = executor.execute(&mut context, initial_gas);
 
@@ -244,7 +249,7 @@ fn push_fill_stack() {
     let stack_top = BigUint::from(88_u8);
 
     // Push 1024 times
-    let program = vec![Operation::Push((1_u8, stack_top.clone())); 1024];
+    let program = vec![Operation::Push((1_u8, stack_top.clone())); MAX_STACK_SIZE];
     run_program_assert_result(program, &[]);
 }
 
