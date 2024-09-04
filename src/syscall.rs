@@ -694,7 +694,10 @@ impl<'c> SyscallContext<'c> {
         if gas_refund > 0 {
             self.inner_context.gas_refund += gas_refund as u64;
         } else {
-            self.inner_context.gas_refund -= gas_refund.unsigned_abs();
+            self.inner_context
+                .gas_refund
+                .checked_sub(gas_refund.unsigned_abs())
+                .unwrap_or(0);
         };
 
         gas_cost

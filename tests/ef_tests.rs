@@ -39,7 +39,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
-        "stSStoreTest".into(),
+        "stSStoreTest".into(), // works!
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
@@ -65,7 +65,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
-        "stEIP158Specific".into(),
+        "stEIP158Specific".into(), // works
         "stZeroKnowledge".into(),
         "stLogTests".into(),
         "stBugs".into(),
