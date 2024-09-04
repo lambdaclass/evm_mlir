@@ -203,7 +203,13 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                         }
                     }
                 }
-                (Some(_), ExecutionResult::Halt { reason, gas_used }) => {
+                (
+                    Some(_),
+                    ExecutionResult::Halt {
+                        reason: _,
+                        gas_used: _,
+                    },
+                ) => {
                     return Ok(()); //Halt and want an error
                 }
                 _ => {}
