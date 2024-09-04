@@ -63,7 +63,7 @@ fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
 fn run_program_assert_halt(env: Env, db: Db) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact_commit().unwrap();
-    println!("result: {:?}", result);
+    
     assert!(result.is_halt());
 }
 
