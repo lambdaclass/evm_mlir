@@ -697,8 +697,7 @@ impl<'c> SyscallContext<'c> {
             self.inner_context.gas_refund = self
                 .inner_context
                 .gas_refund
-                .checked_sub(gas_refund.unsigned_abs())
-                .unwrap_or(0);
+                .saturating_sub(gas_refund.unsigned_abs());
         };
 
         gas_cost
