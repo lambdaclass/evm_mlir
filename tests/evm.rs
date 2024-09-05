@@ -15,7 +15,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    syscall::{LogData, U256},
+    syscall::{LogData, GAS_REFUND_FRACTION, U256},
     utils::compute_contract_address2,
     Env, Evm,
 };
@@ -1469,7 +1469,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800.min(used_gas / 5);
+    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_FRACTION);
 
     let key = 80_u8;
     let program = vec![
@@ -1519,7 +1519,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800.min(used_gas / 5);
+    let refunded_gas = 2_800.min(used_gas / GAS_REFUND_FRACTION);
 
     let key = 80_u8;
     let program = vec![
@@ -4805,7 +4805,7 @@ fn sload_warm_cold_gas() {
 }
 
 #[test]
-fn refund_value_sstore_gas_cost_on_cold_non_zero_value_to_zero() {
+fn refund_limit_value() {
     let new_value: u8 = 0;
     let original_value = 10;
 
