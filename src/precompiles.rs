@@ -199,10 +199,18 @@ pub fn ecadd(
     Ok(Bytes::from(res))
 }
 
-pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() < 96 || gas_limit < ECMUL_COST {
+pub fn ecmul(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 96 {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    if gas_limit < ECMUL_COST {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += ECMUL_COST;
 
@@ -213,23 +221,23 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 
     // if the point is infinity it is directly returned
     let zero_el = BN254FieldElement::from(0);
-    let zero_u256 = LambdaWorksU256::from(0_u16);
     let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
-
     if p1_is_infinity {
-        return Bytes::from([0u8; 64].to_vec());
-    }
-    // scalar is 0 and the point is valid
-    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
-        return Bytes::from([0u8; 64].to_vec());
+        return Ok(Bytes::from([0u8; 64].to_vec()));
     }
 
-    if let Ok(p) = BN254Curve::create_point_from_affine(x1, y1) {
-        let mul = p.operate_with_self(s).to_affine();
-        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
-        return Bytes::from(res);
+    // scalar is 0 and the point is valid
+    let zero_u256 = LambdaWorksU256::from(0_u16);
+    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
+        return Ok(Bytes::from([0u8; 64].to_vec()));
     }
-    Bytes::new()
+
+    if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+        let mul = p1.operate_with_self(s).to_affine();
+        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
+        return Ok(Bytes::from(res));
+    }
+    Err(PrecompileError::InvalidEcPoint)
 }
 
 pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
@@ -728,7 +736,7 @@ mod tests {
         let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -749,7 +757,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -770,7 +778,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -791,7 +799,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -812,7 +820,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -833,7 +841,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -853,7 +861,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
