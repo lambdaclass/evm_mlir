@@ -1469,7 +1469,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800;
+    let refunded_gas = 4_800.min(used_gas / 5);
 
     let key = 80_u8;
     let program = vec![
@@ -1519,7 +1519,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800;
+    let refunded_gas = 2_800.min(used_gas / 5);
 
     let key = 80_u8;
     let program = vec![
@@ -4811,8 +4811,7 @@ fn refund_value_sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800.min(used_gas / 5);
-
+    let refunded_gas = 4_800;
     let key = 80_u8;
     let program = vec![
         Operation::Push((1_u8, BigUint::from(new_value))),

@@ -189,9 +189,9 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_refunded = self.inner_context.gas_refund;
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
+        let gas_refunded = self.inner_context.gas_refund.min(gas_used / 5);
         let exit_status = self
             .inner_context
             .exit_status
