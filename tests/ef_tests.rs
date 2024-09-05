@@ -199,8 +199,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
                     if unit.out.as_ref() != res.result.output() {
-                            return Err("Wrong output".into());
-                        }
+                        return Err("Wrong output".into());
                     }
                 }
                 (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
