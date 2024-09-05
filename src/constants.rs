@@ -163,7 +163,7 @@ pub mod call_opcode {
 pub mod precompiles {
     pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
-    pub const SHA2_256_COST: u64 = 60;
+    pub const SHA2_256_STATIC_COST: u64 = 60;
     pub const SHA2_256_ADDRESS: u64 = 0x02;
     pub const RIPEMD_160_COST: u64 = 600;
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;

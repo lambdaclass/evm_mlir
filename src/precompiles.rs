@@ -2,7 +2,7 @@ use crate::{
     constants::precompiles::{
         blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
         sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
-        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_STATIC_COST,
     },
     primitives::U256,
     result::PrecompileError,
@@ -75,14 +75,18 @@ pub fn identity(
     Ok(calldata.clone())
 }
 
-pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = SHA2_256_COST + sha2_256_dynamic_cost(calldata.len() as u64);
+pub fn sha2_256(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    let gas_cost = SHA2_256_STATIC_COST + sha2_256_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
     let hash = sha2::Sha256::digest(calldata);
-    Bytes::copy_from_slice(&hash)
+    Ok(Bytes::copy_from_slice(&hash))
 }
 
 pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {

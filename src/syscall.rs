@@ -302,10 +302,12 @@ impl<'c> SyscallContext<'c> {
                     Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
                 }
             }
-            x if x == Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                sha2_256(&calldata, gas_to_send, consumed_gas),
-            ),
+            x if x == Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS) => {
+                match sha2_256(&calldata, gas_to_send, consumed_gas) {
+                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
+                }
+            }
             x if x == Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 ripemd_160(&calldata, gas_to_send, consumed_gas),
