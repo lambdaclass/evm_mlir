@@ -4803,3 +4803,26 @@ fn sload_warm_cold_gas() {
     let env = Env::default();
     run_program_assert_gas_exact(program, env, used_gas as _);
 }
+
+#[test]
+fn refund_value_sstore_gas_cost_on_cold_non_zero_value_to_zero() {
+    let new_value: u8 = 0;
+    let original_value = 10;
+
+    let used_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 4_800.min(used_gas / 5);
+
+    let key = 80_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
