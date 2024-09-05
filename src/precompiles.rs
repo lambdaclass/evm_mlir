@@ -62,13 +62,17 @@ pub fn ecrecover(
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
-pub fn identity(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn identity(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
-    calldata.clone()
+    Ok(calldata.clone())
 }
 
 pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
