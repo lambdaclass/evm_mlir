@@ -108,7 +108,11 @@ fn get_ignored_suites() -> HashSet<String> {
 /// Receives a Bytes object with the hex representation
 /// And returns a Bytes object with the decimal representation
 /// Taking the hex numbers by pairs
-fn decode_hex(bytes_in_hex: Bytes) -> Bytes {
+fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
+    let hex_header = &bytes_in_hex[0..2];
+    if hex_header != b"0x" {
+        return None;
+    }
     let hex_string = std::str::from_utf8(&bytes_in_hex[2..]).unwrap(); // we don't need the 0x
     let mut opcodes = Vec::new();
     for i in (0..hex_string.len()).step_by(2) {
@@ -116,7 +120,7 @@ fn decode_hex(bytes_in_hex: Bytes) -> Bytes {
         let value = u8::from_str_radix(pair, 16).unwrap();
         opcodes.push(value);
     }
-    Bytes::from(opcodes)
+    Some(Bytes::from(opcodes))
 }
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
@@ -154,7 +158,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
-            env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone());
+            env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
@@ -171,18 +175,19 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             };
             let mut db = match to.clone() {
                 TransactTo::Call(to) => {
-                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone());
+                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
                     Db::new().with_contract(to, opcodes)
                 }
                 TransactTo::Create => {
-                    let opcodes = decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone());
+                    let opcodes =
+                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
                     Db::new().with_contract(env.tx.get_address(), opcodes)
                 }
             };
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
-                let opcodes = decode_hex(account_info.code.clone());
+                let opcodes = decode_hex(account_info.code.clone()).unwrap();
                 db = db.with_contract(address.to_owned(), opcodes);
                 db.set_account(
                     address.to_owned(),
@@ -215,7 +220,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut result_state = HashMap::new();
             for address in test.post_state.keys() {
                 let account = res.state.get(address).unwrap();
-                let opcodes = decode_hex(account.info.code.clone().unwrap());
+                let opcodes = decode_hex(account.info.code.clone().unwrap()).unwrap();
                 result_state.insert(
                     address.to_owned(),
                     AccountInfo {
