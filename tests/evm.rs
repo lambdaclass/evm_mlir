@@ -4837,7 +4837,7 @@ fn refund_limit_value() {
     let key = 80_u8;
     let gas_costly_opcodes = vec![Operation::Balance; 200];
     let needed_pushes_opcodes = vec![Operation::Push((20_u8, BigUint::from(1_u8))); 200];
-    let program = vec![
+    let program = [
         needed_pushes_opcodes,
         gas_costly_opcodes,
         vec![
