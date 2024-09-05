@@ -198,10 +198,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
-                    if let Some((expected_output, output)) =
-                        unit.out.as_ref().zip(res.result.output())
-                    {
-                        if expected_output != output {
+                    if unit.out.as_ref() != res.result.output() {
                             return Err("Wrong output".into());
                         }
                     }
