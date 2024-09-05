@@ -4811,7 +4811,7 @@ fn refunded_gas_cant_be_more_than_a_fifth_of_used_gas() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800.min(used_gas / 5);
+    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_FRACTION);
     let key = 80_u8;
     let program = vec![
         Operation::Push((1_u8, BigUint::from(new_value))),
