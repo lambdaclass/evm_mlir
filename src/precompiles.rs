@@ -89,17 +89,17 @@ pub fn sha2_256(
     Ok(Bytes::copy_from_slice(&hash))
 }
 
-pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Result<Bytes, PrecompileError> {
     let gas_cost = RIPEMD_160_COST + ripemd_160_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
     let mut hasher = ripemd::Ripemd160::new();
     hasher.update(calldata);
     let mut output = [0u8; 32];
     hasher.finalize_into((&mut output[12..]).into());
-    Bytes::copy_from_slice(&output)
+    Ok(Bytes::copy_from_slice(&output))
 }
 
 pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
