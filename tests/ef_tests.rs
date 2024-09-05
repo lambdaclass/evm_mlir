@@ -84,7 +84,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP3607".into(),
         "stCreateTest".into(),
         "eip198_modexp_precompile".into(),
-        "stRefundTest".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
         "eip2930_access_list".into(),
@@ -242,8 +241,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stRefundTest",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
