@@ -322,10 +322,12 @@ impl<'c> SyscallContext<'c> {
                     Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
                 }
             }
-            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecpairing(&calldata, gas_to_send, consumed_gas),
-            ),
+            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => {
+                match ecpairing(&calldata, gas_to_send, consumed_gas) {
+                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
+                }
+            }
             x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 blake2f(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),

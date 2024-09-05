@@ -240,11 +240,19 @@ pub fn ecmul(
     Err(PrecompileError::InvalidEcPoint)
 }
 
-pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
-    if calldata.len() % 192 != 0 || gas_limit < gas_cost {
+pub fn ecpairing(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() % 192 != 0 {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
 
@@ -274,7 +282,7 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
         let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
-            return Bytes::from([0u8; 32].to_vec());
+            return Err(PrecompileError::InvalidEcPoint);
         };
 
         // if any point is (0,0) the pairing is ok
@@ -290,11 +298,11 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
             BN254Curve::create_point_from_affine(g1_x, g1_y),
             BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
         ) else {
-            return Bytes::from([0u8; 32].to_vec());
+            return Err(PrecompileError::InvalidEcPoint);
         };
 
         let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
-            return Bytes::from([0u8; 32].to_vec());
+            return Err(PrecompileError::InvalidEcPoint);
         };
         mul *= pairing_result;
     }
@@ -303,7 +311,7 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
     let mut output = vec![0_u8; 32];
     output[31] = success as u8;
 
-    Bytes::from(output)
+    Ok(Bytes::from(output))
 }
 
 // Extracted from https://datatracker.ietf.org/doc/html/rfc7693#section-2.7
@@ -895,12 +903,12 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
     #[test]
-    fn ecpairing_invalid_points() {
+    fn ecpairing_invalid_point() {
         // changed last byte from `fc` to `fd`
         let calldata = Bytes::from(
             hex::decode(
@@ -924,10 +932,9 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_result = Bytes::from([0u8; 32].to_vec());
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -955,7 +962,7 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -983,9 +990,25 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
+
+    #[test]
+    fn ecpairing_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
+    }
+
     #[test]
     fn ecpairing_out_of_curve() {
         let calldata = Bytes::from(
@@ -1004,10 +1027,9 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_result = Bytes::from([0u8; 32].to_vec());
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -1022,26 +1044,10 @@ mod tests {
         );
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let expected_result = Bytes::new();
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
-    }
-
-    #[test]
-    fn ecpairing_empty_calldata() {
-        let calldata = Bytes::new();
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-        let expected_result = Bytes::from(
-            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-                .unwrap(),
-        );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
-
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
     }
 
     #[test]
@@ -1070,7 +1076,7 @@ mod tests {
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
