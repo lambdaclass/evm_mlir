@@ -54,7 +54,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150singleCodeGasPrices".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
-        "stRecursiveCreate".into(),
+        //"stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
@@ -242,4 +242,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/stRecursiveCreate/",
+    r"^.*/*.json",
+);
