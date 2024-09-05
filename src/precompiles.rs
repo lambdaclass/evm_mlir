@@ -89,7 +89,11 @@ pub fn sha2_256(
     Ok(Bytes::copy_from_slice(&hash))
 }
 
-pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Result<Bytes, PrecompileError> {
+pub fn ripemd_160(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     let gas_cost = RIPEMD_160_COST + ripemd_160_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
         return Err(PrecompileError::NotEnoughGas);
@@ -102,27 +106,31 @@ pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> R
     Ok(Bytes::copy_from_slice(&output))
 }
 
-pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn modexp(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     if calldata.len() < 96 {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
     let Ok(b_size) = usize::try_from(U256::from_big_endian(&calldata[0..32])) else {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     };
     let Ok(e_size) = usize::try_from(U256::from_big_endian(&calldata[32..64])) else {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     };
     let Ok(m_size) = usize::try_from(U256::from_big_endian(&calldata[64..96])) else {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     };
 
     // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
     if calldata.len() < params_len {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
     let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
     let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
@@ -142,7 +150,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     let calculate_iteration_count = iteration_count.max(1);
     let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(200);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
 
@@ -155,7 +163,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     };
 
     let output = &result.to_bytes_be()[..m_size];
-    Bytes::copy_from_slice(output)
+    Ok(Bytes::copy_from_slice(output))
 }
 
 pub fn ecadd(
@@ -503,7 +511,7 @@ mod tests {
 
         let expected_gas = 200;
         let mut consumed_gas = 0;
-        modexp(
+        let _ = modexp(
             &Bytes::copy_from_slice(&calldata),
             expected_gas,
             &mut consumed_gas,
@@ -530,7 +538,7 @@ mod tests {
 
         let expected_gas = 682;
         let mut consumed_gas = 0;
-        modexp(
+        let _ = modexp(
             &Bytes::copy_from_slice(&calldata),
             expected_gas,
             &mut consumed_gas,
