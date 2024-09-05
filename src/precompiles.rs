@@ -643,7 +643,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -665,7 +665,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -687,7 +687,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -708,7 +708,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
