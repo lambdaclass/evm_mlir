@@ -939,6 +939,7 @@ impl<'c> SyscallContext<'c> {
         // NOTE: Here we are not taking into account what happens if the deployment code reverts
         let ctx_journal = self.journal.eject_base();
         let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
+        context.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
         let result = context.get_result().unwrap().result;
