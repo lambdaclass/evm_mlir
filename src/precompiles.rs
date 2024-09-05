@@ -32,21 +32,28 @@ pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, secp256k1::Error> {
-    if gas_limit < ECRECOVER_COST || calldata.len() < 128 {
-        return Ok(Bytes::new());
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 128 {
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    if gas_limit < ECRECOVER_COST {
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += ECRECOVER_COST;
+
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
     let sig = &calldata[64..128];
 
-    let msg = Message::from_digest_slice(hash)?;
-    let id = ecdsa::RecoveryId::from_i32(v)?;
-    let sig = ecdsa::RecoverableSignature::from_compact(sig, id)?;
+    let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
+    let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
+    let sig = ecdsa::RecoverableSignature::from_compact(sig, id)
+        .map_err(|_| PrecompileError::Secp256k1Error)?;
 
     let secp = Secp256k1::new();
-    let public_address = secp.recover_ecdsa(&msg, &sig)?;
+    let public_address = secp
+        .recover_ecdsa(&msg, &sig)
+        .map_err(|_| PrecompileError::Secp256k1Error)?;
 
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);

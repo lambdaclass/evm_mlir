@@ -290,10 +290,12 @@ impl<'c> SyscallContext<'c> {
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
         let (return_code, return_data) = match callee_address {
-            x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecrecover(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
-            ),
+            x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => {
+                match ecrecover(&calldata, gas_to_send, consumed_gas) {
+                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
+                }
+            }
             x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 identity(&calldata, gas_to_send, consumed_gas),

@@ -383,5 +383,6 @@ pub enum OutOfGasError {
 pub enum PrecompileError {
     InvalidCalldata,
     NotEnoughGas,
+    Secp256k1Error,
     InvalidEcPoint,
 }
