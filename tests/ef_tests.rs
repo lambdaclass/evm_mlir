@@ -206,8 +206,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                         }
                     }
                 }
-                (Some(_), ExecutionResult::Halt { .. }) => {
-                    return Ok(()); //Halt and want an error
+                (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
+                    return Ok(()); //Halt/Revert and want an error
                 }
                 _ => {
                     return Err("Expected exception but got none".into());
