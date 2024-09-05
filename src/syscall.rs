@@ -310,10 +310,12 @@ impl<'c> SyscallContext<'c> {
                 call_opcode::SUCCESS_RETURN_CODE,
                 modexp(&calldata, gas_to_send, consumed_gas),
             ),
-            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecadd(&calldata, gas_to_send, consumed_gas),
-            ),
+            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => {
+                match ecadd(&calldata, gas_to_send, consumed_gas) {
+                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
+                }
+            }
             x if x == Address::from_low_u64_be(precompiles::ECMUL_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 ecmul(&calldata, gas_to_send, consumed_gas),
@@ -330,7 +332,6 @@ impl<'c> SyscallContext<'c> {
                 // Execute subcontext
                 //TODO: Add call depth check
                 //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-                let callee_address = Address::from(call_to_address);
                 let value = value_to_transfer.to_primitive_u256();
                 let call_type = CallType::try_from(call_type)
                     .expect("Error while parsing CallType on call syscall");
