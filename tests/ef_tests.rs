@@ -57,9 +57,9 @@ fn get_ignored_groups() -> HashSet<String> {
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stCreate2".into(),
+        //"stCreate2".into(),
         "stSpecialTest".into(),
-        //"stRecursiveCreate".into(),
+        "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
@@ -87,7 +87,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stSolidityTest".into(),
         "yul".into(),
         "stEIP3607".into(),
-        "stCreateTest".into(),
+        //"stCreateTest".into(),
         "eip198_modexp_precompile".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
@@ -204,7 +204,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut evm = Evm::new(env, db);
 
             let res = evm.transact().unwrap();
-            let sender_account = evm.db.basic(sender).unwrap().unwrap();
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
@@ -251,6 +250,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stRecursiveCreate/recursiveCreate.json",
+    "ethtests/GeneralStateTests/stCreateTest/",
     r"^.*/*.json",
 );
+
+//CREATE2_Bounds2.json pincha y el 3 tambien

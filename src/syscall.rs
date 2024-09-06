@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::{ffi::c_void, thread::sleep, time::Duration};
+use std::ffi::c_void;
 
 use crate::{
     constants::{call_opcode, gas_cost, precompiles, CallType},
@@ -41,6 +41,7 @@ use std::collections::HashMap;
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
 pub const GAS_REFUND_DENOMINATOR: u64 = 5;
+const MAX_INITCODE_SIZE: usize = 49152;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
@@ -604,7 +605,7 @@ impl<'c> SyscallContext<'c> {
         let dest_offset = dest_offset as usize;
 
         // adjust the size so it does not go out of bounds
-        let size: usize = if code_offset + size > code_size {
+        let size: usize = if (code_offset + size) > code_size || size > code_size {
             code_size.saturating_sub(code_offset)
         } else {
             size
@@ -898,17 +899,29 @@ impl<'c> SyscallContext<'c> {
         salt: Option<&U256>,
     ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
-        eprintln!("REMAINING GAS ES: {}", remaining_gas);
-        eprintln!("JOURNAL ES {:?}", self.journal.size());
+        //eprintln!("REMAINING GAS ES: {}", remaining_gas);
+        //eprintln!("SIZE ES: {}", size);
+        //eprintln!("OFFSET ES: {:?}", offset);
 
         let offset = offset as usize;
         let size = size as usize;
         let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
 
+        // ASI ES COMO DEBERIA FUNCIONAR DE VERDAD
+        if size > MAX_INITCODE_SIZE {
+            //should revert here
+        }
+
+        let size: usize = if size > self.inner_context.memory.len() {
+            self.inner_context.memory.len() - offset
+        } else {
+            size
+        };
+
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
-        eprintln!("PROGRAM ES: {:?}", program);
+        //eprintln!("PROGRAM ES: {:?}", program);
 
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
@@ -938,7 +951,7 @@ impl<'c> SyscallContext<'c> {
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
         new_env.tx.gas_limit = *remaining_gas;
         let call_frame = CallFrame::new(sender_address);
-        eprintln!("AGUANTE RUST");
+        //eprintln!("AGUANTE RUST");
 
         // Execute initialization code
         let context = Context::new();
@@ -956,7 +969,7 @@ impl<'c> SyscallContext<'c> {
         context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, new_env.tx.gas_limit);
 
-        eprintln!("Y POR QUE NO SEGUIS ACA?");
+        //eprintln!("Y POR QUE NO SEGUIS ACA?");
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
@@ -978,8 +991,10 @@ impl<'c> SyscallContext<'c> {
         // Create new contract and update sender account
         self.journal
             .new_contract(dest_addr, bytecode, value_as_u256);
-        self.journal
-            .set_nonce(&sender_address, sender_account.nonce + 1);
+        // si new_nonce haria el unwrap, deberia hacer que tire un Result: Halt
+        //let new_nonce = sender_account.nonce.checked_add(1).unwrap_or_else(||);
+        let new_nonce = sender_account.nonce.saturating_add(1);
+        self.journal.set_nonce(&sender_address, new_nonce);
         self.journal.set_balance(&sender_address, sender_balance);
 
         value.copy_from(&dest_addr);
