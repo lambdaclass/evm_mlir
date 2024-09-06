@@ -5,12 +5,7 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{
-    db::{Database, Db},
-    env::TransactTo,
-    result::ExecutionResult,
-    Env, Evm,
-};
+use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -39,7 +34,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),

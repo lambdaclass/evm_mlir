@@ -37,8 +37,8 @@ impl Env {
 
     /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
-        let zero_addr = Address::zero();
-        let is_create = matches!(self.tx.transact_to, TransactTo::Create(zero_addr));
+        let _zero_addr = Address::zero();
+        let is_create = matches!(self.tx.transact_to, TransactTo::Create(_zero_addr));
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);

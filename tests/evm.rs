@@ -4858,7 +4858,6 @@ fn refund_limit_value() {
 #[test]
 fn recursive_create() {
     let value: u64 = 100000;
-    let sender_nonce = 0;
     let sender_balance = EU256::from(20000000);
     let sender_addr = Address::from_low_u64_be(5000);
     let to_addr = Address::from_low_u64_be(3000);
@@ -4887,8 +4886,8 @@ fn recursive_create() {
     db.set_account(to_addr, 0, EU256::from(100000000), Default::default());
 
     let mut evm = Evm::new(env, db);
-    //let result = evm.transact_commit().unwrap();
-    //assert!(result.is_success());
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
 
     // Check that the sender account is updated
     //let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();

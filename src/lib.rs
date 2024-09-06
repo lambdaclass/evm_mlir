@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
 use builder::EvmBuilder;
-use bytes::Bytes;
 use db::{Database, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
@@ -96,7 +93,7 @@ impl Evm<Db> {
             starting_code.append(&mut init_code);
         }
 
-        let mut operations = [
+        let operations = [
             starting_code,
             vec![
                 Operation::Push((1, BigUint::from(total_size))),
