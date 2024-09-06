@@ -953,46 +953,16 @@ mod tests {
     }
 
     #[test]
-    fn ecpairing_invalid_point() {
-        // changed last byte from `fc` to `fd`
-        let calldata = Bytes::from(
-            hex::decode(
-                "\
-            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
-            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
-            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
-            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
-            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
-            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
-            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
-            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
-            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
-            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fd",
-            )
-            .unwrap(),
-        );
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
-
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
-    }
-
-    #[test]
     fn ecpairing_p1_is_infinity() {
         let calldata = Bytes::from(
             hex::decode(
                 "\
-            0000000000000000000000000000000000000000000000000000000000000000\
-            0000000000000000000000000000000000000000000000000000000000000000\
-            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
-            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
-            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
-            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e",
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+                22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+                2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+                2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e",
             )
             .unwrap(),
         );
@@ -1015,12 +985,12 @@ mod tests {
         let calldata = Bytes::from(
             hex::decode(
                 "\
-            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
-            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
-            0000000000000000000000000000000000000000000000000000000000000000\
-            0000000000000000000000000000000000000000000000000000000000000000\
-            0000000000000000000000000000000000000000000000000000000000000000\
-            0000000000000000000000000000000000000000000000000000000000000000",
+                2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+                2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap(),
         );
@@ -1051,6 +1021,36 @@ mod tests {
 
         assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
+    }
+
+    #[test]
+    fn ecpairing_invalid_point() {
+        // changed last byte from `fc` to `fd`
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fd",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
