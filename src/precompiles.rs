@@ -1,14 +1,17 @@
 use crate::{
-    constants::precompiles::{
-        blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
-        sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
-        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+    constants::{
+        precompiles::{
+            blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost,
+            ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST,
+            ECPAIRING_STATIC_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+        },
+        TRUSTED_SETUP_PATH,
     },
     primitives::U256,
     result::PrecompileError,
 };
 use bytes::Bytes;
-use c_kzg::{Bytes32, Bytes48, KzgCommitment};
+use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgSettings};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -27,7 +30,7 @@ use lambdaworks_math::{
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use std::array::TryFromSliceError;
+use std::{array::TryFromSliceError, path::Path};
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -449,6 +452,16 @@ pub fn blake2f(
     Ok(Bytes::from(out))
 }
 
+#[derive(Debug)]
+struct TrustedSetupError;
+
+fn get_trusted_setup() -> Result<KzgSettings, TrustedSetupError> {
+    let trusted_setup_file: &Path = Path::new(TRUSTED_SETUP_PATH);
+    debug_assert!(trusted_setup_file.exists(), "Missing trusted setup file");
+
+    Ok(KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)?)
+}
+
 pub struct PointEvalErr;
 
 pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr> {
@@ -467,6 +480,8 @@ pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr
     let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PointEvalErr)?;
     let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
     let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
+
+    let trusted_setup = get_trusted_setup().map_err(|_| PointEvalErr)?;
 
     Err(PointEvalErr)
 }
