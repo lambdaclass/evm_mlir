@@ -3217,8 +3217,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
     let x2: u8 = 1;
     let y2: u8 = 2;
 
-    let expected_result = Bytes::from([0u8; 64].to_vec());
-
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3242,9 +3240,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, ret_size.into())),
-        Operation::Push((1_u8, ret_offset.into())),
-        Operation::Return,
     ];
 
     let program = Program::from(caller_ops);
@@ -3253,7 +3248,7 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_bytes_result(env, db, &expected_result);
+    run_program_assert_num_result(env, db, BigUint::ZERO);
 }
 
 #[test]
@@ -3271,8 +3266,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
     let x2: u8 = 1;
     let y2: u8 = 1;
 
-    let expected_result = Bytes::from([0u8; 64].to_vec());
-
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3296,9 +3289,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
         // Return
-        Operation::Push((1_u8, ret_size.into())),
-        Operation::Push((1_u8, ret_offset.into())),
-        Operation::Return,
     ];
 
     let program = Program::from(caller_ops);
@@ -3307,7 +3297,7 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_bytes_result(env, db, &expected_result);
+    run_program_assert_num_result(env, db, BigUint::ZERO);
 }
 
 #[test]
