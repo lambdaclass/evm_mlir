@@ -3,7 +3,8 @@ use crate::{
         precompiles::{
             blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost,
             ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST,
-            ECPAIRING_STATIC_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+            ECPAIRING_STATIC_COST, ECRECOVER_COST, IDENTITY_COST, POINT_EVAL_COST, RIPEMD_160_COST,
+            SHA2_256_COST,
         },
         VERSIONED_HASH_VERSION_KZG,
     },
@@ -489,9 +490,15 @@ pub fn point_eval(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PointEvalErr> {
+    if gas_limit < POINT_EVAL_COST {
+        return Err(PointEvalErr);
+    }
+
     if input.len() != POINT_EVAL_CALLDATA_LEN {
         return Err(PointEvalErr {});
     }
+
+    *consumed_gas += POINT_EVAL_COST;
 
     /*
        The calldata is encoded as follows:
@@ -1277,6 +1284,30 @@ mod tests {
         assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
+    }
+
+    #[test]
+    fn test_point_eval_not_enough_gas() {
+        let input = Bytes::from([0 as u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let output = point_eval(&input, 49999, &mut consumed_gas);
+
+        // assert_eq!(output, Err(PointEvalErr));
+        assert!(output.is_err());
+        assert_eq!(consumed_gas, 0)
+    }
+
+    #[test]
+    fn test_point_eval_consumes_gas() {
+        let input = Bytes::from([0 as u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let _ = point_eval(&input, 50001, &mut consumed_gas);
+
+        assert_eq!(consumed_gas, 50000);
     }
 
     #[test]
