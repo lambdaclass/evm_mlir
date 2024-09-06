@@ -898,6 +898,7 @@ impl<'c> SyscallContext<'c> {
         salt: Option<&U256>,
     ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
+        eprintln!("VALUE ES: {}", value_as_u256);
         let offset = offset as usize;
         let size = size as usize;
         let minimum_word_size = ((size + 31) / 32) as u64;
@@ -948,6 +949,7 @@ impl<'c> SyscallContext<'c> {
         //self.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
+        // SE ESTA EJECUTANDO VERDADERAMENTE DE MANERA RECURSIVA BIEN ESTO? OJALDRE
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
@@ -972,7 +974,8 @@ impl<'c> SyscallContext<'c> {
         self.journal
             .set_nonce(&sender_address, sender_account.nonce + 1);
         self.journal.set_balance(&sender_address, sender_balance);
-
+        eprintln!("ACTUALIZO BALANCE");
+        eprintln!("ACTUALIZO NONCE");
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list

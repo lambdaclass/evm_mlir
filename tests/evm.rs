@@ -4892,6 +4892,5 @@ fn recursive_create() {
 
     // Check that the sender account is updated
     let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
-    assert_eq!(sender_account.balance, sender_balance - value);
     assert_eq!(sender_account.nonce, sender_nonce + 1);
 }

@@ -5,7 +5,12 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::{Database, Db},
+    env::TransactTo,
+    result::ExecutionResult,
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -200,9 +205,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut evm = Evm::new(env, db);
 
             let res = evm.transact().unwrap();
-
+            let sender_account = evm.db.basic(sender).unwrap().unwrap();
+            eprintln!("EL SENDER BALANCE EN EF {:?}", sender_account.balance);
+            eprintln!("EL SENDER NONCE EN EF {:?}", sender_account.nonce);
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
+                    res.result.is_success();
                     if unit.out.as_ref() != res.result.output() {
                         return Err("Wrong output".into());
                     }
