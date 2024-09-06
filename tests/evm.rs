@@ -4878,7 +4878,7 @@ fn recursive_create() {
     env.tx.value = EU256::from(value);
     env.tx.caller = sender_addr;
     env.tx.transact_to = TransactTo::Call(Address::from_low_u64_be(3000));
-    env.tx.gas_limit = 10_000_000;
+    env.tx.gas_limit = 1_000_000;
     let program = Program::from(operations);
 
     let mut db = Db::new().with_contract(to_addr, Bytecode::from(program.to_bytecode()));
