@@ -3239,7 +3239,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -3288,7 +3287,6 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -3389,7 +3387,6 @@ fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -3588,7 +3585,6 @@ fn staticcall_on_precompile_ecmul_invalid_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -3633,7 +3629,6 @@ fn staticcall_on_precompile_ecmul_invalid_point_by_zero() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -3726,7 +3721,6 @@ fn staticcall_on_precompile_ecmul_with_not_enough_gas() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-        // Return
     ];
 
     let program = Program::from(caller_ops);
@@ -4020,7 +4014,6 @@ fn staticcall_on_precompile_ecpairing_invalid_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas_limit.into())), // Gas
         Operation::StaticCall,
-        // Return
     ]);
 
     let program = Program::from(caller_ops);
@@ -4082,7 +4075,6 @@ fn staticcall_on_precompile_ecpairing_invalid_calldata() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas_limit.into())), // Gas
         Operation::StaticCall,
-        // Return
     ]);
 
     let program = Program::from(caller_ops);
@@ -4145,7 +4137,6 @@ fn staticcall_on_precompile_ecpairing_with_not_enough_gas() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas_limit.into())), // Gas
         Operation::StaticCall,
-        // Return
     ]);
 
     let program = Program::from(caller_ops);
