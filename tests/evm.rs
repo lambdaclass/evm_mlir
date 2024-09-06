@@ -4066,7 +4066,6 @@ fn create_happy_path() {
     let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
     assert_eq!(sender_account.nonce, sender_nonce + 1);
     assert_eq!(sender_account.balance, sender_balance - value);
-    assert!(false);
 }
 
 #[test]

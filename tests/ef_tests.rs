@@ -39,7 +39,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -57,7 +57,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
-        //"stCreate2".into(),
+        "stCreate2".into(),
         "stSpecialTest".into(),
         "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
@@ -248,10 +248,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stCreateTest/",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
 
 //CREATE2_Bounds2.json pincha y el 3 tambien
