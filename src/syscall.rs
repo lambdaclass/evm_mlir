@@ -19,7 +19,7 @@ use std::ffi::c_void;
 
 use crate::{
     constants::{
-        call_opcode::{self, HALT_RETURN_CODE},
+        call_opcode::{self},
         gas_cost, precompiles, CallType,
     },
     context::Context,
@@ -516,7 +516,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
             TransactTo::Call(address) => self.journal.get_account(&address).unwrap_or_default(),
-            TransactTo::Create => AccountInfo::default(), //This branch should never happen
+            TransactTo::Create(_) => AccountInfo::default(), //This branch should never happen
         };
         balance.hi = (account.balance >> 128).low_u128();
         balance.lo = account.balance.low_u128();
@@ -902,16 +902,12 @@ impl<'c> SyscallContext<'c> {
         salt: Option<&U256>,
     ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
-        //eprintln!("REMAINING GAS ES: {}", remaining_gas);
-        //eprintln!("SIZE ES: {}", size);
-        //eprintln!("OFFSET ES: {:?}", offset);
 
         let offset = offset as usize;
         let size = size as usize;
         let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
-        eprintln!("DALE WACHO");
-        // ASI ES COMO DEBERIA FUNCIONAR DE VERDAD
+
         if size > MAX_INITCODE_SIZE {
             //should revert here
             return 1;
@@ -925,7 +921,6 @@ impl<'c> SyscallContext<'c> {
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
-        //eprintln!("PROGRAM ES: {:?}", program);
 
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
@@ -939,10 +934,7 @@ impl<'c> SyscallContext<'c> {
                 minimum_word_size * gas_cost::HASH_WORD_COST as u64,
             ),
             _ => {
-                eprintln!("NONCE ES: {}", sender_account.nonce);
                 if sender_account.nonce.checked_add(1).is_none() {
-                    eprintln!("TROSTE: {}", sender_account.nonce);
-
                     return 1;
                 }
 
@@ -964,7 +956,6 @@ impl<'c> SyscallContext<'c> {
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
         new_env.tx.gas_limit = *remaining_gas;
         let call_frame = CallFrame::new(sender_address);
-        //eprintln!("AGUANTE RUST");
 
         // Execute initialization code
         let context = Context::new();
@@ -982,7 +973,6 @@ impl<'c> SyscallContext<'c> {
         context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, new_env.tx.gas_limit);
 
-        //eprintln!("Y POR QUE NO SEGUIS ACA?");
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
@@ -1007,7 +997,6 @@ impl<'c> SyscallContext<'c> {
         // si new_nonce haria el unwrap, deberia hacer que tire un Result: Halt
         //let new_nonce = sender_account.nonce.checked_add(1).unwrap_or_else(||);
         let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
-            eprintln!("BOCAAAAA");
             return call_opcode::HALT_RETURN_CODE;
         };
 

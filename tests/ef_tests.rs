@@ -147,13 +147,13 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
-        let to = match unit.transaction.to {
-            Some(to) => TransactTo::Call(to),
-            None => TransactTo::Create,
-        };
 
         let sender = unit.transaction.sender.unwrap_or_default();
         let gas_price = unit.transaction.gas_price.unwrap_or_default();
+        let to = match unit.transaction.to {
+            Some(to) => TransactTo::Call(to),
+            None => TransactTo::Create(sender),
+        };
 
         for test in tests {
             let mut env = Env::default();
@@ -182,10 +182,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
                     Db::new().with_contract(to, opcodes)
                 }
-                TransactTo::Create => {
+                TransactTo::Create(sender_addr) => {
                     let opcodes =
-                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
-                    Db::new().with_contract(env.tx.get_address(), opcodes)
+                        decode_hex(unit.pre.get(&sender_addr).unwrap().code.clone()).unwrap();
+                    Db::new().with_contract(sender_addr, opcodes)
                 }
             };
 
@@ -250,7 +250,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stCreateTest/CreateTransactionHighNonce.json",
+    "ethtests/GeneralStateTests/stCreateTest/",
     r"^.*/*.json",
 );
 
