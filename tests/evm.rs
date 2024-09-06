@@ -15,7 +15,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    syscall::{LogData, U256},
+    syscall::{LogData, GAS_REFUND_DENOMINATOR, U256},
     utils::compute_contract_address2,
     Env, Evm,
 };
@@ -1469,7 +1469,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800;
+    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
 
     let key = 80_u8;
     let program = vec![
@@ -1519,7 +1519,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800;
+    let refunded_gas = 2_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
 
     let key = 80_u8;
     let program = vec![
@@ -4802,4 +4802,55 @@ fn sload_warm_cold_gas() {
 
     let env = Env::default();
     run_program_assert_gas_exact(program, env, used_gas as _);
+}
+
+#[test]
+fn refunded_gas_cant_be_more_than_a_fifth_of_used_gas() {
+    let new_value: u8 = 0;
+    let original_value = 10;
+
+    let used_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = used_gas / GAS_REFUND_DENOMINATOR as i64;
+    let key = 80_u8;
+    let program = vec![
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+    ];
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn refund_limit_value() {
+    let new_value: u8 = 0;
+    let original_value = 10;
+
+    let used_gas = 5_000 + (2 + 200) * gas_cost::PUSHN + gas_cost::BALANCE * 200;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 4_800;
+    let key = 80_u8;
+    let gas_costly_opcodes = vec![Operation::Balance; 200];
+    let needed_pushes_opcodes = vec![Operation::Push((20_u8, BigUint::from(1_u8))); 200];
+    let program = [
+        needed_pushes_opcodes,
+        gas_costly_opcodes,
+        vec![
+            Operation::Push((1_u8, BigUint::from(new_value))),
+            Operation::Push((1_u8, BigUint::from(key))),
+            Operation::Sstore,
+        ],
+    ]
+    .concat();
+
+    let (env, mut db) = default_env_and_db_setup(program);
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }

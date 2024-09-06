@@ -40,6 +40,8 @@ use std::collections::HashMap;
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
+pub const GAS_REFUND_DENOMINATOR: u64 = 5;
+
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
 pub struct U256 {
@@ -189,9 +191,12 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_refunded = self.inner_context.gas_refund;
         let gas_initial = self.env.tx.gas_limit;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
+        let gas_refunded = self
+            .inner_context
+            .gas_refund
+            .min(gas_used / GAS_REFUND_DENOMINATOR);
         let exit_status = self
             .inner_context
             .exit_status
