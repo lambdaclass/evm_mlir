@@ -18,7 +18,10 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost, precompiles, CallType},
+    constants::{
+        call_opcode::{self, HALT_RETURN_CODE},
+        gas_cost, precompiles, CallType,
+    },
     context::Context,
     db::AccountInfo,
     env::{Env, TransactTo},
@@ -907,10 +910,11 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
-
+        eprintln!("DALE WACHO");
         // ASI ES COMO DEBERIA FUNCIONAR DE VERDAD
         if size > MAX_INITCODE_SIZE {
             //should revert here
+            return 1;
         }
 
         let size: usize = if size > self.inner_context.memory.len() {
@@ -934,10 +938,19 @@ impl<'c> SyscallContext<'c> {
                 ),
                 minimum_word_size * gas_cost::HASH_WORD_COST as u64,
             ),
-            _ => (
-                compute_contract_address(sender_address, sender_account.nonce),
-                0,
-            ),
+            _ => {
+                eprintln!("NONCE ES: {}", sender_account.nonce);
+                if sender_account.nonce.checked_add(1).is_none() {
+                    eprintln!("TROSTE: {}", sender_account.nonce);
+
+                    return 1;
+                }
+
+                (
+                    compute_contract_address(sender_address, sender_account.nonce),
+                    0,
+                )
+            }
         };
 
         // Check if there is already a contract stored in dest_address
@@ -993,7 +1006,11 @@ impl<'c> SyscallContext<'c> {
             .new_contract(dest_addr, bytecode, value_as_u256);
         // si new_nonce haria el unwrap, deberia hacer que tire un Result: Halt
         //let new_nonce = sender_account.nonce.checked_add(1).unwrap_or_else(||);
-        let new_nonce = sender_account.nonce.saturating_add(1);
+        let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
+            eprintln!("BOCAAAAA");
+            return call_opcode::HALT_RETURN_CODE;
+        };
+
         self.journal.set_nonce(&sender_address, new_nonce);
         self.journal.set_balance(&sender_address, sender_balance);
 

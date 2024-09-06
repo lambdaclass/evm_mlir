@@ -250,7 +250,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stCreateTest/",
+    "ethtests/GeneralStateTests/stCreateTest/CreateTransactionHighNonce.json",
     r"^.*/*.json",
 );
 

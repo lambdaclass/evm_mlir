@@ -149,6 +149,7 @@ pub mod gas_cost {
 
 pub mod call_opcode {
     // Return codes
+    pub const HALT_RETURN_CODE: u8 = 2;
     pub const SUCCESS_RETURN_CODE: u8 = 1;
     pub const REVERT_RETURN_CODE: u8 = 0;
 

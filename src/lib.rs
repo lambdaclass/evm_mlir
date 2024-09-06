@@ -1,5 +1,6 @@
 use builder::EvmBuilder;
 use db::{Database, Db};
+use env::TransactTo;
 use executor::{Executor, OptLevel};
 use journal::Journal;
 use program::Program;
@@ -46,11 +47,9 @@ impl<DB: Database + Default> Evm<DB> {
 }
 
 impl Evm<Db> {
-    /// Executes [the configured transaction](Env::tx).
-    pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
+    fn call_address(&mut self) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
         let code_address = self.env.tx.get_address();
-
         //TODO: Improve error handling
         let bytecode = self
             .db
@@ -76,6 +75,44 @@ impl Evm<Db> {
         executor.execute(&mut context, self.env.tx.gas_limit);
 
         context.get_result()
+    }
+
+    fn create(&mut self) -> Result<ResultAndState, EVMError> {
+        let context = Context::new();
+        let code_address = self.env.tx.get_address();
+        //TODO: Improve error handling
+        let bytecode = self
+            .db
+            .code_by_address(code_address)
+            .expect("Failed to get code from address");
+        let program = Program::from_bytecode(&bytecode);
+
+        self.env.consume_intrinsic_cost()?;
+        self.env.validate_transaction()?;
+        // validate transaction
+
+        let module = context
+            .compile(&program, Default::default())
+            .expect("failed to compile program");
+
+        let call_frame = CallFrame::new(self.env.tx.caller);
+        let journal = Journal::new(&mut self.db);
+        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
+        let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+
+        // TODO: improve this once we stabilize the API a bit
+        context.inner_context.program = program.to_bytecode();
+        executor.execute(&mut context, self.env.tx.gas_limit);
+
+        context.get_result()
+    }
+
+    /// Executes [the configured transaction](Env::tx).
+    pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
+        match self.env.tx.transact_to {
+            TransactTo::Call(_) => self.call_address(),
+            TransactTo::Create => self.create(),
+        }
     }
 
     pub fn transact_commit(&mut self) -> Result<ExecutionResult, EVMError> {
