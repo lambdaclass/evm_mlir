@@ -5,13 +5,13 @@ use crate::{
             ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST,
             ECPAIRING_STATIC_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
         },
-        TRUSTED_SETUP_PATH, VERSIONED_HASH_VERSION_KZG,
+        VERSIONED_HASH_VERSION_KZG,
     },
     primitives::U256,
     result::PrecompileError,
 };
 use bytes::Bytes;
-use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgSettings};
+use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgProof, KzgSettings};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -462,9 +462,12 @@ const POINT_EVAL_RETURN: &str =
 #[derive(Debug)]
 struct TrustedSetupError;
 
-fn get_trusted_setup() -> Result<KzgSettings, TrustedSetupError> {
-    let trusted_setup_file: &Path = Path::new(TRUSTED_SETUP_PATH);
-    debug_assert!(trusted_setup_file.exists(), "Missing trusted setup file");
+fn get_trusted_setup(trusted_setup_file: &Path) -> Result<KzgSettings, TrustedSetupError> {
+    debug_assert!(
+        trusted_setup_file.exists(),
+        "Missing trusted setup file at: {:?}",
+        trusted_setup_file.to_str().unwrap()
+    );
 
     Ok(KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)?)
 }
@@ -477,6 +480,7 @@ pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
     Bytes32::from_bytes(&hash).unwrap()
 }
 
+#[derive(Debug)]
 pub struct PointEvalErr;
 
 pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Bytes, PointEvalErr> {
@@ -502,9 +506,16 @@ pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Bytes, PointEvalErr> 
     let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
     let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
 
-    let trusted_setup = get_trusted_setup().map_err(|_| PointEvalErr)?;
+    let trusted_setup =
+        get_trusted_setup(Path::new("./official_trusted_setup.txt")).map_err(|_| PointEvalErr)?;
 
-    Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
+    if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
+        .map_err(|_| PointEvalErr)?
+    {
+        Err(PointEvalErr)
+    } else {
+        Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
+    }
 }
 
 #[cfg(test)]
@@ -1257,5 +1268,27 @@ mod tests {
         assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
+    }
+
+    #[test]
+    fn basic_test() {
+        // test data from: https://github.com/ethereum/c-kzg-4844/blob/main/tests/verify_kzg_proof/kzg-mainnet/verify_kzg_proof_case_correct_proof_31ebd010e6098750/data.yaml
+
+        let commitment = hex::decode("8f59a8d2a1a625a17f3fea0fe5eb8c896db3764f3185481bc22f91b4aaffcca25f26936857bc3a7c2539ea8ec3a952b7").unwrap();
+        let mut versioned_hash = sha2::Sha256::digest(&commitment).to_vec();
+        versioned_hash[0] = VERSIONED_HASH_VERSION_KZG;
+        let z = hex::decode("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000")
+            .unwrap();
+        let y = hex::decode("1522a4a7f34e1ea350ae07c29c96c7e79655aa926122e95fe69fcbd932ca49e9")
+            .unwrap();
+        let proof = hex::decode("a62ad71d14c5719385c0686f1871430475bf3a00f0aa3f7b8dd99a9abc2160744faf0070725e00b60ad9a026a15b1a8c").unwrap();
+
+        let input = [versioned_hash, z, y, commitment, proof].concat();
+
+        let expected_output = Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes());
+        let gas = 50000;
+        let output = point_eval(&input.into(), gas).unwrap();
+        // assert_eq!(output.gas_used, gas);
+        assert_eq!(output, expected_output);
     }
 }
