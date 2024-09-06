@@ -193,8 +193,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             for (address, account_info) in unit.pre.iter() {
                 let opcodes = decode_hex(account_info.code.clone()).unwrap();
                 db = db.with_contract(address.to_owned(), opcodes);
-                eprintln!("EL ADDRESS EN EF: {:?}", address);
-                eprintln!("EL BALANCE EN EF {:?}", account_info.balance);
+
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
@@ -206,8 +205,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
             let sender_account = evm.db.basic(sender).unwrap().unwrap();
-            eprintln!("EL SENDER BALANCE EN EF {:?}", sender_account.balance);
-            eprintln!("EL SENDER NONCE EN EF {:?}", sender_account.nonce);
+
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
                     res.result.is_success();
@@ -253,6 +251,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stRecursiveCreate/recursiveCreateReturnValue.json",
+    "ethtests/GeneralStateTests/stRecursiveCreate/recursiveCreate.json",
     r"^.*/*.json",
 );

@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{ffi::c_void, thread::sleep, time::Duration};
 
 use crate::{
     constants::{call_opcode, gas_cost, precompiles, CallType},
@@ -908,6 +908,7 @@ impl<'c> SyscallContext<'c> {
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
+        eprintln!("PROGRAM ES: {:?}", program);
 
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
@@ -951,9 +952,11 @@ impl<'c> SyscallContext<'c> {
         context.journal.new_account(dest_addr, value_as_u256);
         //self.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-        context.inner_context.program = program.to_bytecode(); // necesitare el limitar el call stack?
+        // osea hacer el context.program = program no hace falta, se esta ejecutando bien
+        context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, new_env.tx.gas_limit);
 
+        eprintln!("Y POR QUE NO SEGUIS ACA?");
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 

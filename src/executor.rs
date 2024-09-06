@@ -21,7 +21,6 @@ pub struct Executor {
 
 impl Executor {
     pub fn new(module: &MLIRModule, syscall_ctx: &SyscallContext, opt_level: OptLevel) -> Self {
-        eprintln!("NO TE ROMPAS PORFAAA");
         let engine = ExecutionEngine::new(module.module(), opt_level as usize, &[], false);
         syscall_ctx.register_symbols(&engine);
         Self { engine }
