@@ -179,6 +179,8 @@ pub mod precompiles {
     pub const ECPAIRING_STATIC_COST: u64 = 45000;
     pub const ECPAIRING_PAIRING_COST: u64 = 34000;
     pub const BLAKE2F_ADDRESS: u64 = 0x09;
+    pub const POINT_EVAL_ADDRESS: u64 = 0x0a;
+    pub const POINT_EVAL_COST: u64 = 50_000;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
