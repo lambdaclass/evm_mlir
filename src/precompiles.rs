@@ -5,7 +5,7 @@ use crate::{
             ripemd_160_dynamic_cost, sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST,
             ECPAIRING_STATIC_COST, ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
         },
-        TRUSTED_SETUP_PATH,
+        TRUSTED_SETUP_PATH, VERSIONED_HASH_VERSION_KZG,
     },
     primitives::U256,
     result::PrecompileError,
@@ -462,6 +462,14 @@ fn get_trusted_setup() -> Result<KzgSettings, TrustedSetupError> {
     Ok(KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)?)
 }
 
+pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
+    let bytes = commitment.to_bytes().to_vec();
+    let mut hash: [u8; 32] = sha2::Sha256::digest(bytes).into();
+    hash[0] = VERSIONED_HASH_VERSION_KZG;
+
+    Bytes32::from_bytes(&hash).unwrap()
+}
+
 pub struct PointEvalErr;
 
 pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr> {
@@ -477,6 +485,12 @@ pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr
     */
 
     let commitment = KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PointEvalErr)?;
+    let versioned_hash = Bytes32::from_bytes(&input[..32]).map_err(|_| PointEvalErr)?;
+
+    if commitment_to_versioned_hash(&commitment) != versioned_hash {
+        return Err(PointEvalErr);
+    }
+
     let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PointEvalErr)?;
     let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
     let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
