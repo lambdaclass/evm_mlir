@@ -197,8 +197,8 @@ pub fn ecadd(
         }
         (true, false) => {
             if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
-                let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 *consumed_gas += ECADD_COST;
+                let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
             *consumed_gas += gas_limit;
@@ -206,8 +206,8 @@ pub fn ecadd(
         }
         (false, true) => {
             if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
-                let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 *consumed_gas += ECADD_COST;
+                let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
             *consumed_gas += gas_limit;
@@ -223,9 +223,10 @@ pub fn ecadd(
         *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidEcPoint);
     };
+
+    *consumed_gas += ECADD_COST;
     let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
-    *consumed_gas += ECADD_COST;
     Ok(Bytes::from(res))
 }
 
@@ -242,7 +243,6 @@ pub fn ecmul(
         *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += ECMUL_COST;
 
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
@@ -253,20 +253,25 @@ pub fn ecmul(
     let zero_el = BN254FieldElement::from(0);
     let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
     if p1_is_infinity {
+        *consumed_gas += ECMUL_COST;
         return Ok(Bytes::from([0u8; 64].to_vec()));
     }
 
     // scalar is 0 and the point is valid
     let zero_u256 = LambdaWorksU256::from(0_u16);
     if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
+        *consumed_gas += ECMUL_COST;
         return Ok(Bytes::from([0u8; 64].to_vec()));
     }
 
     if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+        *consumed_gas += ECMUL_COST;
         let mul = p1.operate_with_self(s).to_affine();
         let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
         return Ok(Bytes::from(res));
     }
+
+    *consumed_gas += gas_limit;
     Err(PrecompileError::InvalidEcPoint)
 }
 
@@ -841,14 +846,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -862,14 +866,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
