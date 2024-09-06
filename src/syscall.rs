@@ -20,7 +20,9 @@ use std::ffi::c_void;
 use crate::{
     constants::{
         call_opcode::{self},
-        gas_cost, precompiles, CallType,
+        create_opcode::{self, REVERT_RETURN_CODE},
+        gas_cost::{self, MAX_CODE_SIZE},
+        precompiles, CallType,
     },
     context::Context,
     db::AccountInfo,
@@ -44,7 +46,6 @@ use std::collections::HashMap;
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
 pub const GAS_REFUND_DENOMINATOR: u64 = 5;
-const MAX_INITCODE_SIZE: usize = 49152;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
@@ -908,9 +909,9 @@ impl<'c> SyscallContext<'c> {
         let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
 
-        if size > MAX_INITCODE_SIZE {
+        if size > MAX_CODE_SIZE * 2 {
             //should revert here
-            return 1;
+            return create_opcode::REVERT_RETURN_CODE;
         }
 
         let size: usize = if size > self.inner_context.memory.len() {
@@ -935,7 +936,7 @@ impl<'c> SyscallContext<'c> {
             ),
             _ => {
                 if sender_account.nonce.checked_add(1).is_none() {
-                    return 1;
+                    return create_opcode::REVERT_RETURN_CODE;
                 }
 
                 (
@@ -947,7 +948,7 @@ impl<'c> SyscallContext<'c> {
 
         // Check if there is already a contract stored in dest_address
         if self.journal.get_account(&dest_addr).is_some() {
-            return 1;
+            return create_opcode::REVERT_RETURN_CODE;
         }
 
         // Create subcontext for the initialization code
@@ -988,16 +989,15 @@ impl<'c> SyscallContext<'c> {
         // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
-            return 0;
+            return create_opcode::SUCCESS_RETURN_CODE;
         };
 
         // Create new contract and update sender account
         self.journal
             .new_contract(dest_addr, bytecode, value_as_u256);
-        // si new_nonce haria el unwrap, deberia hacer que tire un Result: Halt
-        //let new_nonce = sender_account.nonce.checked_add(1).unwrap_or_else(||);
+
         let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
-            return call_opcode::HALT_RETURN_CODE;
+            return create_opcode::HALT_RETURN_CODE;
         };
 
         self.journal.set_nonce(&sender_address, new_nonce);
@@ -1006,7 +1006,7 @@ impl<'c> SyscallContext<'c> {
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list
-        0
+        create_opcode::SUCCESS_RETURN_CODE
     }
 
     pub extern "C" fn create(
