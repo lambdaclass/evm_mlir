@@ -8,6 +8,7 @@ use crate::{
     result::PrecompileError,
 };
 use bytes::Bytes;
+use c_kzg::{Bytes32, Bytes48, KzgCommitment};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -446,6 +447,28 @@ pub fn blake2f(
     let out: Vec<u8> = h.iter().flat_map(|&num| num.to_le_bytes()).collect();
 
     Ok(Bytes::from(out))
+}
+
+pub struct PointEvalErr;
+
+pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr> {
+    /*
+       The calldata is encoded as follows:
+
+       RANGE        NAME            DESCRIPTION
+       [0: 32]      versioned_hash  Reference to a blob in the execution layer.
+       [32: 64]     x               x-coordinate at which the blob is being evaluated.
+       [64: 96]     y               y-coordinate at which the blob is being evaluated.
+       [96: 144]    commitment      Commitment to the blob being evaluated
+       [144: 192]   proof           Proof associated with the commitment
+    */
+
+    let commitment = KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PointEvalErr)?;
+    let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PointEvalErr)?;
+    let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
+    let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
+
+    Err(PointEvalErr)
 }
 
 #[cfg(test)]
