@@ -452,6 +452,13 @@ pub fn blake2f(
     Ok(Bytes::from(out))
 }
 
+// Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values.
+// FIELD_ELEMENTS_PER_BLOB = 4096 = 0x1000;
+// BLS_MODULUS = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+// = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001;
+const POINT_EVAL_RETURN: &str =
+    "000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+
 #[derive(Debug)]
 struct TrustedSetupError;
 
@@ -472,7 +479,7 @@ pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
 
 pub struct PointEvalErr;
 
-pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr> {
+pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Bytes, PointEvalErr> {
     /*
        The calldata is encoded as follows:
 
@@ -497,7 +504,7 @@ pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Vec<u8>, PointEvalErr
 
     let trusted_setup = get_trusted_setup().map_err(|_| PointEvalErr)?;
 
-    Err(PointEvalErr)
+    Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
 }
 
 #[cfg(test)]
