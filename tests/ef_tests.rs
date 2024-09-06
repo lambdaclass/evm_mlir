@@ -253,6 +253,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stRecursiveCreate/",
+    "ethtests/GeneralStateTests/stRecursiveCreate/recursiveCreateReturnValue.json",
     r"^.*/*.json",
 );

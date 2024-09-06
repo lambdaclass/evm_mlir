@@ -102,6 +102,10 @@ impl<'a> Journal<'a> {
         }
     }
 
+    pub fn size(&self) -> usize {
+        self.accounts.len()
+    }
+
     /* ACCOUNT HANDLING */
 
     pub fn new_account(&mut self, address: Address, balance: U256) {
