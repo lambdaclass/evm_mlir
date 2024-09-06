@@ -6,16 +6,16 @@ use evm_mlir::{
     constants::{
         call_opcode, gas_cost,
         precompiles::{
-            BLAKE2F_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS, MODEXP_ADDRESS,
-            RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
+            BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS,
+            MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
-    env::{AccessList, TransactTo},
+    env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    syscall::{LogData, U256},
+    syscall::{LogData, GAS_REFUND_DENOMINATOR, U256},
     utils::compute_contract_address2,
     Env, Evm,
 };
@@ -63,19 +63,19 @@ fn run_program_assert_bytes_result(env: Env, db: Db, expected_result: &[u8]) {
 fn run_program_assert_halt(env: Env, db: Db) {
     let mut evm = Evm::new(env, db);
     let result = evm.transact_commit().unwrap();
+
     assert!(result.is_halt());
 }
 
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
 
     // Halt run
-    env.tx.gas_limit =
-        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact_commit().unwrap();
     assert!(result.is_halt());
@@ -87,8 +87,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
-    env_success.tx.gas_limit =
-        needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
@@ -98,8 +97,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
-    env_halt.tx.gas_limit =
-        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env_halt.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
@@ -114,7 +112,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact_commit().unwrap();
@@ -1330,7 +1328,7 @@ fn balance_static_gas_check() {
         Operation::Balance,
     ];
     let env = Env::default();
-    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE_COLD;
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
 
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -1471,7 +1469,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800;
+    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
 
     let key = 80_u8;
     let program = vec![
@@ -1521,7 +1519,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800;
+    let refunded_gas = 2_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
 
     let key = 80_u8;
     let program = vec![
@@ -2274,8 +2272,7 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_
         + gas_cost::PUSH0
         + gas_cost::MSTORE * 2
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
-        + gas_cost::memory_expansion_cost(0, 64)
-        + gas_cost::CALL_COLD;
+        + gas_cost::memory_expansion_cost(0, 64);
 
     let available_gas = 1e6;
     let needed_gas = caller_gas_cost + callee_gas_cost;
@@ -2456,7 +2453,7 @@ fn call_gas_check_with_value_and_empty_account(#[case] call_type: Operation) {
     let caller_call_cost = call_opcode::WARM_MEMORY_ACCESS_COST
         + call_opcode::NOT_ZERO_VALUE_COST
         + call_opcode::EMPTY_CALLEE_COST;
-    let needed_gas = gas_cost::CALL_COLD + gas_cost::PUSHN * 7 + caller_call_cost as i64;
+    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost as i64;
 
     let caller_balance: u8 = 5;
     let program = Program::from(caller_ops);
@@ -2830,7 +2827,7 @@ fn staticcall_on_precompile_identity_happy_path() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_bytes_result(env.clone(), db.clone(), &expected_result);
+    run_program_assert_bytes_result(env, db, &expected_result);
 }
 
 #[test]
@@ -2953,6 +2950,497 @@ fn staticcall_on_precompile_modexp_happy_path() {
         Operation::Mstore,
         Operation::Push((32_u8, BigUint::from_bytes_be(params))),
         Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), //Ret size
+        Operation::Push((1_u8, ret_offset.into())), //Ret offset
+        Operation::Push((1_u8, args_size.into())), //Args size
+        Operation::Push((1_u8, args_offset.into())), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, gas.into())),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_happy_path() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
+
+    let expected_x =
+        hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3").unwrap();
+    let expected_y =
+        hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4").unwrap();
+    let expected_result = [expected_x, expected_y].concat();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), //Ret size
+        Operation::Push((1_u8, ret_offset.into())), //Ret offset
+        Operation::Push((1_u8, args_size.into())), //Args size
+        Operation::Push((1_u8, args_offset.into())), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, gas.into())),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_infinity_with_valid_point() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 0;
+    let y1: u8 = 0;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
+
+    let expected_x =
+        hex::decode("0000000000000000000000000000000000000000000000000000000000000001").unwrap();
+    let expected_y =
+        hex::decode("0000000000000000000000000000000000000000000000000000000000000002").unwrap();
+    let expected_result = [expected_x, expected_y].concat();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_valid_point_with_infinity() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 0;
+    let y2: u8 = 0;
+
+    let expected_x =
+        hex::decode("0000000000000000000000000000000000000000000000000000000000000001").unwrap();
+    let expected_y =
+        hex::decode("0000000000000000000000000000000000000000000000000000000000000002").unwrap();
+    let expected_result = [expected_x, expected_y].concat();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_infinity_twice() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 0;
+    let y1: u8 = 0;
+    let x2: u8 = 0;
+    let y2: u8 = 0;
+
+    let expected_result = Bytes::from([0u8; 64].to_vec());
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 1;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
+
+    let expected_result = Bytes::from([0u8; 64].to_vec());
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 1;
+    let y2: u8 = 1;
+
+    let expected_result = Bytes::from([0u8; 64].to_vec());
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_with_missing_stack_parameter() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        // Operation::Push((1_u8, ret_size.into())), // Ret size missing
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())),  // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),       // Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_halt(env, db);
+}
+
+#[test]
+fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 128;
+    let args_size: u8 = 128;
+    let args_offset: u8 = 0;
+    let gas: u32 = 149;
+    let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let x2: u8 = 1;
+    let y2: u8 = 2;
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, x2.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y2.into())),
+        Operation::Push((1_u8, 0x60_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Push((1_u8, args_size.into())), // Args size
+        Operation::Push((1_u8, args_offset.into())), // Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
+        Operation::Push((32_u8, gas.into())),     // Gas
+        Operation::StaticCall,
+        // Return
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+
+    run_program_assert_num_result(env, db, BigUint::ZERO);
+}
+
+#[test]
+fn staticcall_on_precompile_ecmul_happy_path() {
+    let ret_size: u8 = 64;
+    let ret_offset: u8 = 96;
+    let args_size: u8 = 96;
+    let args_offset: u8 = 0;
+    let gas: u32 = 100_000_000;
+    let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let x1: u8 = 1;
+    let y1: u8 = 2;
+    let s: u8 = 2;
+
+    let expected_x =
+        hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3").unwrap();
+    let expected_y =
+        hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4").unwrap();
+    let expected_result = [expected_x, expected_y].concat();
+
+    let caller_ops = vec![
+        // Store the parameters in memory
+        Operation::Push((32_u8, x1.into())),
+        Operation::Push((1_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, y1.into())),
+        Operation::Push((1_u8, 0x20_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, s.into())),
+        Operation::Push((1_u8, 0x40_u8.into())),
         Operation::Mstore,
         // Do the call
         Operation::Push((1_u8, ret_size.into())), //Ret size
@@ -3513,7 +4001,7 @@ fn returndatacopy_gas_check() {
         + gas_cost::MSTORE
         + gas_cost::memory_expansion_cost(0, 32_u32); // Return data
     let caller_gas_cost = gas_cost::PUSHN * 10
-        + gas_cost::CALL_COLD
+        + gas_cost::CALL
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
         + gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
@@ -4317,257 +4805,52 @@ fn sload_warm_cold_gas() {
 }
 
 #[test]
-fn coinbase_address_is_warm() {
-    let coinbase_addr = Address::from_low_u64_be(8080);
-    let gas = 255_u8;
-    let value = 0_u8;
-    let args_offset = 0_u8;
-    let args_size = 64_u8;
-    let ret_offset = 0_u8;
-    let ret_size = 32_u8;
+fn refunded_gas_cant_be_more_than_a_fifth_of_used_gas() {
+    let new_value: u8 = 0;
+    let original_value = 10;
 
-    let caller_address = Address::from_low_u64_be(4040);
-
-    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
-
-    let caller_ops = [
-        vec![
-            Operation::Push((32_u8, BigUint::default())), //Operand B
-            Operation::Push0,                             //
-            Operation::Mstore,                            //Store in mem address 0
-            Operation::Push((32_u8, BigUint::default())), //Operand A
-            Operation::Push((1_u8, BigUint::from(32_u8))), //
-            Operation::Mstore,                            //Store in mem address 32
-            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
-            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
-            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
-            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
-        ],
-        value_op_vec,
-        vec![
-            Operation::Push((16_u8, BigUint::from_bytes_be(coinbase_addr.as_bytes()))), //Address
-            Operation::Push((1_u8, BigUint::from(gas))),                                //Gas
-        ],
-        vec![Operation::Call],
-    ]
-    .concat();
-
-    let caller_gas_cost = gas_cost::PUSHN * (10)
-        + gas_cost::PUSH0
-        + gas_cost::MSTORE * 2
-        + gas_cost::memory_expansion_cost(0, 64)
-        + gas_cost::CALL_WARM;
-
-    let available_gas = 1e6;
-    let needed_gas = caller_gas_cost;
-    let refund_gas = 0;
-
-    let caller_balance: u8 = 0;
-    let program = Program::from(caller_ops);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let mut env = Env::default();
-    env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = caller_address;
-    let mut access_list = AccessList::default();
-    access_list.add_address(coinbase_addr);
-    env.tx.access_list = access_list;
-    env.block.coinbase = coinbase_addr;
-    let mut db = Db::new().with_contract(caller_address, bytecode);
-    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
-
-    run_program_assert_gas_and_refund(
-        env,
-        db,
-        available_gas as _,
-        needed_gas as _,
-        refund_gas as _,
-    );
-}
-
-#[test]
-fn balance_warm_cold_gas_cost() {
-    let operations = vec![
-        Operation::Push((20_u8, BigUint::from(1_u8))),
-        Operation::Balance,
-        Operation::Push((20_u8, BigUint::from(1_u8))),
-        Operation::Balance,
-    ];
-    let env = Env::default();
-    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::BALANCE_COLD + gas_cost::BALANCE_WARM;
-
-    run_program_assert_gas_exact(operations, env, needed_gas as _);
-}
-
-#[test]
-fn addresses_in_access_list_are_warm() {
-    let address_in_access_list = Address::from_low_u64_be(10000);
-    let mut access_list = AccessList::default();
-    access_list.add_address(address_in_access_list);
-    let gas = 255_u8;
-    let value = 0_u8;
-    let args_offset = 0_u8;
-    let args_size = 64_u8;
-    let ret_offset = 0_u8;
-    let ret_size = 32_u8;
-
-    let caller_address = Address::from_low_u64_be(5000);
-
-    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
-
-    let caller_ops = [
-        vec![
-            Operation::Push((32_u8, BigUint::default())), //Operand B
-            Operation::Push0,                             //
-            Operation::Mstore,                            //Store in mem address 0
-            Operation::Push((32_u8, BigUint::default())), //Operand A
-            Operation::Push((1_u8, BigUint::from(32_u8))), //
-            Operation::Mstore,                            //Store in mem address 32
-            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
-            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
-            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
-            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
-        ],
-        value_op_vec,
-        vec![
-            Operation::Push((
-                16_u8,
-                BigUint::from_bytes_be(address_in_access_list.as_bytes()),
-            )), //Address
-            Operation::Push((1_u8, BigUint::from(gas))), //Gas
-        ],
-        vec![Operation::Call],
-    ]
-    .concat();
-
-    let caller_gas_cost = gas_cost::PUSHN * (10)
-        + gas_cost::PUSH0
-        + gas_cost::MSTORE * 2
-        + gas_cost::memory_expansion_cost(0, 64)
-        + gas_cost::CALL_WARM;
-
-    let available_gas = 1e6;
-    let needed_gas = caller_gas_cost;
-    let refund_gas = 0;
-
-    let caller_balance: u8 = 0;
-    let program = Program::from(caller_ops);
-    let bytecode = Bytecode::from(program.to_bytecode());
-    let mut env = Env::default();
-    env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.caller = caller_address;
-    env.tx.access_list = access_list;
-    let mut db = Db::new().with_contract(caller_address, bytecode);
-    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
-
-    run_program_assert_gas_and_refund(
-        env,
-        db,
-        available_gas as _,
-        needed_gas as _,
-        refund_gas as _,
-    );
-}
-
-#[test]
-fn keys_in_access_list_are_warm() {
-    let address = Address::from_low_u64_be(5000);
-    let mut access_list = AccessList::default();
-    access_list.add_storage(address, ethereum_types::U256::from(1_u8));
-
-    let used_gas = gas_cost::PUSHN * 2 + gas_cost::SLOAD_WARM * 2;
-
+    let used_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = used_gas / GAS_REFUND_DENOMINATOR as i64;
+    let key = 80_u8;
     let program = vec![
-        // first sload: gas_cost = cost_warm + cost_push
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Sload,
-        // second sload: gas_cost = cost_warm + cost_push
-        Operation::Push((1_u8, BigUint::from(1_u8))),
-        Operation::Sload,
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
     ];
 
-    let mut env = Env::default();
-    env.tx.transact_to = TransactTo::Call(address);
-    env.tx.access_list = access_list;
-    run_program_assert_gas_exact(program, env, used_gas as _);
+    let (env, mut db) = default_env_and_db_setup(program);
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
+
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
 
 #[test]
-fn staticcall_on_precompile_blake2f_with_access_list_is_warm() {
-    let gas = 100_000_000_u32;
-    let args_offset = 0_u8;
-    let args_size = 213_u8;
-    let ret_offset = 0_u8;
-    let ret_size = 64_u8;
+fn refund_limit_value() {
+    let new_value: u8 = 0;
+    let original_value = 10;
 
-    // 4 bytes
-    let rounds = hex::decode("0000000c").unwrap();
-    // 64 bytes
-    let h = hex::decode("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b").unwrap();
-    // 128 bytes
-    let m = hex::decode("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap();
-    // 16 bytes
-    let t = hex::decode("03000000000000000000000000000000").unwrap();
-    // 1 bytes
-    let f = hex::decode("01").unwrap();
+    let used_gas = 5_000 + (2 + 200) * gas_cost::PUSHN + gas_cost::BALANCE * 200;
+    let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
+    let refunded_gas = 4_800;
+    let key = 80_u8;
+    let gas_costly_opcodes = vec![Operation::Balance; 200];
+    let needed_pushes_opcodes = vec![Operation::Push((20_u8, BigUint::from(1_u8))); 200];
+    let program = [
+        needed_pushes_opcodes,
+        gas_costly_opcodes,
+        vec![
+            Operation::Push((1_u8, BigUint::from(new_value))),
+            Operation::Push((1_u8, BigUint::from(key))),
+            Operation::Sstore,
+        ],
+    ]
+    .concat();
 
-    // Reach 32 bytes multiple
-    let padding = vec![0_u8; 11];
+    let (env, mut db) = default_env_and_db_setup(program);
+    let callee = env.tx.get_address();
+    db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
-    let calldata = [rounds, h, m, t, f, padding].concat();
-
-    let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
-    let caller_address = Address::from_low_u64_be(4040);
-
-    let caller_ops = vec![
-        // Place the parameters in memory
-        // rounds - 4 bytes
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[..32]))),
-        Operation::Push((32_u8, 0_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[32..64]))),
-        Operation::Push((32_u8, 32_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[64..96]))),
-        Operation::Push((32_u8, 64_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[96..128]))),
-        Operation::Push((32_u8, 96_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[128..160]))),
-        Operation::Push((32_u8, 128_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[160..192]))),
-        Operation::Push((32_u8, 160_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[192..224]))),
-        Operation::Push((32_u8, 192_u8.into())),
-        Operation::Mstore,
-        // Do the call
-        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
-        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
-        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
-        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
-        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
-        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
-        Operation::StaticCall,
-        // Return
-        Operation::Push((1_u8, ret_size.into())),
-        Operation::Push((1_u8, ret_offset.into())),
-        Operation::Return,
-    ];
-
-    let program = Program::from(caller_ops);
-    let caller_bytecode = Bytecode::from(program.to_bytecode());
-    let mut env = Env::default();
-    let db = Db::new().with_contract(caller_address, caller_bytecode);
-    env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.access_list.add_address(callee_address);
-
-    let used_gas = gas_cost::PUSHN * 22
-        + gas_cost::MSTORE * 7
-        + gas_cost::memory_expansion_cost(0, 224)
-        + 0x0c // por el number of rounds del precompile(es 0x0c)
-        + gas_cost::CALL_WARM;
-
-    run_program_assert_gas_exact_with_db(env, db, used_gas as _);
+    run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }

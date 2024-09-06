@@ -1,9 +1,28 @@
-use crate::constants::precompiles::{
-    blake2_gas_cost, identity_dynamic_cost, ripemd_160_dynamic_cost, sha2_256_dynamic_cost,
-    ECRECOVER_COST, IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+use crate::{
+    constants::precompiles::{
+        blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
+        sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
+        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
+    },
+    primitives::U256,
+    result::PrecompileError,
 };
-use crate::primitives::U256;
 use bytes::Bytes;
+use lambdaworks_math::{
+    cyclic_group::IsGroup,
+    elliptic_curve::{
+        short_weierstrass::curves::bn_254::{
+            curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+            field_extension::Degree12ExtensionField,
+            pairing::BN254AtePairing,
+            twist::BN254TwistCurve,
+        },
+        traits::{IsEllipticCurve, IsPairing},
+    },
+    field::{element::FieldElement, extensions::quadratic::QuadraticExtensionFieldElement},
+    traits::ByteConversion,
+    unsigned_integer::element::U256 as LambdaWorksU256,
+};
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
@@ -122,6 +141,161 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
 
     let output = &result.to_bytes_be()[..m_size];
     Bytes::copy_from_slice(output)
+}
+
+pub fn ecadd(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 128 {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    if gas_limit < ECADD_COST {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
+    }
+    *consumed_gas += ECADD_COST;
+
+    // Slice lengths are checked, so unwrap is safe
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[64..96]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[96..128]).unwrap();
+
+    // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
+    let zero_el = BN254FieldElement::from(0);
+    let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
+    let p2_is_infinity = x2.eq(&zero_el) && y2.eq(&zero_el);
+
+    match (p1_is_infinity, p2_is_infinity) {
+        (true, true) => return Ok(Bytes::from([0u8; 64].to_vec())),
+        (true, false) => {
+            if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
+                let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
+                return Ok(Bytes::from(res));
+            }
+            return Err(PrecompileError::InvalidEcPoint);
+        }
+        (false, true) => {
+            if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+                let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
+                return Ok(Bytes::from(res));
+            }
+            return Err(PrecompileError::InvalidEcPoint);
+        }
+        _ => {}
+    }
+
+    let (Ok(p1), Ok(p2)) = (
+        BN254Curve::create_point_from_affine(x1, y1),
+        BN254Curve::create_point_from_affine(x2, y2),
+    ) else {
+        return Err(PrecompileError::InvalidEcPoint);
+    };
+    let sum = p1.operate_with(&p2).to_affine();
+    let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
+    Ok(Bytes::from(res))
+}
+
+pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    if calldata.len() < 96 || gas_limit < ECMUL_COST {
+        *consumed_gas += gas_limit;
+        return Bytes::new();
+    }
+    *consumed_gas += ECMUL_COST;
+
+    // Slice lengths are checked, so unwrap is safe
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
+    let s = LambdaWorksU256::from_bytes_be(&calldata[64..96]).unwrap();
+
+    // if the point is infinity it is directly returned
+    let zero_el = BN254FieldElement::from(0);
+    let zero_u256 = LambdaWorksU256::from(0_u16);
+    let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
+
+    if p1_is_infinity {
+        return Bytes::from([0u8; 64].to_vec());
+    }
+    // scalar is 0 and the point is valid
+    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
+        return Bytes::from([0u8; 64].to_vec());
+    }
+
+    if let Ok(p) = BN254Curve::create_point_from_affine(x1, y1) {
+        let mul = p.operate_with_self(s).to_affine();
+        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
+        return Bytes::from(res);
+    }
+    Bytes::new()
+}
+
+pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
+    if calldata.len() % 192 != 0 || gas_limit < gas_cost {
+        *consumed_gas += gas_limit;
+        return Bytes::new();
+    }
+    *consumed_gas += gas_cost;
+
+    let rounds = calldata.len() / 192;
+    let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
+    for idx in 0..rounds {
+        let start = idx * 192;
+
+        // Slice lengths are checked, so unwrap is safe
+        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + 32]).unwrap();
+        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + 32..start + 64]).unwrap();
+
+        // G2 point: ((x_0, x_1), (y_0, y_1))
+        // both x and y have a real and an imaginary part of 32 bytes each
+        let g2_x_bytes = [
+            &calldata[start + 96..start + 128],
+            &calldata[start + 64..start + 96],
+        ]
+        .concat();
+        let g2_y_bytes = [
+            &calldata[start + 160..start + 192],
+            &calldata[start + 128..start + 160],
+        ]
+        .concat();
+
+        let g2_x = BN254TwistCurveFieldElement::from_bytes_be(&g2_x_bytes);
+        let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
+
+        let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
+            return Bytes::from([0u8; 32].to_vec());
+        };
+
+        // if any point is (0,0) the pairing is ok
+        let zero_el = BN254FieldElement::from(0);
+        let tw_zero_el = BN254TwistCurveFieldElement::from(0);
+        let p1_is_infinity = g1_x.eq(&zero_el) && g1_y.eq(&zero_el);
+        let p2_is_infinity = g2_x.eq(&tw_zero_el) && g2_y.eq(&tw_zero_el);
+        if p1_is_infinity || p2_is_infinity {
+            continue;
+        }
+
+        let (Ok(p1), Ok(p2)) = (
+            BN254Curve::create_point_from_affine(g1_x, g1_y),
+            BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
+        ) else {
+            return Bytes::from([0u8; 32].to_vec());
+        };
+
+        let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
+            return Bytes::from([0u8; 32].to_vec());
+        };
+        mul *= pairing_result;
+    }
+
+    let success = mul.eq(&QuadraticExtensionFieldElement::one());
+    let mut output = vec![0_u8; 32];
+    output[31] = success as u8;
+
+    Bytes::from(output)
 }
 
 // Extracted from https://datatracker.ietf.org/doc/html/rfc7693#section-2.7
@@ -332,6 +506,564 @@ mod tests {
         );
 
         assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_happy_path() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3")
+                .unwrap();
+        let expected_y =
+            hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_infinity_with_valid_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap();
+        let expected_y =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_valid_point_with_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap();
+        let expected_y =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_infinity_twice() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_first_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_err());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_second_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECADD_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_err());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecadd_with_invalid_calldata() {
+        // calldata's len = 127
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            00000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_err());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecadd_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 149;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_err());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecmul_happy_path() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_x =
+            hex::decode("030644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd3")
+                .unwrap();
+        let expected_y =
+            hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
+                .unwrap();
+        let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_by_zero() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_invalid_point() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_invalid_point_by_zero() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = ECMUL_COST;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecmul_with_invalid_calldata() {
+        // calldata's len = 95
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            00000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecmul_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            0000000000000000000000000000000000000000000000000000000000000002\
+            0000000000000000000000000000000000000000000000000000000000000002",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 149;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecpairing_happy_path() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 113_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_invalid_points() {
+        // changed last byte from `fc` to `fd`
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fd",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 113_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from([0u8; 32].to_vec());
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_p1_is_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_p2_is_infinity() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000\
+            0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+    #[test]
+    fn ecpairing_out_of_curve() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111\
+            1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap(),
+        );
+        let expected_gas = 79_000;
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let expected_result = Bytes::from([0u8; 32].to_vec());
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn ecpairing_invalid_calldata() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+                1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .unwrap(),
+        );
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::new();
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn ecpairing_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result, expected_result);
+        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
+    }
+
+    #[test]
+    fn ecpairing_with_not_enough_gas() {
+        let calldata = Bytes::from(
+            hex::decode(
+                "\
+            2cf44499d5d27bb186308b7af7af02ac5bc9eeb6a3d147c186b21fb1b76e18da\
+            2c0f001f52110ccfe69108924926e45f0b0c868df0e7bde1fe16d3242dc715f6\
+            1fb19bb476f6b9e44e2a32234da8212f61cd63919354bc06aef31e3cfaff3ebc\
+            22606845ff186793914e03e21df544c34ffe2f2f3504de8a79d9159eca2d98d9\
+            2bd368e28381e8eccb5fa81fc26cf3f048eea9abfdd85d7ed3ab3698d63e4f90\
+            2fe02e47887507adf0ff1743cbac6ba291e66f59be6bd763950bb16041a0a85e\
+            0000000000000000000000000000000000000000000000000000000000000001\
+            30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd45\
+            1971ff0471b09fa93caaf13cbf443c1aede09cc4328f5a62aad45f40ec133eb4\
+            091058a3141822985733cbdddfed0fd8d6c104e9e9eff40bf5abfef9ab163bc7\
+            2a23af9a5ce2ba2796c1f4e453a370eb0af8c212d9dc9acd8fc02c2e907baea2\
+            23a8eb0b0996252cb548a4487da97b02422ebc0e834613f954de6c7e0afdc1fc",
+            )
+            .unwrap(),
+        );
+        // needs 113_000
+        let gas_limit = 100_000;
+        let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert!(result.is_empty());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]

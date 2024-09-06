@@ -24,7 +24,9 @@ use crate::{
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
     journal::Journal,
-    precompiles::{blake2f, ecrecover, identity, modexp, ripemd_160, sha2_256},
+    precompiles::{
+        blake2f, ecadd, ecmul, ecpairing, ecrecover, identity, modexp, ripemd_160, sha2_256,
+    },
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -37,6 +39,8 @@ use std::collections::HashMap;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
+
+pub const GAS_REFUND_DENOMINATOR: u64 = 5;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(C, align(16))]
@@ -187,10 +191,13 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_refunded = self.inner_context.gas_refund;
         let gas_initial = self.env.tx.gas_limit;
         // TODO: Probably here we need to add the access_list_cost to gas_used, but we need a refactor of most tests
         let gas_used = gas_initial.saturating_sub(gas_remaining);
+        let gas_refunded = self
+            .inner_context
+            .gas_refund
+            .min(gas_used / GAS_REFUND_DENOMINATOR);
         let exit_status = self
             .inner_context
             .exit_status
@@ -320,6 +327,20 @@ impl<'c> SyscallContext<'c> {
                 call_opcode::SUCCESS_RETURN_CODE,
                 modexp(&calldata, gas_to_send, consumed_gas),
             ),
+            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => {
+                match ecadd(&calldata, gas_to_send, consumed_gas) {
+                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
+                }
+            }
+            x if x == Address::from_low_u64_be(precompiles::ECMUL_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                ecmul(&calldata, gas_to_send, consumed_gas),
+            ),
+            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
+                call_opcode::SUCCESS_RETURN_CODE,
+                ecpairing(&calldata, gas_to_send, consumed_gas),
+            ),
             x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
                 call_opcode::SUCCESS_RETURN_CODE,
                 blake2f(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
@@ -328,7 +349,6 @@ impl<'c> SyscallContext<'c> {
                 // Execute subcontext
                 //TODO: Add call depth check
                 //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-                let callee_address = Address::from(call_to_address);
                 let value = value_to_transfer.to_primitive_u256();
                 let call_type = CallType::try_from(call_type)
                     .expect("Error while parsing CallType on call syscall");
@@ -377,7 +397,7 @@ impl<'c> SyscallContext<'c> {
                         .set_balance(&callee_address, callee_balance + value);
                 }
 
-                let remaining_gas = available_gas - *consumed_gas;
+                let remaining_gas = available_gas.saturating_sub(*consumed_gas);
                 gas_to_send = std::cmp::min(
                     remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
                     gas_to_send,
@@ -620,7 +640,6 @@ impl<'c> SyscallContext<'c> {
         let key = stg_key.to_primitive_u256();
         let is_cold = !(self.journal.key_is_warm(&address, &key)
             || self.env.tx.access_list.contains_storage(address, key).1);
-
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
             .journal
@@ -694,7 +713,10 @@ impl<'c> SyscallContext<'c> {
         if gas_refund > 0 {
             self.inner_context.gas_refund += gas_refund as u64;
         } else {
-            self.inner_context.gas_refund -= gas_refund.unsigned_abs();
+            self.inner_context.gas_refund = self
+                .inner_context
+                .gas_refund
+                .saturating_sub(gas_refund.unsigned_abs());
         };
 
         gas_cost
@@ -780,6 +802,7 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         self.env.tx.access_list.add_address(Address::from(address));
+
         //TODO: Here we are returning 0 if a Database error occurs. Check this
         self.journal.code_by_address(&Address::from(address)).len() as _
     }
@@ -809,8 +832,9 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) -> i64 {
-        // addresses longer than 20 bytes should be invalid
         let mut gas_cost = gas_cost::BALANCE_COLD;
+
+        // addresses longer than 20 bytes should be invalid
         if (address.hi >> 32) != 0 {
             balance.hi = 0;
             balance.lo = 0;
@@ -868,6 +892,7 @@ impl<'c> SyscallContext<'c> {
         let dest_offset = dest_offset as usize;
         let address = Address::from(address_value);
         self.env.tx.access_list.add_address(Address::from(address));
+
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
         let code = self.journal.code_by_address(&address);
@@ -984,6 +1009,10 @@ impl<'c> SyscallContext<'c> {
         0
     }
 
+    pub extern "C" fn add_create_address(&mut self, address: &U256) {
+        self.env.tx.access_list.add_address(Address::from(address));
+    }
+
     pub extern "C" fn create(
         &mut self,
         size: u32,
@@ -1005,13 +1034,10 @@ impl<'c> SyscallContext<'c> {
         self.create_aux(size, offset, value, remaining_gas, Some(salt))
     }
 
-    pub extern "C" fn add_create_address(&mut self, address: &U256) {
-        self.env.tx.access_list.add_address(Address::from(address));
-    }
-
     pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
+
         self.env
             .tx
             .access_list
@@ -2586,6 +2612,26 @@ pub(crate) mod mlir {
         ));
     }
 
+    pub(crate) fn call_gas_cost_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let result = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALL_GAS_COST),
+                &[syscall_ctx, address],
+                &[uint64.into()],
+                location,
+            ))
+            .result(0)?;
+        Ok(result.into())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
@@ -2604,26 +2650,6 @@ pub(crate) mod mlir {
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::CREATE),
                 &[syscall_ctx, size, offset, value, remaining_gas],
                 &[uint8],
-                location,
-            ))
-            .result(0)?;
-        Ok(result.into())
-    }
-
-    pub(crate) fn call_gas_cost_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        address: Value<'c, 'c>,
-        location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64);
-        let result = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALL_GAS_COST),
-                &[syscall_ctx, address],
-                &[uint64.into()],
                 location,
             ))
             .result(0)?;
@@ -2674,6 +2700,21 @@ pub(crate) mod mlir {
 
         Ok(result.into())
     }
+    pub(crate) fn add_create_address_syscall<'c>(
+        mlir_ctx: &'c MeliorContext,
+        syscall_ctx: Value<'c, 'c>,
+        block: &'c Block,
+        address: Value<'c, 'c>,
+        location: Location<'c>,
+    ) {
+        block.append_operation(func::call(
+            mlir_ctx,
+            FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
+            &[syscall_ctx, address],
+            &[],
+            location,
+        ));
+    }
 
     pub(crate) fn copy_return_data_into_memory<'c>(
         mlir_ctx: &'c MeliorContext,
@@ -2688,22 +2729,6 @@ pub(crate) mod mlir {
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_RETURN_DATA_INTO_MEMORY),
             &[syscall_ctx, dest_offset, offset, size],
-            &[],
-            location,
-        ));
-    }
-
-    pub(crate) fn add_create_address_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        address: Value<'c, 'c>,
-        location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
-            &[syscall_ctx, address],
             &[],
             location,
         ));

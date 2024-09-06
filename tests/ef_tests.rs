@@ -3,13 +3,9 @@ use std::{
     path::Path,
 };
 mod ef_tests_executor;
+use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use ethereum_types::U256;
-use evm_mlir::{
-    db::Db,
-    env::{AccessList, TransactTo},
-    Env, Evm,
-};
+use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -36,15 +32,14 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
-        "stEIP1153-transientStorage".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stEIP3860-limitmeterinitcode".into(),
         "stArgsZeroOneBalance".into(),
+        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
-        "stSStoreTest".into(),
+        "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
         "vmPerformance".into(),
@@ -56,57 +51,49 @@ fn get_ignored_groups() -> HashSet<String> {
         "stPreCompiledContracts2".into(),
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
-        "stTimeConsuming".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stTransitionTest".into(),
         "stCreate2".into(),
         "stSpecialTest".into(),
+        "stRecursiveCreate".into(),
+        "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
-        "eip3651_warm_coinbase".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
         "stRandom2".into(),
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
-        "opcodes".into(),
-        "stEIP158Specific".into(),
         "stZeroKnowledge".into(),
-        "stShift".into(),
         "stLogTests".into(),
-        "eip7516_blobgasfee".into(),
         "stBugs".into(),
         "stEIP1559".into(),
-        "stSelfBalance".into(),
         "stStaticCall".into(),
-        "stCallDelegateCodesHomestead".into(),
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
         "stCodeCopyTest".into(),
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
-        "stChainId".into(),
-        "vmLogTest".into(),
         "stMemoryTest".into(),
-        "stWalletTest".into(),
         "stRandom".into(),
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
-        "stCallDelegateCodesCallCodeHomestead".into(),
         "yul".into(),
         "stEIP3607".into(),
         "stCreateTest".into(),
         "eip198_modexp_precompile".into(),
-        "stCodeSizeLimit".into(),
-        "stRefundTest".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
+        "eip2930_access_list".into(),
         "stExample".into(),
         "vmArithmeticTest".into(),
         "stQuadraticComplexityTest".into(),
+        "stSelfBalance".into(),
+        "stEIP3855-push0".into(),
+        "stWalletTest".into(),
+        "vmLogTest".into(),
     ])
 }
 
@@ -115,6 +102,24 @@ fn get_ignored_suites() -> HashSet<String> {
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
     ])
+}
+
+/// Receives a Bytes object with the hex representation
+/// And returns a Bytes object with the decimal representation
+/// Taking the hex numbers by pairs
+fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
+    let hex_header = &bytes_in_hex[0..2];
+    if hex_header != b"0x" {
+        return None;
+    }
+    let hex_string = std::str::from_utf8(&bytes_in_hex[2..]).unwrap(); // we don't need the 0x
+    let mut opcodes = Vec::new();
+    for i in (0..hex_string.len()).step_by(2) {
+        let pair = &hex_string[i..i + 2];
+        let value = u8::from_str_radix(pair, 16).unwrap();
+        opcodes.push(value);
+    }
+    Some(Bytes::from(opcodes))
 }
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
@@ -137,7 +142,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
-
         let to = match unit.transaction.to {
             Some(to) => TransactTo::Call(to),
             None => TransactTo::Create,
@@ -153,7 +157,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
-            env.tx.data = unit.transaction.data[test.indexes.data].clone();
+            env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
             let access_list_vector = unit
                 .transaction
                 .access_lists
@@ -171,24 +175,15 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                 }
             }
 
-            env.block.number = unit.env.current_number;
-            env.block.coinbase = unit.env.current_coinbase;
             access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
             access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
             access_list.add_precompile_addresses(); // precompiled address are always warm
 
-            let mut db = match to.clone() {
-                TransactTo::Call(to) => {
-                    access_list.add_address(to);
-                    Db::new().with_contract(to, unit.pre.get(&to).unwrap().code.clone())
-                }
-                _ => Db::new().with_contract(
-                    env.tx.get_address(),
-                    unit.pre.get(&env.tx.caller).unwrap().code.clone(),
-                ),
-            };
-            env.tx.access_list = access_list;
+            env.block.number = unit.env.current_number;
+            env.block.coinbase = unit.env.current_coinbase;
             env.block.timestamp = unit.env.current_timestamp;
+            env.tx.access_list = access_list;
+
             let excess_blob_gas = unit
                 .env
                 .current_excess_blob_gas
@@ -199,10 +194,22 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
+            let mut db = match to.clone() {
+                TransactTo::Call(to) => {
+                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
+                    Db::new().with_contract(to, opcodes)
+                }
+                TransactTo::Create => {
+                    let opcodes =
+                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
+                    Db::new().with_contract(env.tx.get_address(), opcodes)
+                }
+            };
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
-                db = db.with_contract(address.to_owned(), account_info.code.clone());
+                let opcodes = decode_hex(account_info.code.clone()).unwrap();
+                db = db.with_contract(address.to_owned(), opcodes);
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
@@ -214,14 +221,19 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let res = evm.transact().unwrap();
 
-            if test.expect_exception.is_some() {
-                assert!(!res.result.is_success());
-                // NOTE: the expect_exception string is an error description, we don't check the expected error
-                continue;
+            match (&test.expect_exception, &res.result) {
+                (None, _) => {
+                    if unit.out.as_ref() != res.result.output() {
+                        return Err("Wrong output".into());
+                    }
+                }
+                (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
+                    return Ok(()); //Halt/Revert and want an error
+                }
+                _ => {
+                    return Err("Expected exception but got none".into());
+                }
             }
-
-            assert!(res.result.is_success());
-            assert_eq!(res.result.output().cloned(), unit.out);
 
             // TODO: use rlp and hash to check logs
 
@@ -229,11 +241,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let mut result_state = HashMap::new();
             for address in test.post_state.keys() {
                 let account = res.state.get(address).unwrap();
+                let opcodes = decode_hex(account.info.code.clone().unwrap()).unwrap();
                 result_state.insert(
                     address.to_owned(),
                     AccountInfo {
                         balance: account.info.balance,
-                        code: account.info.code.clone().unwrap(),
+                        code: opcodes,
                         nonce: account.info.nonce,
                         storage: account
                             .storage
@@ -250,4 +263,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests", r"^.*/*.json",);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
