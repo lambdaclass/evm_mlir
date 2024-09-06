@@ -458,6 +458,7 @@ pub fn blake2f(
 // = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001;
 const POINT_EVAL_RETURN: &str =
     "000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+const POINT_EVAL_CALLDATA_LEN: usize = 192;
 
 #[derive(Debug)]
 struct TrustedSetupError;
@@ -483,7 +484,15 @@ pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
 #[derive(Debug)]
 pub struct PointEvalErr;
 
-pub fn point_eval(input: &Bytes, gas_limit: u64) -> Result<Bytes, PointEvalErr> {
+pub fn point_eval(
+    input: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PointEvalErr> {
+    if input.len() != POINT_EVAL_CALLDATA_LEN {
+        return Err(PointEvalErr {});
+    }
+
     /*
        The calldata is encoded as follows:
 
@@ -1271,6 +1280,19 @@ mod tests {
     }
 
     #[test]
+    fn test_point_eval_short_input() {
+        let input = Bytes::from([0 as u8; 191].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let output = point_eval(&input, 999999, &mut consumed_gas);
+
+        // assert_eq!(output, Err(PointEvalErr));
+        assert!(output.is_err());
+        // assert_eq!(consumed_gas, 0)
+    }
+
+    #[test]
     fn basic_test() {
         // test data from: https://github.com/ethereum/c-kzg-4844/blob/main/tests/verify_kzg_proof/kzg-mainnet/verify_kzg_proof_case_correct_proof_31ebd010e6098750/data.yaml
 
@@ -1284,11 +1306,12 @@ mod tests {
         let proof = hex::decode("a62ad71d14c5719385c0686f1871430475bf3a00f0aa3f7b8dd99a9abc2160744faf0070725e00b60ad9a026a15b1a8c").unwrap();
 
         let input = [versioned_hash, z, y, commitment, proof].concat();
+        let mut consumed_gas: u64 = 0;
 
         let expected_output = Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes());
         let gas = 50000;
-        let output = point_eval(&input.into(), gas).unwrap();
-        // assert_eq!(output.gas_used, gas);
+        let output = point_eval(&input.into(), gas, &mut consumed_gas).unwrap();
+        // assert_eq!(consumed_gas, 50000);
         assert_eq!(output, expected_output);
     }
 }
