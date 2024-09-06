@@ -289,7 +289,6 @@ pub fn ecpairing(
         *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += gas_cost;
 
     let rounds = calldata.len() / 192;
     let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
@@ -317,6 +316,7 @@ pub fn ecpairing(
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
         let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
@@ -333,19 +333,21 @@ pub fn ecpairing(
             BN254Curve::create_point_from_affine(g1_x, g1_y),
             BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
         ) else {
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
         let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
         mul *= pairing_result;
     }
 
+    *consumed_gas += gas_cost;
     let success = mul.eq(&QuadraticExtensionFieldElement::one());
     let mut output = vec![0_u8; 32];
     output[31] = success as u8;
-
     Ok(Bytes::from(output))
 }
 
@@ -971,14 +973,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 113_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1066,14 +1067,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 79_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
