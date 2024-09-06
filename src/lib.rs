@@ -84,32 +84,28 @@ impl Evm<Db> {
     fn create(&mut self) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
         let initialization_code = self.env.tx.data.clone().to_vec();
-        eprintln!("LEN ES: {}", initialization_code.len());
-        if initialization_code.len() >= 32 {
-            let state = HashMap::new();
-            let result = ExecutionResult::Success {
-                reason: result::SuccessReason::Stop,
-                gas_used: 0,
-                gas_refunded: 0,
-                logs: Default::default(),
-                output: result::Output::Create(Bytes::new(), None),
-            };
-            return Ok(ResultAndState { state, result });
+        let mut starting_code: Vec<Operation> = Vec::new();
+        let mut total_size = 0;
+        for chunk in initialization_code.chunks(32) {
+            let mut init_code = vec![
+                Operation::Push((chunk.len() as u8, BigUint::from_bytes_be(chunk))),
+                Operation::Push((1, BigUint::ZERO)),
+                Operation::Mstore,
+            ];
+            total_size += chunk.len();
+            starting_code.append(&mut init_code);
         }
-        let operations = vec![
-            // Store initialization code in memory
-            Operation::Push((
-                initialization_code.len() as u8,
-                BigUint::from_bytes_be(&initialization_code),
-            )),
-            Operation::Push((1, BigUint::ZERO)),
-            Operation::Mstore,
-            // Create
-            Operation::Push((1, BigUint::from(32_u8))),
-            Operation::Push((1, BigUint::ZERO)),
-            Operation::Push((1, BigUint::ZERO)),
-            Operation::Create,
-        ];
+
+        let mut operations = [
+            starting_code,
+            vec![
+                Operation::Push((1, BigUint::from(total_size))),
+                Operation::Push((1, BigUint::ZERO)),
+                Operation::Push((1, BigUint::ZERO)),
+                Operation::Create,
+            ],
+        ]
+        .concat();
 
         let program = Program::from(operations);
 
