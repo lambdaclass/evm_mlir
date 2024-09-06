@@ -178,7 +178,6 @@ pub fn ecadd(
         *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += ECADD_COST;
 
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
@@ -192,19 +191,26 @@ pub fn ecadd(
     let p2_is_infinity = x2.eq(&zero_el) && y2.eq(&zero_el);
 
     match (p1_is_infinity, p2_is_infinity) {
-        (true, true) => return Ok(Bytes::from([0u8; 64].to_vec())),
+        (true, true) => {
+            *consumed_gas += ECADD_COST;
+            return Ok(Bytes::from([0u8; 64].to_vec()));
+        }
         (true, false) => {
             if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
+                *consumed_gas += ECADD_COST;
                 return Ok(Bytes::from(res));
             }
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         (false, true) => {
             if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
+                *consumed_gas += ECADD_COST;
                 return Ok(Bytes::from(res));
             }
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         _ => {}
@@ -214,10 +220,12 @@ pub fn ecadd(
         BN254Curve::create_point_from_affine(x1, y1),
         BN254Curve::create_point_from_affine(x2, y2),
     ) else {
+        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidEcPoint);
     };
     let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
+    *consumed_gas += ECADD_COST;
     Ok(Bytes::from(res))
 }
 
@@ -679,14 +687,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -701,14 +708,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
