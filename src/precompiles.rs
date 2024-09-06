@@ -471,7 +471,7 @@ fn get_trusted_setup(trusted_setup_file: &Path) -> Result<KzgSettings, TrustedSe
         trusted_setup_file.to_str().unwrap()
     );
 
-    Ok(KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)?)
+    KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)
 }
 
 pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
@@ -1288,7 +1288,7 @@ mod tests {
 
     #[test]
     fn test_point_eval_not_enough_gas() {
-        let input = Bytes::from([0 as u8; 192].to_vec());
+        let input = Bytes::from([0u8; 192].to_vec());
 
         let mut consumed_gas = 0;
 
@@ -1301,7 +1301,7 @@ mod tests {
 
     #[test]
     fn test_point_eval_consumes_gas() {
-        let input = Bytes::from([0 as u8; 192].to_vec());
+        let input = Bytes::from([0u8; 192].to_vec());
 
         let mut consumed_gas = 0;
 
@@ -1312,7 +1312,7 @@ mod tests {
 
     #[test]
     fn test_point_eval_short_input() {
-        let input = Bytes::from([0 as u8; 191].to_vec());
+        let input = Bytes::from([0u8; 191].to_vec());
 
         let mut consumed_gas = 0;
 
