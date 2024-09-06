@@ -26,7 +26,6 @@ use lambdaworks_math::{
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use std::array::TryFromSliceError;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -418,50 +417,46 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 
 const CALLDATA_LEN: usize = 213;
 
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-#[error("Blake2Error")]
-pub struct Blake2fError;
-
-impl From<TryFromSliceError> for Blake2fError {
-    fn from(_: TryFromSliceError) -> Self {
-        Self {}
-    }
-}
-
 pub fn blake2f(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, Blake2fError> {
+) -> Result<Bytes, PrecompileError> {
     /*
     [0; 3] (4 bytes)	rounds	Number of rounds (big-endian unsigned integer)
     [4; 67] (64 bytes)	h	State vector (8 8-byte little-endian unsigned integer)
     [68; 195] (128 bytes)	m	Message block vector (16 8-byte little-endian unsigned integer)
     [196; 211] (16 bytes)	t	Offset counters (2 8-byte little-endian integer)
-    [212; 212] (1 bytes)	f	Final block indicator flag (0 or 1)
+    [212; 212] (1 byte)	f	Final block indicator flag (0 or 1)
     */
 
     if calldata.len() != CALLDATA_LEN {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::InvalidCalldata);
     }
 
-    let rounds = u32::from_be_bytes(calldata[0..4].try_into()?);
+    let rounds = u32::from_be_bytes(
+        calldata[0..4]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     let needed_gas = blake2_gas_cost(rounds);
     if needed_gas > gas_limit {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas = needed_gas;
 
     let mut h: [u64; 8] = [0_u64; 8];
     let mut m: [u64; 16] = [0_u64; 16];
     let mut t: [u64; 2] = [0_u64; 2];
-    let f = u8::from_be_bytes(calldata[212..213].try_into()?);
+    let f = u8::from_be_bytes(
+        calldata[212..213]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     if f > 1 {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::InvalidCalldata);
     }
     let f = f == 1;
 
@@ -469,16 +464,32 @@ pub fn blake2f(
 
     for (i, h) in h.iter_mut().enumerate() {
         let start = 4 + i * 8;
-        *h = u64::from_le_bytes(calldata[start..start + 8].try_into()?);
+        *h = u64::from_le_bytes(
+            calldata[start..start + 8]
+                .try_into()
+                .map_err(|_| PrecompileError::InvalidCalldata)?,
+        );
     }
 
     for (i, m) in m.iter_mut().enumerate() {
         let start = 68 + i * 8;
-        *m = u64::from_le_bytes(calldata[start..start + 8].try_into()?);
+        *m = u64::from_le_bytes(
+            calldata[start..start + 8]
+                .try_into()
+                .map_err(|_| PrecompileError::InvalidCalldata)?,
+        );
     }
 
-    t[0] = u64::from_le_bytes(calldata[196..204].try_into()?);
-    t[1] = u64::from_le_bytes(calldata[204..212].try_into()?);
+    t[0] = u64::from_le_bytes(
+        calldata[196..204]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
+    t[1] = u64::from_le_bytes(
+        calldata[204..212]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     blake2f_compress(rounds as _, &mut h, &m, &t, f);
 
@@ -1124,7 +1135,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
     }
@@ -1174,7 +1184,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1193,7 +1202,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1212,7 +1220,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1232,7 +1239,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
     }
