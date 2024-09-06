@@ -868,6 +868,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "bytes",
+ "c-kzg",
  "cc",
  "datatest-stable",
  "ethereum-types",
