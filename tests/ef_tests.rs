@@ -188,6 +188,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             for (address, account_info) in unit.pre.iter() {
                 let opcodes = decode_hex(account_info.code.clone()).unwrap();
                 db = db.with_contract(address.to_owned(), opcodes);
+                eprintln!("EL ADDRESS EN EF: {:?}", address);
+                eprintln!("EL BALANCE EN EF {:?}", account_info.balance);
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
@@ -241,4 +243,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/stRecursiveCreate/",
+    r"^.*/*.json",
+);

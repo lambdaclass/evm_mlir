@@ -4854,3 +4854,44 @@ fn refund_limit_value() {
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
+
+#[test]
+fn recursive_create() {
+    let value: u64 = 100000;
+    let sender_nonce = 0;
+    let sender_balance = EU256::from(20000000);
+    let sender_addr = Address::from_low_u64_be(5000);
+    let to_addr = Address::from_low_u64_be(3000);
+
+    let operations = vec![
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Codecopy,
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Push((1, BigUint::ZERO)),
+        Operation::Create,
+        Operation::Stop,
+    ];
+
+    let mut env = Env::default();
+    env.tx.value = EU256::from(value);
+    env.tx.caller = sender_addr;
+    env.tx.transact_to = TransactTo::Call(Address::from_low_u64_be(3000));
+    env.tx.gas_limit = 1_000_000;
+    let program = Program::from(operations);
+
+    let mut db = Db::new().with_contract(to_addr, Bytecode::from(program.to_bytecode()));
+    db.set_account(sender_addr, 0, sender_balance, Default::default());
+    db.set_account(to_addr, 0, EU256::from(100000000), Default::default());
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
+
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.balance, sender_balance - value);
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+}

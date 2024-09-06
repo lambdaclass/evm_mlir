@@ -905,7 +905,7 @@ impl<'c> SyscallContext<'c> {
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
-
+        eprintln!("CREANDOOOO");
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
         let (dest_addr, hash_cost) = match salt {
@@ -945,6 +945,7 @@ impl<'c> SyscallContext<'c> {
         let ctx_journal = self.journal.eject_base();
         let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
         context.journal.new_account(dest_addr, value_as_u256);
+        //self.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         executor.execute(&mut context, new_env.tx.gas_limit);
         let result = context.get_result().unwrap().result;
