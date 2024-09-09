@@ -20,7 +20,7 @@ use std::ffi::c_void;
 use crate::{
     constants::{
         call_opcode::{self},
-        create_opcode::{self, REVERT_RETURN_CODE},
+        create_opcode::{self},
         gas_cost::{self, MAX_CODE_SIZE},
         precompiles, CallType,
     },

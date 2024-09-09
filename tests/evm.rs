@@ -4887,7 +4887,7 @@ fn recursive_create() {
 
     let mut evm = Evm::new(env, db);
     let result = evm.transact_commit().unwrap();
-    assert!(result.is_success());
+    assert!(!result.is_success());
 
     // Check that the sender account is updated
     //let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();

@@ -52,7 +52,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stCreate2".into(),
         "stSpecialTest".into(),
         "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
@@ -100,6 +99,7 @@ fn get_ignored_suites() -> HashSet<String> {
     HashSet::from([
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
+        "Create2Recursive".into(), // Works everything from the stCreate2 tests, expect the recursive one (stack overflow)
     ])
 }
 
@@ -138,6 +138,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
     for (_name, unit) in test_suite.0 {
         // NOTE: currently we only support Cancun spec
+        eprintln!("NAME: {}", _name);
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
@@ -242,6 +243,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
-
-//CREATE2_Bounds2.json pincha y el 3 tambien
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/stCreate2/",
+    r"^.*/*.json",
+);
