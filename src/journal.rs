@@ -110,14 +110,12 @@ impl<'a> Journal<'a> {
     ) -> HashMap<Address, JournalAccount> {
         let mut accounts = HashMap::new();
         for (address, storage) in access_list.flatten() {
-            if storage.is_empty() {
-                continue;
-            }
-
             let account = accounts
                 .entry(address)
                 .or_insert_with(JournalAccount::default);
-
+            if storage.is_empty() {
+                continue;
+            }
             let storage: Vec<(U256, JournalStorageSlot)> = storage
                 .iter()
                 .map(|key| (*key, JournalStorageSlot::default()))

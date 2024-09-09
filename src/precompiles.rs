@@ -414,7 +414,7 @@ pub fn blake2f(
     if needed_gas > gas_limit {
         return Err(Blake2fError {});
     }
-    *consumed_gas = needed_gas;
+    *consumed_gas += needed_gas;
 
     let mut h: [u64; 8] = [0_u64; 8];
     let mut m: [u64; 16] = [0_u64; 16];

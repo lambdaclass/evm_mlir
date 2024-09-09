@@ -272,17 +272,6 @@ impl<'c> SyscallContext<'c> {
         );
     }
 
-    pub extern "C" fn get_call_gas_cost(&mut self, address: &U256) -> i64 {
-        let address = Address::from(address as &U256);
-        let is_cold = self.journal.account_is_warm(&address);
-        if is_cold {
-            self.journal.add_account_as_warm(address);
-            gas_cost::CALL_COLD
-        } else {
-            gas_cost::CALL_WARM
-        }
-    }
-
     pub extern "C" fn call(
         &mut self,
         mut gas_to_send: u64,
@@ -305,6 +294,8 @@ impl<'c> SyscallContext<'c> {
         let off = args_offset as usize;
         let size = args_size as usize;
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
+
+        *consumed_gas = gas_cost::CALL_WARM as u64;
 
         let (return_code, return_data) = match callee_address {
             x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => (
@@ -353,15 +344,13 @@ impl<'c> SyscallContext<'c> {
                 let call_type = CallType::try_from(call_type)
                     .expect("Error while parsing CallType on call syscall");
 
-                //TODO: This should instead add the account fetch (warm or cold) cost
-                //For the moment we consider warm access
                 let callee_account = match self.journal.get_account(&callee_address) {
-                    Some(acc) => {
-                        *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                        acc
+                    Some(account) => {
+                        *consumed_gas = gas_cost::CALL_WARM as u64;
+                        account
                     }
                     None => {
-                        *consumed_gas = 0;
+                        *consumed_gas = gas_cost::CALL_COLD as u64;
                         return call_opcode::REVERT_RETURN_CODE;
                     }
                 };
@@ -855,7 +844,7 @@ impl<'c> SyscallContext<'c> {
                 }
             };
 
-            let is_cold = self.journal.account_is_warm(&address);
+            let is_cold = !self.journal.account_is_warm(&address);
             if is_cold {
                 self.journal.add_account_as_warm(address);
                 gas_cost = gas_cost::BALANCE_COLD
@@ -1143,7 +1132,6 @@ pub mod symbols {
     pub const TRANSIENT_STORAGE_READ: &str = "evm_mlir__transient_storage_read";
     pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
     pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
-    pub const GET_CALL_GAS_COST: &str = "evm_mlir__get_call_gas_cost";
 }
 
 impl<'c> SyscallContext<'c> {
@@ -1196,10 +1184,6 @@ impl<'c> SyscallContext<'c> {
                 SyscallContext::append_log_with_two_topics
                     as *const fn(*mut c_void, u32, u32, *const U256, *const U256)
                     as *mut (),
-            );
-            engine.register_symbol(
-                symbols::GET_CALL_GAS_COST,
-                SyscallContext::get_call_gas_cost as *const fn(*mut c_void, *const u64) as *mut (),
             );
             engine.register_symbol(
                 symbols::APPEND_LOG_THREE_TOPICS,
@@ -1500,16 +1484,6 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
-        module.body().append_operation(func::func(
-            context,
-            StringAttribute::new(context, symbols::GET_CALL_GAS_COST),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
-            Region::new(),
-            attributes,
-            location,
-        ));
-
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_GASPRICE_PTR),
@@ -2588,26 +2562,6 @@ pub(crate) mod mlir {
             &[],
             location,
         ));
-    }
-
-    pub(crate) fn call_gas_cost_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        address: Value<'c, 'c>,
-        location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64);
-        let result = block
-            .append_operation(func::call(
-                mlir_ctx,
-                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CALL_GAS_COST),
-                &[syscall_ctx, address],
-                &[uint64.into()],
-                location,
-            ))
-            .result(0)?;
-        Ok(result.into())
     }
 
     #[allow(clippy::too_many_arguments)]
