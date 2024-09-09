@@ -35,7 +35,7 @@ fn main() {
 
     let env = Env::default();
     let mut db = Db::default();
-    let journal = Journal::new(&mut db);
+    let journal = Journal::new(&mut db, &env.tx.access_list);
     let mut context = SyscallContext::new(env, journal, Default::default());
     let executor = Executor::new(&module, &context, opt_level);
 

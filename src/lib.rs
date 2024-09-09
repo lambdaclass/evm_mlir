@@ -67,7 +67,7 @@ impl Evm<Db> {
             .expect("failed to compile program");
 
         let call_frame = CallFrame::new(self.env.tx.caller);
-        let journal = Journal::new(&mut self.db);
+        let journal = Journal::new(&mut self.db, &self.env.tx.access_list);
         let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
