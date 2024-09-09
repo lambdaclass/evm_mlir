@@ -116,15 +116,12 @@ pub fn modexp(
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let Ok(b_size) = usize::try_from(U256::from_big_endian(&calldata[0..32])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
-    let Ok(e_size) = usize::try_from(U256::from_big_endian(&calldata[32..64])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
-    let Ok(m_size) = usize::try_from(U256::from_big_endian(&calldata[64..96])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
