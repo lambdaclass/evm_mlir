@@ -85,7 +85,7 @@ impl Evm<Db> {
         let operations = [
             initialization_code,
             vec![
-                Operation::Push((1, BigUint::from(code_len))),
+                Operation::Push((2_u8, BigUint::from(code_len))),
                 Operation::Push((1, BigUint::ZERO)),
                 Operation::Push((1, BigUint::ZERO)),
                 Operation::Create,
