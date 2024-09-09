@@ -120,8 +120,12 @@ cargo run programs/push32.bytecode 3  # ranges from 0 to 3
 
 ### Testing
 
-To only run the ethereum foundation tests, run the command `make test-eth`. if you want to run the rest of the tests (those that are not the ethereum foundation tests) just run 
-`make test`
+To run the project's tests, just `make test`.
+To run the [Ethereum Foundation tests](https://github.com/ethereum/tests) use the following commands:
+```bash
+make ethtests   # downloads the tests
+make test-eth
+```
 
 ## Debugging the compiler
 
