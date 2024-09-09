@@ -116,7 +116,7 @@ impl<'a> Journal<'a> {
 
             let account = accounts
                 .entry(address)
-                .or_insert_with(|| JournalAccount::default());
+                .or_insert_with(JournalAccount::default);
 
             let storage: Vec<(U256, JournalStorageSlot)> = storage
                 .iter()
