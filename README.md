@@ -121,7 +121,7 @@ cargo run programs/push32.bytecode 3  # ranges from 0 to 3
 ### Testing
 
 To run the project's tests, do `make test`.
-To run the [Ethereum Foundation tests](https://github.com/ethereum/tests) use the following commands:
+To run the [Ethereum Foundation tests](https://github.com/ethereum/tests), use the following commands:
 
 ```bash
 make ethtests   # downloads the tests
