@@ -903,7 +903,6 @@ impl<'c> SyscallContext<'c> {
         salt: Option<&U256>,
     ) -> u8 {
         let value_as_u256 = value.to_primitive_u256();
-
         let offset = offset as usize;
         let size = size as usize;
         let minimum_word_size = ((size + 31) / 32) as u64;

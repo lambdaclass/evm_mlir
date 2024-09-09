@@ -185,7 +185,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             for (address, account_info) in unit.pre.iter() {
                 let opcodes = decode_hex(account_info.code.clone()).unwrap();
                 db = db.with_contract(address.to_owned(), opcodes);
-
                 db.set_account(
                     address.to_owned(),
                     account_info.nonce,
