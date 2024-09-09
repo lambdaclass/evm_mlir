@@ -53,7 +53,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
         "stSpecialTest".into(),
-        "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
@@ -137,7 +136,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
     for (_name, unit) in test_suite.0 {
         // NOTE: currently we only support Cancun spec
-        eprintln!("NAME: {}", _name);
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
@@ -242,8 +240,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stCreate2/Create2Recursive.json",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

@@ -922,6 +922,13 @@ impl<'c> SyscallContext<'c> {
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
+        // si al hacer un create desde un programa, voy a crear el mismo programa, esto indica una
+        // creacion recursiva, por lo que ejecutaria el programa hasta quedarme sin gas y haria halt al final
+        // de esta forma nos ahorramos esos pasos y ya tiramos halt directamente
+        if self.inner_context.program == program.clone().to_bytecode() {
+            return create_opcode::HALT_RETURN_CODE;
+        }
+
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
         let (dest_addr, hash_cost) = match salt {
@@ -967,10 +974,6 @@ impl<'c> SyscallContext<'c> {
         let ctx_journal = self.journal.eject_base();
         let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
         context.journal.new_account(dest_addr, value_as_u256);
-        //self.journal.new_account(dest_addr, value_as_u256);
-        if self.inner_context.program == program.clone().to_bytecode() {
-            return 0; // optimizacion para hacer, si es el mismo bytecode, no crees el ejecutor y compilar y sarasa, ejecutate de vuelta
-        }
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, new_env.tx.gas_limit);
