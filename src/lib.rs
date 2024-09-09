@@ -1,5 +1,5 @@
 use builder::EvmBuilder;
-use db::{Database, Db};
+use db::{Database, DatabaseError, Db};
 use env::TransactTo;
 use executor::{Executor, OptLevel};
 use journal::Journal;
@@ -98,11 +98,11 @@ impl Evm<Db> {
 
     fn call(&mut self) -> Result<ResultAndState, EVMError> {
         let code_address = self.env.tx.get_address();
-        //TODO: Improve error handling
-        let bytecode = self
-            .db
-            .code_by_address(code_address)
-            .expect("Failed to get code from address");
+
+        let bytecode = match self.db.code_by_address(code_address) {
+            Ok(bytecode) => bytecode,
+            Err(_) => return Err(EVMError::Database(DatabaseError)),
+        };
 
         let program = Program::from_bytecode(&bytecode);
         self.run_program(program)
