@@ -956,6 +956,7 @@ impl<'c> SyscallContext<'c> {
         if self.journal.get_account(&dest_addr).is_some() {
             return 1;
         }
+        self.journal.add_account_as_warm(dest_addr);
 
         // Create subcontext for the initialization code
         // TODO: Add call depth check
@@ -1004,10 +1005,6 @@ impl<'c> SyscallContext<'c> {
 
         // TODO: add dest_addr as warm in the access list
         0
-    }
-
-    pub extern "C" fn add_create_address(&mut self, address: &U256) {
-        self.journal.add_account_as_warm(Address::from(address));
     }
 
     pub extern "C" fn create(
@@ -1147,7 +1144,6 @@ pub mod symbols {
     pub const TRANSIENT_STORAGE_WRITE: &str = "evm_mlir__transient_storage_write";
     pub const SELFDESTRUCT: &str = "evm_mlir__selfdestruct";
     pub const GET_CALL_GAS_COST: &str = "evm_mlir__get_call_gas_cost";
-    pub const ADD_CREATE_ADDRESS: &str = "evm_mlir__add_create_address";
 }
 
 impl<'c> SyscallContext<'c> {
@@ -1380,12 +1376,6 @@ impl<'c> SyscallContext<'c> {
             engine.register_symbol(
                 symbols::SELFDESTRUCT,
                 SyscallContext::selfdestruct as *const fn(*mut c_void, *mut U256) as *mut (),
-            );
-
-            engine.register_symbol(
-                symbols::ADD_CREATE_ADDRESS,
-                SyscallContext::add_create_address as *const fn(*mut c_void, *const U256)
-                    as *mut (),
             );
 
             engine.register_symbol(
@@ -1863,15 +1853,6 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::SELFDESTRUCT),
             TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
-            Region::new(),
-            attributes,
-            location,
-        ));
-
-        module.body().append_operation(func::func(
-            context,
-            StringAttribute::new(context, symbols::ADD_CREATE_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
             Region::new(),
             attributes,
             location,
@@ -2696,21 +2677,6 @@ pub(crate) mod mlir {
             .result(0)?;
 
         Ok(result.into())
-    }
-    pub(crate) fn add_create_address_syscall<'c>(
-        mlir_ctx: &'c MeliorContext,
-        syscall_ctx: Value<'c, 'c>,
-        block: &'c Block,
-        address: Value<'c, 'c>,
-        location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::ADD_CREATE_ADDRESS),
-            &[syscall_ctx, address],
-            &[],
-            location,
-        ));
     }
 
     pub(crate) fn copy_return_data_into_memory<'c>(
