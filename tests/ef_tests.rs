@@ -144,7 +144,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let gas_price = unit.transaction.gas_price.unwrap_or_default();
         let to = match unit.transaction.to {
             Some(to) => TransactTo::Call(to),
-            None => TransactTo::Create(sender),
+            None => TransactTo::Create,
         };
 
         for test in tests {
@@ -174,10 +174,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
                     Db::new().with_contract(to, opcodes)
                 }
-                TransactTo::Create(sender_addr) => {
+                TransactTo::Create => {
                     let opcodes =
-                        decode_hex(unit.pre.get(&sender_addr).unwrap().code.clone()).unwrap();
-                    Db::new().with_contract(sender_addr, opcodes)
+                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
+                    Db::new().with_contract(env.tx.caller, opcodes)
                 }
             };
 

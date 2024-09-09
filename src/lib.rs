@@ -130,7 +130,7 @@ impl Evm<Db> {
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
         match self.env.tx.transact_to {
             TransactTo::Call(_) => self.call_address(),
-            TransactTo::Create(_) => self.create(),
+            TransactTo::Create => self.create(),
         }
     }
 

@@ -37,8 +37,7 @@ impl Env {
 
     /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
-        let _zero_addr = Address::zero();
-        let is_create = matches!(self.tx.transact_to, TransactTo::Create(_zero_addr));
+        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
@@ -83,7 +82,7 @@ impl Env {
         });
         let create_cost = match self.tx.transact_to {
             TransactTo::Call(_) => 0,
-            TransactTo::Create(_) => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
+            TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
         let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
             acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
@@ -237,15 +236,14 @@ pub enum TransactTo {
     /// Simple call to an address.
     Call(Address),
     /// Contract creation.
-    Create(Address),
+    Create,
 }
 
 impl TxEnv {
     pub fn get_address(&self) -> Address {
         match self.transact_to {
             TransactTo::Call(addr) => addr,
-            // TODO: check if its ok to return zero in this case
-            TransactTo::Create(sender_addr) => sender_addr,
+            TransactTo::Create => self.caller,
         }
     }
 }

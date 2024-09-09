@@ -517,7 +517,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
             TransactTo::Call(address) => self.journal.get_account(&address).unwrap_or_default(),
-            TransactTo::Create(_) => AccountInfo::default(), //This branch should never happen
+            TransactTo::Create => AccountInfo::default(), //This branch should never happen
         };
         balance.hi = (account.balance >> 128).low_u128();
         balance.lo = account.balance.low_u128();
