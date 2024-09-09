@@ -40,7 +40,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -161,7 +161,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.transact_to = to.clone();
             env.tx.gas_price = gas_price;
             env.tx.caller = sender;
-            env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
             let access_list_vector = unit
@@ -183,12 +182,15 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
             access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
+            access_list.add_address(env.tx.get_address());
             access_list.add_precompile_addresses(); // precompiled address are always warm
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
             env.block.timestamp = unit.env.current_timestamp;
             env.tx.access_list = access_list;
+            env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64()
+                + env.tx.access_list.access_list_cost();
 
             let excess_blob_gas = unit
                 .env

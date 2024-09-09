@@ -4,7 +4,8 @@ use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
     constants::{
-        call_opcode, gas_cost,
+        call_opcode,
+        gas_cost::{self, exp_dynamic_cost},
         precompiles::{
             BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS,
             MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
@@ -4835,13 +4836,12 @@ fn refund_limit_value() {
     let new_value: u8 = 0;
     let original_value = 10;
 
-    let used_gas =
-        5_000 + (2 + 200) * gas_cost::PUSHN + gas_cost::BALANCE_WARM * 199 + gas_cost::BALANCE_COLD;
+    let used_gas = 5_000 + (2 + 400) * gas_cost::PUSHN + (exp_dynamic_cost(1000) * 200);
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
     let refunded_gas = 4_800;
     let key = 80_u8;
-    let gas_costly_opcodes = vec![Operation::Balance; 200];
-    let needed_pushes_opcodes = vec![Operation::Push((20_u8, BigUint::from(1_u8))); 200];
+    let gas_costly_opcodes = vec![Operation::Exp; 200];
+    let needed_pushes_opcodes = vec![Operation::Push((20_u8, BigUint::from(1000_u32))); 400];
     let program = [
         needed_pushes_opcodes,
         gas_costly_opcodes,
