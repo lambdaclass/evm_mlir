@@ -134,9 +134,12 @@ impl<'a> Journal<'a> {
     }
 
     pub fn add_account_as_warm(&mut self, address: Address) {
-        self.accounts
+        let account = self
+            .accounts
             .entry(address)
             .or_insert(JournalAccount::new_created(U256::zero()));
+
+        account.status &= !AccountStatus::Cold;
     }
 
     pub fn new_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
@@ -203,7 +206,7 @@ impl<'a> Journal<'a> {
     pub fn account_is_warm(&self, address: &Address) -> bool {
         self.accounts
             .get(address)
-            .map(|acc| acc.status.contains(AccountStatus::Cold))
+            .map(|acc| !acc.status.contains(AccountStatus::Cold))
             .unwrap_or(false)
     }
 
