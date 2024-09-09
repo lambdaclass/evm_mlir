@@ -898,21 +898,6 @@ impl<'c> OperationCtx<'c> {
         )
     }
 
-    pub(crate) fn call_gas_cost_syscall(
-        &'c self,
-        block: &'c Block,
-        address: Value<'c, 'c>,
-        location: Location<'c>,
-    ) -> Result<Value, CodegenError> {
-        syscall::mlir::call_gas_cost_syscall(
-            self.mlir_context,
-            self.syscall_ctx,
-            block,
-            address,
-            location,
-        )
-    }
-
     pub(crate) fn copy_code_to_memory_syscall(
         &'c self,
         block: &'c Block,

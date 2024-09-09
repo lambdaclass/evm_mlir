@@ -12,7 +12,7 @@ use evm_mlir::{
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
-    env::TransactTo,
+    env::{AccessList, TransactTo},
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, GAS_REFUND_DENOMINATOR, U256},
@@ -69,13 +69,14 @@ fn run_program_assert_halt(env: Env, db: Db) {
 
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
 
     // Halt run
-    env.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit =
+        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact_commit().unwrap();
     assert!(result.is_halt());
@@ -87,7 +88,8 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Ok run
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
-    env_success.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env_success.tx.gas_limit =
+        needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
@@ -97,7 +99,8 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     //Halt run
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
-    env_halt.tx.gas_limit = needed_gas - 1 + gas_cost::TX_BASE_COST;
+    env_halt.tx.gas_limit =
+        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
@@ -112,7 +115,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact_commit().unwrap();
@@ -1328,7 +1331,7 @@ fn balance_static_gas_check() {
         Operation::Balance,
     ];
     let env = Env::default();
-    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE;
+    let needed_gas = gas_cost::PUSHN + gas_cost::BALANCE_COLD;
 
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -2272,7 +2275,8 @@ fn call_gas_check_with_value_zero_args_return_and_non_empty_callee(#[case] call_
         + gas_cost::PUSH0
         + gas_cost::MSTORE * 2
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
-        + gas_cost::memory_expansion_cost(0, 64);
+        + gas_cost::memory_expansion_cost(0, 64)
+        + gas_cost::CALL_COLD;
 
     let available_gas = 1e6;
     let needed_gas = caller_gas_cost + callee_gas_cost;
@@ -2453,7 +2457,7 @@ fn call_gas_check_with_value_and_empty_account(#[case] call_type: Operation) {
     let caller_call_cost = call_opcode::WARM_MEMORY_ACCESS_COST
         + call_opcode::NOT_ZERO_VALUE_COST
         + call_opcode::EMPTY_CALLEE_COST;
-    let needed_gas = gas_cost::PUSHN * 7 + caller_call_cost as i64;
+    let needed_gas = gas_cost::CALL_COLD + gas_cost::PUSHN * 7 + caller_call_cost as i64;
 
     let caller_balance: u8 = 5;
     let program = Program::from(caller_ops);
@@ -4001,7 +4005,7 @@ fn returndatacopy_gas_check() {
         + gas_cost::MSTORE
         + gas_cost::memory_expansion_cost(0, 32_u32); // Return data
     let caller_gas_cost = gas_cost::PUSHN * 10
-        + gas_cost::CALL
+        + gas_cost::CALL_COLD
         + call_opcode::WARM_MEMORY_ACCESS_COST as i64
         + gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
@@ -4831,7 +4835,8 @@ fn refund_limit_value() {
     let new_value: u8 = 0;
     let original_value = 10;
 
-    let used_gas = 5_000 + (2 + 200) * gas_cost::PUSHN + gas_cost::BALANCE * 200;
+    let used_gas =
+        5_000 + (2 + 200) * gas_cost::PUSHN + gas_cost::BALANCE_WARM * 199 + gas_cost::BALANCE_COLD;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
     let refunded_gas = 4_800;
     let key = 80_u8;
@@ -4853,4 +4858,260 @@ fn refund_limit_value() {
     db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn coinbase_address_is_warm() {
+    let coinbase_addr = Address::from_low_u64_be(8080);
+    let gas = 255_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
+
+    let caller_ops = [
+        vec![
+            Operation::Push((32_u8, BigUint::default())), //Operand B
+            Operation::Push0,                             //
+            Operation::Mstore,                            //Store in mem address 0
+            Operation::Push((32_u8, BigUint::default())), //Operand A
+            Operation::Push((1_u8, BigUint::from(32_u8))), //
+            Operation::Mstore,                            //Store in mem address 32
+            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        ],
+        value_op_vec,
+        vec![
+            Operation::Push((16_u8, BigUint::from_bytes_be(coinbase_addr.as_bytes()))), //Address
+            Operation::Push((1_u8, BigUint::from(gas))),                                //Gas
+        ],
+        vec![Operation::Call],
+    ]
+    .concat();
+
+    let caller_gas_cost = gas_cost::PUSHN * (10)
+        + gas_cost::PUSH0
+        + gas_cost::MSTORE * 2
+        + gas_cost::memory_expansion_cost(0, 64)
+        + gas_cost::CALL_WARM;
+
+    let available_gas = 1e6;
+    let needed_gas = caller_gas_cost;
+    let refund_gas = 0;
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    let mut access_list = AccessList::default();
+    access_list.add_address(coinbase_addr);
+    env.tx.access_list = access_list;
+    env.block.coinbase = coinbase_addr;
+    let mut db = Db::new().with_contract(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_and_refund(
+        env,
+        db,
+        available_gas as _,
+        needed_gas as _,
+        refund_gas as _,
+    );
+}
+
+#[test]
+fn balance_warm_cold_gas_cost() {
+    let operations = vec![
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+        Operation::Push((20_u8, BigUint::from(1_u8))),
+        Operation::Balance,
+    ];
+    let env = Env::default();
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::BALANCE_COLD + gas_cost::BALANCE_WARM;
+
+    run_program_assert_gas_exact(operations, env, needed_gas as _);
+}
+
+#[test]
+fn addresses_in_access_list_are_warm() {
+    let address_in_access_list = Address::from_low_u64_be(10000);
+    let mut access_list = AccessList::default();
+    access_list.add_address(address_in_access_list);
+    let gas = 255_u8;
+    let value = 0_u8;
+    let args_offset = 0_u8;
+    let args_size = 64_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 32_u8;
+
+    let caller_address = Address::from_low_u64_be(5000);
+
+    let value_op_vec = vec![Operation::Push((1_u8, BigUint::from(value)))];
+
+    let caller_ops = [
+        vec![
+            Operation::Push((32_u8, BigUint::default())), //Operand B
+            Operation::Push0,                             //
+            Operation::Mstore,                            //Store in mem address 0
+            Operation::Push((32_u8, BigUint::default())), //Operand A
+            Operation::Push((1_u8, BigUint::from(32_u8))), //
+            Operation::Mstore,                            //Store in mem address 32
+            Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+            Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+            Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+            Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        ],
+        value_op_vec,
+        vec![
+            Operation::Push((
+                16_u8,
+                BigUint::from_bytes_be(address_in_access_list.as_bytes()),
+            )), //Address
+            Operation::Push((1_u8, BigUint::from(gas))), //Gas
+        ],
+        vec![Operation::Call],
+    ]
+    .concat();
+
+    let caller_gas_cost = gas_cost::PUSHN * (10)
+        + gas_cost::PUSH0
+        + gas_cost::MSTORE * 2
+        + gas_cost::memory_expansion_cost(0, 64)
+        + gas_cost::CALL_WARM;
+
+    let available_gas = 1e6;
+    let needed_gas = caller_gas_cost;
+    let refund_gas = 0;
+
+    let caller_balance: u8 = 0;
+    let program = Program::from(caller_ops);
+    let bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.caller = caller_address;
+    env.tx.access_list = access_list;
+    let mut db = Db::new().with_contract(caller_address, bytecode);
+    db.set_account(caller_address, 0, caller_balance.into(), Default::default());
+
+    run_program_assert_gas_and_refund(
+        env,
+        db,
+        available_gas as _,
+        needed_gas as _,
+        refund_gas as _,
+    );
+}
+
+#[test]
+fn keys_in_access_list_are_warm() {
+    let address = Address::from_low_u64_be(5000);
+    let mut access_list = AccessList::default();
+    access_list.add_storage(address, ethereum_types::U256::from(1_u8));
+
+    let used_gas = gas_cost::PUSHN * 2 + gas_cost::SLOAD_WARM * 2;
+
+    let program = vec![
+        // first sload: gas_cost = cost_warm + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+        // second sload: gas_cost = cost_warm + cost_push
+        Operation::Push((1_u8, BigUint::from(1_u8))),
+        Operation::Sload,
+    ];
+
+    let mut env = Env::default();
+    env.tx.transact_to = TransactTo::Call(address);
+    env.tx.access_list = access_list;
+    run_program_assert_gas_exact(program, env, used_gas as _);
+}
+
+#[test]
+fn staticcall_on_precompile_blake2f_with_access_list_is_warm() {
+    let gas = 100_000_000_u32;
+    let args_offset = 0_u8;
+    let args_size = 213_u8;
+    let ret_offset = 0_u8;
+    let ret_size = 64_u8;
+
+    // 4 bytes
+    let rounds = hex::decode("0000000c").unwrap();
+    // 64 bytes
+    let h = hex::decode("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b").unwrap();
+    // 128 bytes
+    let m = hex::decode("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap();
+    // 16 bytes
+    let t = hex::decode("03000000000000000000000000000000").unwrap();
+    // 1 bytes
+    let f = hex::decode("01").unwrap();
+
+    // Reach 32 bytes multiple
+    let padding = vec![0_u8; 11];
+
+    let calldata = [rounds, h, m, t, f, padding].concat();
+
+    let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+    let caller_address = Address::from_low_u64_be(4040);
+
+    let caller_ops = vec![
+        // Place the parameters in memory
+        // rounds - 4 bytes
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[..32]))),
+        Operation::Push((32_u8, 0_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[32..64]))),
+        Operation::Push((32_u8, 32_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[64..96]))),
+        Operation::Push((32_u8, 64_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[96..128]))),
+        Operation::Push((32_u8, 96_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[128..160]))),
+        Operation::Push((32_u8, 128_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[160..192]))),
+        Operation::Push((32_u8, 160_u8.into())),
+        Operation::Mstore,
+        Operation::Push((32_u8, BigUint::from_bytes_be(&calldata[192..224]))),
+        Operation::Push((32_u8, 192_u8.into())),
+        Operation::Mstore,
+        // Do the call
+        Operation::Push((1_u8, BigUint::from(ret_size))), //Ret size
+        Operation::Push((1_u8, BigUint::from(ret_offset))), //Ret offset
+        Operation::Push((1_u8, BigUint::from(args_size))), //Args size
+        Operation::Push((1_u8, BigUint::from(args_offset))), //Args offset
+        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), //Address
+        Operation::Push((32_u8, BigUint::from(gas))),     //Gas
+        Operation::StaticCall,
+        // Return
+        Operation::Push((1_u8, ret_size.into())),
+        Operation::Push((1_u8, ret_offset.into())),
+        Operation::Return,
+    ];
+
+    let program = Program::from(caller_ops);
+    let caller_bytecode = Bytecode::from(program.to_bytecode());
+    let mut env = Env::default();
+    let db = Db::new().with_contract(caller_address, caller_bytecode);
+    env.tx.transact_to = TransactTo::Call(caller_address);
+    env.tx.access_list.add_address(callee_address);
+
+    let used_gas = gas_cost::PUSHN * 22
+        + gas_cost::MSTORE * 7
+        + gas_cost::memory_expansion_cost(0, 224)
+        + 0x0c // por el number of rounds del precompile(es 0x0c)
+        + gas_cost::CALL_WARM;
+
+    run_program_assert_gas_exact_with_db(env, db, used_gas as _);
 }

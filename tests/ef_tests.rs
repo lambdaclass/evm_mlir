@@ -5,7 +5,13 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::{AccessList, TransactTo},
+    primitives,
+    result::ExecutionResult,
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -34,7 +40,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -170,7 +176,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             for access_list_item in access_list_vector {
                 access_list.add_address(access_list_item.address);
                 for storage_key in access_list_item.storage_keys {
-                    let storage_key = U256::from(storage_key.as_bytes());
+                    let storage_key = primitives::U256::from(storage_key.as_bytes());
                     access_list.add_storage(access_list_item.address, storage_key);
                 }
             }
