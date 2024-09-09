@@ -20,7 +20,7 @@ use std::ffi::c_void;
 use crate::{
     constants::{
         call_opcode::{self},
-        create_opcode::{self},
+        create_return_codes,
         gas_cost::{self, MAX_CODE_SIZE},
         precompiles, CallType,
     },
@@ -910,14 +910,8 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
 
         if size > MAX_CODE_SIZE * 2 {
-            return create_opcode::REVERT_RETURN_CODE;
+            return create_return_codes::REVERT_RETURN_CODE;
         }
-
-        let size: usize = if size > self.inner_context.memory.len() {
-            self.inner_context.memory.len() - offset
-        } else {
-            size
-        };
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
@@ -926,7 +920,7 @@ impl<'c> SyscallContext<'c> {
         // creacion recursiva, por lo que ejecutaria el programa hasta quedarme sin gas y haria halt al final
         // de esta forma nos ahorramos esos pasos y ya tiramos halt directamente
         if self.inner_context.program == program.clone().to_bytecode() {
-            return create_opcode::HALT_RETURN_CODE;
+            return create_return_codes::HALT_RETURN_CODE;
         }
 
         let sender_account = self.journal.get_account(&sender_address).unwrap();
@@ -942,7 +936,7 @@ impl<'c> SyscallContext<'c> {
             ),
             _ => {
                 if sender_account.nonce.checked_add(1).is_none() {
-                    return create_opcode::REVERT_RETURN_CODE;
+                    return create_return_codes::REVERT_RETURN_CODE;
                 }
 
                 (
@@ -954,7 +948,7 @@ impl<'c> SyscallContext<'c> {
 
         // Check if there is already a contract stored in dest_address
         if self.journal.get_account(&dest_addr).is_some() {
-            return create_opcode::REVERT_RETURN_CODE;
+            return create_return_codes::REVERT_RETURN_CODE;
         }
 
         // Create subcontext for the initialization code
@@ -993,7 +987,7 @@ impl<'c> SyscallContext<'c> {
         // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
-            return create_opcode::SUCCESS_RETURN_CODE;
+            return create_return_codes::SUCCESS_RETURN_CODE;
         };
 
         // Create new contract and update sender account
@@ -1001,7 +995,7 @@ impl<'c> SyscallContext<'c> {
             .new_contract(dest_addr, bytecode, value_as_u256);
 
         let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
-            return create_opcode::HALT_RETURN_CODE;
+            return create_return_codes::HALT_RETURN_CODE;
         };
 
         self.journal.set_nonce(&sender_address, new_nonce);
@@ -1010,7 +1004,7 @@ impl<'c> SyscallContext<'c> {
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list
-        create_opcode::SUCCESS_RETURN_CODE
+        create_return_codes::SUCCESS_RETURN_CODE
     }
 
     pub extern "C" fn create(

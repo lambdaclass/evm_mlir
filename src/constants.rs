@@ -160,7 +160,7 @@ pub mod call_opcode {
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
 }
 
-pub mod create_opcode {
+pub mod create_return_codes {
     pub const SUCCESS_RETURN_CODE: u8 = 0;
     pub const HALT_RETURN_CODE: u8 = 1;
     pub const REVERT_RETURN_CODE: u8 = 2;
