@@ -135,6 +135,12 @@ impl<'a> Journal<'a> {
         self.accounts.insert(address, account);
     }
 
+    pub fn add_account_as_warm(&mut self, address: Address) {
+        self.accounts
+            .entry(address)
+            .or_insert(JournalAccount::new_created(U256::zero()));
+    }
+
     pub fn new_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
         let mut hasher = Keccak256::new();
         hasher.update(&bytecode);

@@ -276,7 +276,7 @@ impl<'c> SyscallContext<'c> {
         let address = Address::from(address as &U256);
         let is_cold = self.journal.account_is_warm(&address);
         if is_cold {
-            self.env.tx.access_list.add_address(address);
+            self.journal.add_account_as_warm(address);
             gas_cost::CALL_COLD
         } else {
             gas_cost::CALL_WARM
@@ -799,10 +799,10 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
-        self.env.tx.access_list.add_address(Address::from(address));
-
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        self.journal.code_by_address(&Address::from(address)).len() as _
+        let codesize = self.journal.code_by_address(&Address::from(address)).len();
+        self.journal.add_account_as_warm(Address::from(address));
+        codesize as u64
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
@@ -857,7 +857,7 @@ impl<'c> SyscallContext<'c> {
 
             let is_cold = self.journal.account_is_warm(&address);
             if is_cold {
-                self.env.tx.access_list.add_address(address);
+                self.journal.add_account_as_warm(address);
                 gas_cost = gas_cost::BALANCE_COLD
             } else {
                 gas_cost = gas_cost::BALANCE_WARM
@@ -889,8 +889,6 @@ impl<'c> SyscallContext<'c> {
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
         let address = Address::from(address_value);
-        self.env.tx.access_list.add_address(Address::from(address));
-
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
         let code = self.journal.code_by_address(&address);
@@ -904,6 +902,7 @@ impl<'c> SyscallContext<'c> {
             .copy_from_slice(code_slice);
         // pad the left part with zero
         self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
+        self.journal.add_account_as_warm(Address::from(address));
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
@@ -1008,7 +1007,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn add_create_address(&mut self, address: &U256) {
-        self.env.tx.access_list.add_address(Address::from(address));
+        self.journal.add_account_as_warm(Address::from(address));
     }
 
     pub extern "C" fn create(
