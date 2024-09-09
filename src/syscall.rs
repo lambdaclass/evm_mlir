@@ -274,7 +274,7 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_call_gas_cost(&mut self, address: &U256) -> i64 {
         let address = Address::from(address as &U256);
-        let is_cold = !self.env.tx.access_list.contains_address(address);
+        let is_cold = self.journal.account_is_warm(&address);
         if is_cold {
             self.env.tx.access_list.add_address(address);
             gas_cost::CALL_COLD
@@ -855,7 +855,7 @@ impl<'c> SyscallContext<'c> {
                 }
             };
 
-            let is_cold = !self.env.tx.access_list.contains_address(address);
+            let is_cold = self.journal.account_is_warm(&address);
             if is_cold {
                 self.env.tx.access_list.add_address(address);
                 gas_cost = gas_cost::BALANCE_COLD
