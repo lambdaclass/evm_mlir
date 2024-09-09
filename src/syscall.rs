@@ -910,7 +910,6 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
 
         if size > MAX_CODE_SIZE * 2 {
-            //should revert here
             return create_opcode::REVERT_RETURN_CODE;
         }
 
@@ -969,8 +968,10 @@ impl<'c> SyscallContext<'c> {
         let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
         context.journal.new_account(dest_addr, value_as_u256);
         //self.journal.new_account(dest_addr, value_as_u256);
+        if self.inner_context.program == program.clone().to_bytecode() {
+            return 0; // optimizacion para hacer, si es el mismo bytecode, no crees el ejecutor y compilar y sarasa, ejecutate de vuelta
+        }
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-        // osea hacer el context.program = program no hace falta, se esta ejecutando bien
         context.inner_context.program = program.to_bytecode();
         executor.execute(&mut context, new_env.tx.gas_limit);
 

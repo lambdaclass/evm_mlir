@@ -99,7 +99,6 @@ fn get_ignored_suites() -> HashSet<String> {
     HashSet::from([
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
-        "Create2Recursive".into(), // Works everything from the stCreate2 tests, expect the recursive one (stack overflow)
     ])
 }
 
@@ -245,6 +244,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
 datatest_stable::harness!(
     run_test,
-    "ethtests/GeneralStateTests/stCreate2/",
+    "ethtests/GeneralStateTests/stCreate2/Create2Recursive.json",
     r"^.*/*.json",
 );
