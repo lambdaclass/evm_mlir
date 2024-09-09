@@ -113,9 +113,6 @@ impl<'a> Journal<'a> {
             let account = accounts
                 .entry(address)
                 .or_insert_with(JournalAccount::default);
-            if storage.is_empty() {
-                continue;
-            }
             let storage: Vec<(U256, JournalStorageSlot)> = storage
                 .iter()
                 .map(|key| (*key, JournalStorageSlot::default()))
