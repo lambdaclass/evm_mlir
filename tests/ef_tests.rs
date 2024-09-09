@@ -40,7 +40,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -179,6 +179,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     access_list.add_storage(access_list_item.address, storage_key);
                 }
             }
+            access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
+            access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
+            access_list.add_precompile_addresses(); // precompiled address are always warm
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
@@ -226,6 +229,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
+                    eprintln!("OUT: {:?}", unit.out.as_ref());
+                    eprintln!("RESULT: {:?}", res.result.output());
                     if unit.out.as_ref() != res.result.output() {
                         return Err("Wrong output".into());
                     }
