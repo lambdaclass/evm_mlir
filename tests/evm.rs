@@ -5114,3 +5114,75 @@ fn staticcall_on_precompile_blake2f_with_access_list_is_warm() {
 
     run_program_assert_gas_exact_with_db(env, db, used_gas as _);
 }
+
+#[test]
+fn extcodecopy_warm_cold_gas_cost() {
+    // insert the program in the db with address = 100
+    // and then copy the program bytecode in memory
+    // with extcodecopy(address=100, dest_offset, offset, size)
+    let size = 14_u8;
+    let offset = 0_u8;
+    let dest_offset = 0_u8;
+    let address = 100_u8;
+    let program: Program = vec![
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(offset))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Push((1_u8, BigUint::from(address))),
+        Operation::ExtcodeCopy,
+        Operation::Push((1_u8, BigUint::from(size))),
+        Operation::Push((1_u8, BigUint::from(dest_offset))),
+        Operation::Return,
+    ]
+    .into();
+
+    let mut env = Env::default();
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address.into()),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_contract(address, bytecode);
+    let expected_result = program.to_bytecode();
+    run_program_assert_bytes_result(env, db, &expected_result);
+}
+
+#[test]
+fn extcodesize_warm_cold_gas_cost() {
+    let address = 40_u8;
+    let mut operations = vec![
+        Operation::Push((1_u8, address.into())),
+        Operation::ExtcodeSize,
+    ];
+    append_return_result_operations(&mut operations);
+
+    let mut env = Env::default();
+    let program = Program::from(operations);
+    let (address, bytecode) = (
+        Address::from_low_u64_be(address as _),
+        Bytecode::from(program.clone().to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_contract(address, bytecode);
+    let expected_result = program.to_bytecode().len();
+    run_program_assert_num_result(env, db, expected_result.into())
+}
+
+#[test]
+fn extcodehash_warm_cold_gas_cost() {
+    let address_number = 10;
+    let mut operations = vec![
+        Operation::Push((1, BigUint::from(address_number))),
+        Operation::ExtcodeHash,
+    ];
+    append_return_result_operations(&mut operations);
+    let (env, mut db) = default_env_and_db_setup(operations);
+    let bytecode = Bytecode::from_static(b"60806040");
+    let address = Address::from_low_u64_be(address_number);
+    db = db.with_contract(address, bytecode);
+
+    let code_hash = db.basic(address).unwrap().unwrap().code_hash;
+    let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
+
+    run_program_assert_num_result(env, db, expected_code_hash);
+}
