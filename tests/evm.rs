@@ -5155,7 +5155,7 @@ fn extcodecopy_warm_cold_gas_cost() {
     run_program_assert_gas_exact_with_db(env, db, used_gas as _);
 }
 
-/*#[test]
+#[test]
 fn extcodesize_warm_cold_gas_cost() {
     let address = 40_u8;
     let mut operations = vec![
@@ -5179,19 +5179,17 @@ fn extcodesize_warm_cold_gas_cost() {
 #[test]
 fn extcodehash_warm_cold_gas_cost() {
     let address_number = 10;
-    let mut operations = vec![
-        Operation::Push((1, BigUint::from(address_number))),
+    let operations = vec![
+        Operation::Push((1, BigUint::from(200_u8))),
+        Operation::ExtcodeHash,
+        Operation::Push((1, BigUint::from(200_u8))),
         Operation::ExtcodeHash,
     ];
-    append_return_result_operations(&mut operations);
     let (env, mut db) = default_env_and_db_setup(operations);
     let bytecode = Bytecode::from_static(b"60806040");
     let address = Address::from_low_u64_be(address_number);
     db = db.with_contract(address, bytecode);
 
-    let code_hash = db.basic(address).unwrap().unwrap().code_hash;
-    let expected_code_hash = BigUint::from_bytes_be(code_hash.as_bytes());
-
-    run_program_assert_num_result(env, db, expected_code_hash);
+    let used_gas = gas_cost::PUSHN * 2 + gas_cost::EXTCODEHASH_COLD + gas_cost::EXTCODEHASH_WARM;
+    run_program_assert_gas_exact_with_db(env, db, used_gas as _)
 }
-*/

@@ -5092,9 +5092,21 @@ fn codegen_extcodehash<'c, 'r>(
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location);
+    let gas_cost = op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
 
-    let code_hash_value = ok_block
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let code_hash_value = end_block
         .append_operation(llvm::load(
             context,
             address_ptr,
@@ -5107,9 +5119,9 @@ fn codegen_extcodehash<'c, 'r>(
 
     // TODO: add gas consumption (once access lists are implemented)
 
-    stack_push(context, &ok_block, code_hash_value)?;
+    stack_push(context, &end_block, code_hash_value)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_returndatasize<'c, 'r>(

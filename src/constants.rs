@@ -88,7 +88,10 @@ pub mod gas_cost {
     pub const BLOCKHASH: i64 = 20;
     pub const CALL_WARM: i64 = 100;
     pub const CALL_COLD: i64 = 2600;
+    pub const EXTCODEHASH_WARM: i64 = 100;
+    pub const EXTCODEHASH_COLD: i64 = 2600;
     pub const EXTCODESIZE_WARM: i64 = 100;
+    pub const EXTCODESIZE_COLD: i64 = 2600;
     pub const EXTCODECOPY_WARM: i64 = 100;
     pub const EXTCODECOPY_COLD: i64 = 2600;
     pub const RETURNDATASIZE: i64 = 2;

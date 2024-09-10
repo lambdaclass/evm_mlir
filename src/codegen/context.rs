@@ -1132,7 +1132,7 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::get_code_hash_syscall(
             self.mlir_context,
             self.syscall_ctx,
