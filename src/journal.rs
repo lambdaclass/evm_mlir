@@ -182,7 +182,7 @@ impl<'a> Journal<'a> {
 
     pub fn code_by_address(&mut self, address: &Address) -> Bytecode {
         let default = Bytecode::default();
-        let Some(acc) = self._get_account(address) else {
+        let Some(acc) = self._get_account_mut(address) else {
             return default;
         };
         acc.status &= !AccountStatus::Cold;
