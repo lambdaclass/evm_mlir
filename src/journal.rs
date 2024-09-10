@@ -185,7 +185,7 @@ impl<'a> Journal<'a> {
         let Some(acc) = self._get_account(address) else {
             return default;
         };
-
+        acc.status &= !AccountStatus::Cold;
         if !acc.has_code() {
             return default;
         }
