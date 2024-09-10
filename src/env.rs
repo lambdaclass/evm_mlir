@@ -42,17 +42,23 @@ impl Env {
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
+
+        // Is a blob transaction.
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
+
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
+
             if self.tx.blob_hashes.is_empty() {
                 return Err(InvalidTransaction::EmptyBlobs);
             }
+
             if is_create {
                 return Err(InvalidTransaction::BlobCreateTransaction);
             }
+
             for blob in self.tx.blob_hashes.iter() {
                 if blob[0] != VERSIONED_HASH_VERSION_KZG {
                     return Err(InvalidTransaction::BlobVersionNotSupported);
@@ -60,6 +66,7 @@ impl Env {
             }
 
             let num_blobs = self.tx.blob_hashes.len();
+
             if num_blobs > MAX_BLOB_NUMBER_PER_BLOCK as usize {
                 return Err(InvalidTransaction::TooManyBlobs {
                     have: num_blobs,
