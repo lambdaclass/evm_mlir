@@ -18,15 +18,13 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost, precompiles, CallType},
+    constants::{call_opcode, gas_cost, CallType},
     context::Context,
     db::AccountInfo,
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
     journal::Journal,
-    precompiles::{
-        blake2f, ecadd, ecmul, ecpairing, ecrecover, identity, modexp, ripemd_160, sha2_256,
-    },
+    precompiles::*,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -294,169 +292,132 @@ impl<'c> SyscallContext<'c> {
         let size = args_size as usize;
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
-        let (return_code, return_data) = match callee_address {
-            x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecrecover(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                identity(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                sha2_256(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ripemd_160(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::MODEXP_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                modexp(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => {
-                match ecadd(&calldata, gas_to_send, consumed_gas) {
-                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
-                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
-                }
+        let (return_code, return_data) = if is_precompile(callee_address) {
+            match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
+                Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
+                Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
             }
-            x if x == Address::from_low_u64_be(precompiles::ECMUL_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecmul(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecpairing(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                blake2f(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
-            ),
-            _ => {
-                // Execute subcontext
-                //TODO: Add call depth check
-                //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-                let value = value_to_transfer.to_primitive_u256();
-                let call_type = CallType::try_from(call_type)
-                    .expect("Error while parsing CallType on call syscall");
+        } else {
+            // Execute subcontext
+            //TODO: Add call depth check
+            //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
+            let value = value_to_transfer.to_primitive_u256();
+            let call_type = CallType::try_from(call_type)
+                .expect("Error while parsing CallType on call syscall");
 
-                //TODO: This should instead add the account fetch (warm or cold) cost
-                //For the moment we consider warm access
-                let callee_account = match self.journal.get_account(&callee_address) {
-                    Some(acc) => {
-                        *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                        acc
-                    }
-                    None => {
-                        *consumed_gas = 0;
-                        return call_opcode::REVERT_RETURN_CODE;
-                    }
-                };
-
-                let caller_address = self.env.tx.get_address();
-                let caller_account = self
-                    .journal
-                    .get_account(&caller_address)
-                    .unwrap_or_default();
-
-                let mut stipend = 0;
-                if !value.is_zero() {
-                    if caller_account.balance < value {
-                        //There isn't enough balance to send
-                        return call_opcode::REVERT_RETURN_CODE;
-                    }
-                    *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
-                    if callee_account.is_empty() {
-                        *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
-                    }
-                    if available_gas < *consumed_gas {
-                        return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
-                    }
-                    stipend = call_opcode::STIPEND_GAS_ADDITION;
-
-                    //TODO: Maybe we should increment the nonce too
-                    let caller_balance = caller_account.balance;
-                    self.journal
-                        .set_balance(&caller_address, caller_balance - value);
-
-                    let callee_balance = callee_account.balance;
-                    self.journal
-                        .set_balance(&callee_address, callee_balance + value);
+            //TODO: This should instead add the account fetch (warm or cold) cost
+            //For the moment we consider warm access
+            let callee_account = match self.journal.get_account(&callee_address) {
+                Some(acc) => {
+                    *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
+                    acc
                 }
+                None => {
+                    *consumed_gas = 0;
+                    return call_opcode::REVERT_RETURN_CODE;
+                }
+            };
 
-                let remaining_gas = available_gas.saturating_sub(*consumed_gas);
-                gas_to_send = std::cmp::min(
-                    remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
-                    gas_to_send,
-                );
-                *consumed_gas += gas_to_send;
-                gas_to_send += stipend;
+            let caller_address = self.env.tx.get_address();
+            let caller_account = self
+                .journal
+                .get_account(&caller_address)
+                .unwrap_or_default();
 
-                let mut env = self.env.clone();
+            let mut stipend = 0;
+            if !value.is_zero() {
+                if caller_account.balance < value {
+                    //There isn't enough balance to send
+                    return call_opcode::REVERT_RETURN_CODE;
+                }
+                *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
+                if callee_account.is_empty() {
+                    *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
+                }
+                if available_gas < *consumed_gas {
+                    return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
+                }
+                stipend = call_opcode::STIPEND_GAS_ADDITION;
 
-                //TODO: Check if calling `get_address()` here is ok
-                let this_address = self.env.tx.get_address();
-                let (new_frame_caller, new_value, transact_to) = match call_type {
-                    CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
-                    CallType::CallCode => (this_address, value, this_address),
-                    CallType::DelegateCall => {
-                        (self.call_frame.caller, self.env.tx.value, this_address)
-                    }
-                };
+                //TODO: Maybe we should increment the nonce too
+                let caller_balance = caller_account.balance;
+                self.journal
+                    .set_balance(&caller_address, caller_balance - value);
 
-                env.tx.value = new_value;
-                env.tx.transact_to = TransactTo::Call(transact_to);
-                env.tx.gas_limit = gas_to_send;
-
-                //Copy the calldata from memory
-                let off = args_offset as usize;
-                let size = args_size as usize;
-                env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
-
-                //NOTE: We could optimize this by not making the call if the bytecode is zero.
-                //We would have to refund the stipend here
-                //TODO: Check if returning REVERT because of database fail is ok
-                let bytecode = self.journal.code_by_address(&callee_address);
-
-                let program = Program::from_bytecode(&bytecode);
-
-                let context = Context::new();
-                let module = context
-                    .compile(&program, Default::default())
-                    .expect("failed to compile program");
-
-                let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
-
-                let call_frame = CallFrame {
-                    caller: new_frame_caller,
-                    ctx_is_static: is_static,
-                    ..Default::default()
-                };
-
-                let journal = self.journal.eject_base();
-
-                let mut context = SyscallContext::new(env.clone(), journal, call_frame);
-                let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-
-                executor.execute(&mut context, env.tx.gas_limit);
-
-                let result = context.get_result().unwrap().result;
-
-                let unused_gas = gas_to_send - result.gas_used();
-                *consumed_gas -= unused_gas;
-                *consumed_gas -= result.gas_refunded();
-                let return_code = if result.is_success() {
-                    self.journal.extend_from_successful(context.journal);
-                    call_opcode::SUCCESS_RETURN_CODE
-                } else {
-                    //TODO: If we revert, should we still send the value to the called contract?
-                    self.journal.extend_from_reverted(context.journal);
-                    call_opcode::REVERT_RETURN_CODE
-                };
-                let output = result.into_output().unwrap_or_default();
-                (return_code, output)
+                let callee_balance = callee_account.balance;
+                self.journal
+                    .set_balance(&callee_address, callee_balance + value);
             }
+
+            let remaining_gas = available_gas.saturating_sub(*consumed_gas);
+            gas_to_send = std::cmp::min(
+                remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+                gas_to_send,
+            );
+            *consumed_gas += gas_to_send;
+            gas_to_send += stipend;
+
+            let mut env = self.env.clone();
+
+            //TODO: Check if calling `get_address()` here is ok
+            let this_address = self.env.tx.get_address();
+            let (new_frame_caller, new_value, transact_to) = match call_type {
+                CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
+                CallType::CallCode => (this_address, value, this_address),
+                CallType::DelegateCall => (self.call_frame.caller, self.env.tx.value, this_address),
+            };
+
+            env.tx.value = new_value;
+            env.tx.transact_to = TransactTo::Call(transact_to);
+            env.tx.gas_limit = gas_to_send;
+
+            //Copy the calldata from memory
+            let off = args_offset as usize;
+            let size = args_size as usize;
+            env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+
+            //NOTE: We could optimize this by not making the call if the bytecode is zero.
+            //We would have to refund the stipend here
+            //TODO: Check if returning REVERT because of database fail is ok
+            let bytecode = self.journal.code_by_address(&callee_address);
+
+            let program = Program::from_bytecode(&bytecode);
+
+            let context = Context::new();
+            let module = context
+                .compile(&program, Default::default())
+                .expect("failed to compile program");
+
+            let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
+
+            let call_frame = CallFrame {
+                caller: new_frame_caller,
+                ctx_is_static: is_static,
+                ..Default::default()
+            };
+
+            let journal = self.journal.eject_base();
+
+            let mut context = SyscallContext::new(env.clone(), journal, call_frame);
+            let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+
+            executor.execute(&mut context, env.tx.gas_limit);
+
+            let result = context.get_result().unwrap().result;
+
+            let unused_gas = gas_to_send - result.gas_used();
+            *consumed_gas -= unused_gas;
+            *consumed_gas -= result.gas_refunded();
+            let return_code = if result.is_success() {
+                self.journal.extend_from_successful(context.journal);
+                call_opcode::SUCCESS_RETURN_CODE
+            } else {
+                //TODO: If we revert, should we still send the value to the called contract?
+                self.journal.extend_from_reverted(context.journal);
+                call_opcode::REVERT_RETURN_CODE
+            };
+            let output = result.into_output().unwrap_or_default();
+            (return_code, output)
         };
 
         //TODO: This copying mechanism may be improved with a safe copy_from_slice which would
