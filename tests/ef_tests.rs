@@ -5,7 +5,12 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::TransactTo,
+    result::{EVMError, ExecutionResult, InvalidTransaction},
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -30,7 +35,6 @@ fn get_suite_name_from_path(path: &Path) -> String {
 
 fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
-        "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
@@ -158,6 +162,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
+            env.tx.blob_hashes = unit.transaction.blob_versioned_hashes.clone();
+            env.tx.max_fee_per_blob_gas = unit.transaction.max_fee_per_blob_gas;
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
@@ -197,7 +203,19 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             }
             let mut evm = Evm::new(env, db);
 
-            let res = evm.transact().unwrap();
+            let res = evm.transact();
+
+            // Tests if the error was expected by the test.
+            match (&test.expect_exception.as_deref(), &res) {
+                (
+                    Some("TR_BLOBLIST_OVERSIZE"),
+                    Err(EVMError::Transaction(InvalidTransaction::TooManyBlobs { .. })),
+                ) => return Ok(()),
+                (Some(_), Err(_)) => todo!(),
+                _ => {}
+            }
+
+            let res = res.unwrap();
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
