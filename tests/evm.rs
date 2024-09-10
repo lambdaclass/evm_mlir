@@ -67,6 +67,13 @@ fn run_program_assert_halt(env: Env, db: Db) {
     assert!(result.is_halt());
 }
 
+fn run_program_assert_revert(env: Env, db: Db) {
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+
+    assert!(result.is_revert());
+}
+
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
     env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
@@ -3629,6 +3636,19 @@ fn staticcall_on_precompile_ecmul_invalid_point_by_zero() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
+        // Check if STATICCALL returned 0 (failure)
+        Operation::IsZero,
+        Operation::Push((1_u8, 180_u8.into())), // Push the location of revert
+        Operation::Jumpi,
+        // Continue execution if STATICCALL returned 1 (shouldn't happen)
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Return,
+        // Revert
+        Operation::Jumpdest { pc: 180 },
+        Operation::Push0, // Ret size
+        Operation::Push0, // Ret offset
+        Operation::Revert,
     ];
 
     let program = Program::from(caller_ops);
@@ -3637,7 +3657,7 @@ fn staticcall_on_precompile_ecmul_invalid_point_by_zero() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_num_result(env, db, BigUint::ZERO);
+    run_program_assert_revert(env, db);
 }
 
 #[test]
