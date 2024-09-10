@@ -798,7 +798,6 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
         let codesize = self.journal.code_by_address(&Address::from(address)).len();
-        //self.journal.add_account_as_warm(Address::from(address));
         codesize as u64
     }
 
