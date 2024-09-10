@@ -1,13 +1,6 @@
-use crate::{
-    constants::precompiles::{
-        blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
-        sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
-        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_STATIC_COST,
-    },
-    primitives::U256,
-    result::PrecompileError,
-};
+use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
 use bytes::Bytes;
+use ethereum_types::Address;
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -116,15 +109,12 @@ pub fn modexp(
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let Ok(b_size) = usize::try_from(U256::from_big_endian(&calldata[0..32])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
-    let Ok(e_size) = usize::try_from(U256::from_big_endian(&calldata[32..64])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
-    let Ok(m_size) = usize::try_from(U256::from_big_endian(&calldata[64..96])) else {
-        return Err(PrecompileError::InvalidCalldata);
-    };
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
@@ -511,6 +501,52 @@ pub fn blake2f(
     let out: Vec<u8> = h.iter().flat_map(|&num| num.to_le_bytes()).collect();
 
     Ok(Bytes::from(out))
+}
+
+pub fn is_precompile(callee_address: Address) -> bool {
+    let addr_as_u64 = callee_address.to_low_u64_be();
+    // TODO: replace 10 with point evaluation address constant
+    callee_address[0..12] == [0u8; 12] && (ECRECOVER_ADDRESS..=10).contains(&addr_as_u64)
+}
+
+pub fn execute_precompile(
+    callee_address: Address,
+    calldata: Bytes,
+    gas_to_send: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    match callee_address {
+        x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => {
+            ecrecover(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(IDENTITY_ADDRESS) => {
+            identity(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(SHA2_256_ADDRESS) => {
+            sha2_256(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(RIPEMD_160_ADDRESS) => {
+            ripemd_160(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(MODEXP_ADDRESS) => {
+            modexp(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECADD_ADDRESS) => {
+            ecadd(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECMUL_ADDRESS) => {
+            ecmul(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECPAIRING_ADDRESS) => {
+            ecpairing(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(BLAKE2F_ADDRESS) => {
+            blake2f(&calldata, gas_to_send, consumed_gas)
+        }
+        _ => {
+            unreachable!()
+        }
+    }
 }
 
 #[cfg(test)]
