@@ -1384,8 +1384,7 @@ mod tests {
 
         let output = point_eval(&input, 49999, &mut consumed_gas);
 
-        // assert_eq!(output, Err(PointEvalErr));
-        assert!(output.is_err());
+        assert_eq!(output, Err(PrecompileError::NotEnoughGas));
         assert_eq!(consumed_gas, 0)
     }
 
@@ -1408,9 +1407,8 @@ mod tests {
 
         let output = point_eval(&input, 999999, &mut consumed_gas);
 
-        // assert_eq!(output, Err(PointEvalErr));
-        assert!(output.is_err());
-        // assert_eq!(consumed_gas, 0)
+        assert_eq!(output, Err(PrecompileError::InvalidCalldata));
+        assert_eq!(consumed_gas, 0)
     }
 
     #[test]
@@ -1432,7 +1430,7 @@ mod tests {
         let expected_output = Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes());
         let gas = 50000;
         let output = point_eval(&input.into(), gas, &mut consumed_gas).unwrap();
-        // assert_eq!(consumed_gas, 50000);
+        assert_eq!(consumed_gas, 50000);
         assert_eq!(output, expected_output);
     }
 }
