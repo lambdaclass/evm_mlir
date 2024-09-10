@@ -33,7 +33,7 @@ fn run_program_get_result_with_gas(
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
-    let journal = Journal::new(&mut db, &env.tx.access_list);
+    let journal = Journal::new(&mut db).with_prefetch(env.tx.access_list.flattened());
     let mut context = SyscallContext::new(env, journal, Default::default());
     let executor = Executor::new(&module, &context, Default::default());
 

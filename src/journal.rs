@@ -1,7 +1,6 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
     db::{AccountInfo, Bytecode, Database, Db},
-    env::AccessList,
     primitives::{Address, B256, U256},
     state::{Account, AccountStatus, EvmStorageSlot},
 };
@@ -96,20 +95,23 @@ pub struct Journal<'a> {
 //  -> For the moment we seek for something that works.
 //  -> We can optimize in the future.
 impl<'a> Journal<'a> {
-    pub fn new(db: &'a mut Db, access_list: &AccessList) -> Self {
-        let accounts = Self::get_storage_keys_from_access_list(access_list);
+    pub fn new(db: &'a mut Db) -> Self {
         Self {
             db: Some(db),
-            accounts,
             ..Default::default()
         }
     }
 
-    fn get_storage_keys_from_access_list(
-        access_list: &AccessList,
+    pub fn with_prefetch(mut self, accounts: Vec<(Address, Vec<U256>)>) -> Self {
+        self.accounts = Self::get_prefetch_accounts(accounts);
+        self
+    }
+
+    fn get_prefetch_accounts(
+        prefetch_accounts: Vec<(Address, Vec<U256>)>,
     ) -> HashMap<Address, JournalAccount> {
         let mut accounts = HashMap::new();
-        for (address, storage) in access_list.flatten() {
+        for (address, storage) in prefetch_accounts {
             let account = accounts
                 .entry(address)
                 .or_insert_with(JournalAccount::default);

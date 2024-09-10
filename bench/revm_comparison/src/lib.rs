@@ -29,7 +29,7 @@ pub fn run_with_evm_mlir(program: &str, runs: usize, number_of_iterations: u32) 
     calldata[28..32].copy_from_slice(&number_of_iterations.to_be_bytes());
     env.tx.data = Bytes::from(calldata);
     let mut db = Db::default();
-    let journal = Journal::new(&mut db, &env.tx.access_list);
+    let journal = Journal::new(&mut db);
     let mut context = SyscallContext::new(env, journal, Default::default());
     let executor = Executor::new(&module, &context, Default::default());
     let initial_gas = 999_999_999;

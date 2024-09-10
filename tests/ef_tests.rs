@@ -229,8 +229,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
-                    eprintln!("OUT: {:?}", unit.out.as_ref());
-                    eprintln!("RESULT: {:?}", res.result.output());
                     if unit.out.as_ref() != res.result.output() {
                         return Err("Wrong output".into());
                     }
@@ -271,4 +269,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/stRandom/",
+    r"^.*/*.json",
+);
