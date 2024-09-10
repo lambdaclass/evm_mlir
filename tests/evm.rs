@@ -5159,10 +5159,11 @@ fn extcodecopy_warm_cold_gas_cost() {
 fn extcodesize_warm_cold_gas_cost() {
     let address = 40_u8;
     let mut operations = vec![
-        Operation::Push((1_u8, address.into())),
+        Operation::Push((1_u8, BigUint::from(200_u8))),
+        Operation::ExtcodeSize,
+        Operation::Push((1_u8, BigUint::from(200_u8))),
         Operation::ExtcodeSize,
     ];
-    append_return_result_operations(&mut operations);
 
     let mut env = Env::default();
     let program = Program::from(operations);
@@ -5172,8 +5173,8 @@ fn extcodesize_warm_cold_gas_cost() {
     );
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
-    let expected_result = program.to_bytecode().len();
-    run_program_assert_num_result(env, db, expected_result.into())
+    let used_gas = gas_cost::PUSHN * 2 + gas_cost::EXTCODESIZE_COLD + gas_cost::EXTCODESIZE_WARM;
+    run_program_assert_gas_exact_with_db(env, db, used_gas as _)
 }
 
 #[test]
