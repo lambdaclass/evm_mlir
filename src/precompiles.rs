@@ -1,5 +1,12 @@
-use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
+use std::path::Path;
+
+use crate::{
+    constants::{precompiles::*, VERSIONED_HASH_VERSION_KZG},
+    primitives::U256,
+    result::PrecompileError,
+};
 use bytes::Bytes;
+use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgProof, KzgSettings};
 use ethereum_types::Address;
 use lambdaworks_math::{
     cyclic_group::IsGroup,
