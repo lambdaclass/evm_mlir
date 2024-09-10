@@ -631,6 +631,9 @@ pub fn execute_precompile(
         x if x == Address::from_low_u64_be(BLAKE2F_ADDRESS) => {
             blake2f(&calldata, gas_to_send, consumed_gas)
         }
+        x if x == Address::from_low_u64_be(POINT_EVAL_ADDRESS) => {
+            point_eval(&calldata, gas_to_send, consumed_gas)
+        }
         _ => {
             unreachable!()
         }
