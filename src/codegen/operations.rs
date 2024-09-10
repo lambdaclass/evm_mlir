@@ -4825,26 +4825,40 @@ fn codegen_extcodecopy<'c, 'r>(
 
     let end_block = region.append_block(Block::new(&[]));
 
+    // we need to extend memory, but the gas is consumed after
     extend_memory(
         op_ctx,
         &memory_extension_block,
         &end_block,
         region,
         required_size,
-        gas_cost::EXTCODECOPY_WARM,
+        0,
     )?;
 
     let address_ptr = allocate_and_store_value(op_ctx, &end_block, address, location)?;
-    op_ctx.copy_ext_code_to_memory_syscall(
+    let gas_cost = op_ctx.copy_ext_code_to_memory_syscall(
         &end_block,
         address_ptr,
         offset,
         size,
         dest_offset,
         location,
-    );
+    )?;
 
-    Ok((start_block, end_block))
+    let gas_flag = consume_gas_as_value(context, &end_block, gas_cost)?;
+
+    let final_block = region.append_block(Block::new(&[]));
+    end_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &final_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, final_block))
 }
 
 fn codegen_prevrandao<'c, 'r>(
