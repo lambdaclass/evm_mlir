@@ -983,6 +983,7 @@ impl<'c> OperationCtx<'c> {
         &'c self,
         block: &'c Block,
         address: Value<'c, 'c>,
+        gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_codesize_from_address_syscall(
@@ -990,6 +991,7 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             address,
+            gas,
             location,
         )
     }

@@ -795,8 +795,16 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
-    pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+    pub extern "C" fn get_codesize_from_address(&mut self, address: &U256, gas: &mut u64) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
+        let is_cold = self.journal.account_is_warm(&Address::from(address));
+
+        if is_cold {
+            *gas = gas_cost::EXTCODESIZE_COLD as u64;
+        } else {
+            *gas = gas_cost::EXTCODESIZE_WARM as u64;
+        }
+
         let codesize = self.journal.code_by_address(&Address::from(address)).len();
         codesize as u64
     }
@@ -1277,8 +1285,8 @@ impl<'c> SyscallContext<'c> {
             );
             engine.register_symbol(
                 symbols::GET_CODESIZE_FROM_ADDRESS,
-                SyscallContext::get_codesize_from_address as *const fn(*mut c_void, *mut U256)
-                    as *mut (),
+                SyscallContext::get_codesize_from_address
+                    as *const fn(*mut c_void, *mut U256, *mut u64) as *mut (),
             );
             engine.register_symbol(
                 symbols::GET_COINBASE_PTR,
@@ -1677,7 +1685,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CODESIZE_FROM_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, uint64], &[uint64]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -2528,6 +2538,7 @@ pub(crate) mod mlir {
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         address: Value<'c, 'c>,
+        gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint64 = IntegerType::new(mlir_ctx, 64).into();
@@ -2535,7 +2546,7 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODESIZE_FROM_ADDRESS),
-                &[syscall_ctx, address],
+                &[syscall_ctx, address, gas],
                 &[uint64],
                 location,
             ))

@@ -4190,6 +4190,7 @@ fn codegen_extcodesize<'c, 'r>(
     let uint256 = IntegerType::new(context, 256).into();
     let uint64 = IntegerType::new(context, 64);
     let uint32 = IntegerType::new(context, 32);
+    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
     // TODO: handle cold and warm accesses for dynamic gas computation
@@ -4207,6 +4208,27 @@ fn codegen_extcodesize<'c, 'r>(
 
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
+
+    let gas_counter_ptr = ok_block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = ok_block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
     let number_of_elements = ok_block
         .append_operation(arith::constant(
             context,
@@ -4247,7 +4269,7 @@ fn codegen_extcodesize<'c, 'r>(
         .result(0)?
         .into();
 
-    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost);
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
 
     let end_block = region.append_block(Block::new(&[]));
     ok_block.append_operation(cf::cond_br(
