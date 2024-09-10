@@ -346,11 +346,19 @@ impl<'c> SyscallContext<'c> {
 
                 let callee_account = match self.journal.get_account(&callee_address) {
                     Some(account) => {
-                        *consumed_gas = gas_cost::CALL_WARM as u64;
+                        let is_cold = !self.journal.account_is_warm(&callee_address);
+
+                        if is_cold {
+                            *consumed_gas = gas_cost::CALL_COLD as u64;
+                            self.journal.add_account_as_warm(callee_address);
+                        } else {
+                            *consumed_gas = gas_cost::CALL_WARM as u64;
+                        }
+
                         account
                     }
                     None => {
-                        *consumed_gas = gas_cost::CALL_COLD as u64;
+                        *consumed_gas = 0;
                         return call_opcode::REVERT_RETURN_CODE;
                     }
                 };
