@@ -790,7 +790,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
         let codesize = self.journal.code_by_address(&Address::from(address)).len();
-        self.journal.add_account_as_warm(Address::from(address));
+        //self.journal.add_account_as_warm(Address::from(address));
         codesize as u64
     }
 
@@ -895,12 +895,13 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
-        self.journal
-            .add_account_as_warm(Address::from(address as &U256));
-
         let hash = match self.journal.get_account(&Address::from(address as &U256)) {
             Some(account_info) => account_info.code_hash,
-            _ => B256::zero(),
+            _ => {
+                self.journal
+                    .add_account_as_warm(Address::from(address as &U256));
+                B256::zero()
+            }
         };
 
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
@@ -1019,9 +1020,6 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn selfdestruct(&mut self, receiver_address: &U256) -> u64 {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
-
-        self.journal.add_account_as_warm(receiver_address);
-        self.journal.add_account_as_warm(sender_address);
 
         let sender_balance = self
             .journal
