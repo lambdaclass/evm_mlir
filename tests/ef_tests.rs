@@ -227,6 +227,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
                 ) => return Ok(()),
                 (
+                    Some("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"),
+                    Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
+                ) => return Ok(()),
+                (
                     Some("TR_EMPTYBLOB"),
                     Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
                 ) => return Ok(()),
