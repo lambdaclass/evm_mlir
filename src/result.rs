@@ -385,4 +385,5 @@ pub enum PrecompileError {
     NotEnoughGas,
     Secp256k1Error,
     InvalidEcPoint,
+    PointEvalError,
 }
