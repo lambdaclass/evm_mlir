@@ -539,20 +539,17 @@ pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
     Bytes32::from_bytes(&hash).unwrap()
 }
 
-#[derive(Debug)]
-pub struct PointEvalErr;
-
 pub fn point_eval(
     input: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, PointEvalErr> {
+) -> Result<Bytes, PrecompileError> {
     if gas_limit < POINT_EVAL_COST {
-        return Err(PointEvalErr);
+        return Err(PrecompileError::NotEnoughGas);
     }
 
     if input.len() != POINT_EVAL_CALLDATA_LEN {
-        return Err(PointEvalErr {});
+        return Err(PrecompileError::InvalidCalldata);
     }
 
     *consumed_gas += POINT_EVAL_COST;
@@ -568,24 +565,27 @@ pub fn point_eval(
        [144: 192]   proof           Proof associated with the commitment
     */
 
-    let commitment = KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PointEvalErr)?;
-    let versioned_hash = Bytes32::from_bytes(&input[..32]).map_err(|_| PointEvalErr)?;
+    let commitment =
+        KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let versioned_hash =
+        Bytes32::from_bytes(&input[..32]).map_err(|_| PrecompileError::InvalidCalldata)?;
 
     if commitment_to_versioned_hash(&commitment) != versioned_hash {
-        return Err(PointEvalErr);
+        return Err(PrecompileError::PointEvalError);
     }
 
-    let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PointEvalErr)?;
-    let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
-    let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
+    let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let proof =
+        Bytes48::from_bytes(&input[144..192]).map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let trusted_setup =
-        get_trusted_setup(Path::new("./official_trusted_setup.txt")).map_err(|_| PointEvalErr)?;
+    let trusted_setup = get_trusted_setup(Path::new("./official_trusted_setup.txt"))
+        .map_err(|_| PrecompileError::PointEvalError)?;
 
     if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
-        .map_err(|_| PointEvalErr)?
+        .map_err(|_| PrecompileError::PointEvalError)?
     {
-        Err(PointEvalErr)
+        Err(PrecompileError::PointEvalError)
     } else {
         Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
     }
