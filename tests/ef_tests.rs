@@ -180,7 +180,14 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             };
             let mut db = match to.clone() {
                 TransactTo::Call(to) => {
-                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
+                    let opcodes = decode_hex(
+                        unit.pre
+                            .get(&to)
+                            .unwrap_or(&AccountInfo::default())
+                            .code
+                            .clone(),
+                    )
+                    .unwrap();
                     Db::new().with_contract(to, opcodes)
                 }
                 TransactTo::Create => {
