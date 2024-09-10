@@ -211,6 +211,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     Some("TR_BLOBLIST_OVERSIZE"),
                     Err(EVMError::Transaction(InvalidTransaction::TooManyBlobs { .. })),
                 ) => return Ok(()),
+                (
+                    Some("TR_EMPTYBLOB"),
+                    Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
+                ) => return Ok(()),
                 (Some(_), Err(_)) => todo!(),
                 _ => {}
             }
