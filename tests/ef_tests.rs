@@ -10,6 +10,7 @@ use evm_mlir::{
     env::{AccessList, TransactTo},
     primitives,
     result::ExecutionResult,
+    utils::{access_list_cost, precompiled_addresses},
     Env, Evm,
 };
 
@@ -173,22 +174,24 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             let mut access_list = AccessList::default();
             for access_list_item in access_list_vector {
-                access_list.add_address(access_list_item.address);
+                let mut storage_keys = Vec::new();
                 for storage_key in access_list_item.storage_keys {
                     let storage_key = primitives::U256::from(storage_key.as_bytes());
-                    access_list.add_storage(access_list_item.address, storage_key);
+                    storage_keys.push(storage_key);
                 }
+                access_list.push((access_list_item.address, storage_keys));
             }
-            access_list.add_address(env.block.coinbase); // after Shanghai, coinbase address is added to access list
-            access_list.add_address(env.tx.caller); // after Berlin, tx.sender and tx.to is added to access list
-            access_list.add_precompile_addresses(); // precompiled address are always warm
+            access_list.push((env.block.coinbase, Vec::new())); // after Shanghai, coinbase address is added to access list
+            access_list.push((env.tx.caller, Vec::new())); // after Berlin, tx.sender is added to access list
+
+            access_list.append(&mut precompiled_addresses()); // precompiled address are always warm
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
             env.block.timestamp = unit.env.current_timestamp;
             env.tx.access_list = access_list;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64()
-                + env.tx.access_list.access_list_cost();
+                + access_list_cost(&env.tx.access_list);
 
             let excess_blob_gas = unit
                 .env

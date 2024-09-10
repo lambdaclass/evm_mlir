@@ -895,10 +895,9 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
-        self.env
-            .tx
-            .access_list
-            .add_address(Address::from(address as &U256));
+        self.journal
+            .add_account_as_warm(Address::from(address as &U256));
+
         let hash = match self.journal.get_account(&Address::from(address as &U256)) {
             Some(account_info) => account_info.code_hash,
             _ => B256::zero(),
@@ -1021,14 +1020,8 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
         let receiver_address = Address::from(receiver_address);
 
-        self.env
-            .tx
-            .access_list
-            .add_address(Address::from(receiver_address));
-        self.env
-            .tx
-            .access_list
-            .add_address(Address::from(sender_address));
+        self.journal.add_account_as_warm(receiver_address);
+        self.journal.add_account_as_warm(sender_address);
 
         let sender_balance = self
             .journal

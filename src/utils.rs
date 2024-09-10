@@ -19,9 +19,15 @@ use sha3::{Digest, Keccak256};
 use crate::{
     codegen::context::OperationCtx,
     constants::{
-        gas_cost, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        gas_cost::{self, TX_ACCESS_LIST_ADDRESS_COST, TX_ACCESS_LIST_STORAGE_KEY_COST},
+        precompiles::{
+            BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECPAIRING_ADDRESS, ECRECOVER_ADDRESS,
+            IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
+        },
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
+    env::AccessList,
     errors::CodegenError,
     primitives::{Address, H160, U256},
     syscall::{symbols::CONTEXT_IS_STATIC, ExitStatusCode},
@@ -1760,4 +1766,26 @@ pub fn compute_contract_address2(address: H160, salt: U256, initialization_code:
     hasher.update(salt_bytes);
     hasher.update(initialization_code_hash);
     Address::from_slice(&hasher.finalize()[12..])
+}
+
+pub fn access_list_cost(access_list: &AccessList) -> u64 {
+    access_list.iter().fold(0, |acc, (_, keys)| {
+        acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
+    })
+}
+
+pub fn precompiled_addresses() -> AccessList {
+    let mut access_list = AccessList::new();
+
+    access_list.push((H160::from_low_u64_be(ECRECOVER_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(SHA2_256_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(RIPEMD_160_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(IDENTITY_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(MODEXP_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(ECADD_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(ECMUL_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(ECPAIRING_ADDRESS), Vec::new()));
+    access_list.push((H160::from_low_u64_be(BLAKE2F_ADDRESS), Vec::new()));
+
+    access_list
 }

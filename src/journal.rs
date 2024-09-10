@@ -1,6 +1,7 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
     db::{AccountInfo, Bytecode, Database, Db},
+    env::AccessList,
     primitives::{Address, B256, U256},
     state::{Account, AccountStatus, EvmStorageSlot},
 };
@@ -102,18 +103,16 @@ impl<'a> Journal<'a> {
         }
     }
 
-    pub fn with_prefetch(mut self, accounts: Vec<(Address, Vec<U256>)>) -> Self {
+    pub fn with_prefetch(mut self, accounts: &AccessList) -> Self {
         self.accounts = Self::get_prefetch_accounts(accounts);
         self
     }
 
-    fn get_prefetch_accounts(
-        prefetch_accounts: Vec<(Address, Vec<U256>)>,
-    ) -> HashMap<Address, JournalAccount> {
+    fn get_prefetch_accounts(prefetch_accounts: &AccessList) -> HashMap<Address, JournalAccount> {
         let mut accounts = HashMap::new();
         for (address, storage) in prefetch_accounts {
             let account = accounts
-                .entry(address)
+                .entry(*address)
                 .or_insert_with(JournalAccount::default);
             let storage: Vec<(U256, JournalStorageSlot)> = storage
                 .iter()

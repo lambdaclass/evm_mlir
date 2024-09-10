@@ -1,93 +1,17 @@
-use std::collections::HashMap;
-
 use crate::{
     constants::{
         gas_cost::{
-            init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
-            TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
-            TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
+            init_code_cost, MAX_CODE_SIZE, TX_BASE_COST, TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO,
+            TX_DATA_COST_PER_ZERO,
         },
-        precompiles, MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
+        MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
-    utils::calc_blob_gasprice,
+    utils::{access_list_cost, calc_blob_gasprice},
 };
 
-#[derive(Clone, Debug, Default)]
-pub struct AccessList {
-    access_list: HashMap<Address, Vec<U256>>,
-}
-
-impl AccessList {
-    /// Checks if a specific storage slot within an account is present in the access list.
-    ///
-    /// Returns `true` in the first element of the tuple if the address is present in the access list.
-    /// in the second returns `true` if the storage slot is present in the access list.
-    pub fn contains_storage(&self, address: Address, slot: U256) -> (bool, bool) {
-        let Some(storage) = self.access_list.get(&address) else {
-            return (false, false);
-        };
-        let contains_storage = storage
-            .iter()
-            .any(|storage_element| *storage_element == slot);
-
-        (true, contains_storage)
-    }
-
-    /// Checks if the access list contains the specified address.
-    pub fn contains_address(&self, address: Address) -> bool {
-        self.access_list.contains_key(&address)
-    }
-
-    /// Adds a new address to the access list.
-    pub fn add_address(&mut self, address: Address) {
-        self.access_list.entry(address).or_default();
-    }
-
-    /// Adds a new slot to the access list, if it is not already present, add a new entry.
-    pub fn add_storage(&mut self, address: Address, slot: U256) {
-        self.access_list.entry(address).or_default().push(slot);
-    }
-
-    pub fn access_list_cost(&self) -> u64 {
-        self.access_list.iter().fold(0, |acc, (_, keys)| {
-            acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
-        })
-    }
-
-    /// Adds the precompile addresses to the access list as they are always accessed as warm.
-    pub fn add_precompile_addresses(&mut self) {
-        self.add_address(Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS));
-        self.add_address(Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS));
-        self.add_address(Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS));
-        self.add_address(Address::from_low_u64_be(precompiles::MODEXP_ADDRESS));
-        self.add_address(Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS));
-        self.add_address(Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS));
-    }
-
-    /// Converts the list into a vec
-    pub fn flattened(&self) -> Vec<(Address, Vec<U256>)> {
-        self.flatten().collect()
-    }
-
-    /// Consumes the type and converts the list into a vec
-    pub fn into_flattened(self) -> Vec<(Address, Vec<U256>)> {
-        self.into_flatten().collect()
-    }
-
-    /// Consumes the type and returns an iterator over the list's addresses and storage keys.
-    pub fn into_flatten(self) -> impl Iterator<Item = (Address, Vec<U256>)> {
-        self.access_list.into_iter()
-    }
-
-    /// Returns an iterator over the list's addresses and storage keys.
-    pub fn flatten(&self) -> impl Iterator<Item = (Address, Vec<U256>)> + '_ {
-        self.access_list
-            .iter()
-            .map(|(address, storage_keys)| (*address, storage_keys.clone()))
-    }
-}
+pub type AccessList = Vec<(Address, Vec<U256>)>;
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
@@ -161,7 +85,7 @@ impl Env {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
-        let access_list_cost = self.tx.access_list.access_list_cost();
+        let access_list_cost = access_list_cost(&self.tx.access_list);
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }

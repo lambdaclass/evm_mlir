@@ -17,7 +17,7 @@ use evm_mlir::{
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
     syscall::{LogData, GAS_REFUND_DENOMINATOR, U256},
-    utils::compute_contract_address2,
+    utils::{access_list_cost, compute_contract_address2},
     Env, Evm,
 };
 
@@ -70,14 +70,14 @@ fn run_program_assert_halt(env: Env, db: Db) {
 
 fn run_program_assert_gas_exact_with_db(mut env: Env, db: Db, needed_gas: u64) {
     // Ok run
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + access_list_cost(&env.tx.access_list);
     let mut evm = Evm::new(env.clone(), db.clone());
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
 
     // Halt run
     env.tx.gas_limit =
-        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+        needed_gas - 1 + gas_cost::TX_BASE_COST + access_list_cost(&env.tx.access_list);
     let mut evm = Evm::new(env.clone(), db);
     let result = evm.transact_commit().unwrap();
     assert!(result.is_halt());
@@ -90,7 +90,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let program = Program::from(operations.clone());
     let mut env_success = env.clone();
     env_success.tx.gas_limit =
-        needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+        needed_gas + gas_cost::TX_BASE_COST + access_list_cost(&env.tx.access_list);
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_success, db);
 
@@ -101,7 +101,7 @@ fn run_program_assert_gas_exact(operations: Vec<Operation>, env: Env, needed_gas
     let program = Program::from(operations.clone());
     let mut env_halt = env.clone();
     env_halt.tx.gas_limit =
-        needed_gas - 1 + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+        needed_gas - 1 + gas_cost::TX_BASE_COST + access_list_cost(&env.tx.access_list);
     let db = Db::new().with_contract(address, program.to_bytecode().into());
     let mut evm = Evm::new(env_halt, db);
 
@@ -116,7 +116,7 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
-    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + env.tx.access_list.access_list_cost();
+    env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST + access_list_cost(&env.tx.access_list);
     let mut evm = Evm::new(env, db);
 
     let result = evm.transact_commit().unwrap();
@@ -4911,7 +4911,7 @@ fn coinbase_address_is_warm() {
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
     let mut access_list = AccessList::default();
-    access_list.add_address(coinbase_addr);
+    access_list.push((coinbase_addr, Vec::new()));
     env.tx.access_list = access_list;
     env.block.coinbase = coinbase_addr;
     let mut db = Db::new().with_contract(caller_address, bytecode);
@@ -4944,7 +4944,7 @@ fn balance_warm_cold_gas_cost() {
 fn addresses_in_access_list_are_warm() {
     let address_in_access_list = Address::from_low_u64_be(10000);
     let mut access_list = AccessList::default();
-    access_list.add_address(address_in_access_list);
+    access_list.push((address_in_access_list, Vec::new()));
     let gas = 255_u8;
     let value = 0_u8;
     let args_offset = 0_u8;
@@ -5014,7 +5014,8 @@ fn addresses_in_access_list_are_warm() {
 fn keys_in_access_list_are_warm() {
     let address = Address::from_low_u64_be(5000);
     let mut access_list = AccessList::default();
-    access_list.add_storage(address, ethereum_types::U256::from(1_u8));
+    let storage = vec![ethereum_types::U256::from(1_u8); 1];
+    access_list.push((address, storage));
 
     let used_gas = gas_cost::PUSHN * 2 + gas_cost::SLOAD_WARM * 2;
 
@@ -5103,7 +5104,7 @@ fn staticcall_on_precompile_blake2f_with_access_list_is_warm() {
     let mut env = Env::default();
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
-    env.tx.access_list.add_address(callee_address);
+    env.tx.access_list.push((callee_address, Vec::new()));
 
     let used_gas = gas_cost::PUSHN * 22
         + gas_cost::MSTORE * 7
