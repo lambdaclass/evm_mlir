@@ -3224,6 +3224,10 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
     let x2: u8 = 1;
     let y2: u8 = 2;
 
+    let mut jumpdest: u8 = (33 * 4) + (3 * 4); // parameters store
+    jumpdest += (2 * 4) + 21 + 33 + 1; // call
+    jumpdest += 1 + 2 + 1 + (2 * 2) + 1; // check and return
+
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3246,6 +3250,21 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
+        // Check if STATICCALL returned 0 (failure)
+        Operation::IsZero,
+        Operation::Push((1_u8, jumpdest.into())), // Push the location of revert
+        Operation::Jumpi,
+        // Continue execution if STATICCALL returned 1 (shouldn't happen)
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Return,
+        // Revert
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+        Operation::Push0, // Ret size
+        Operation::Push0, // Ret offset
+        Operation::Revert,
     ];
 
     let program = Program::from(caller_ops);
@@ -3254,7 +3273,7 @@ fn staticcall_on_precompile_ecadd_with_invalid_first_point() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_num_result(env, db, BigUint::ZERO);
+    run_program_assert_revert(env, db);
 }
 
 #[test]
@@ -3272,6 +3291,10 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
     let x2: u8 = 1;
     let y2: u8 = 1;
 
+    let mut jumpdest: u8 = (33 * 4) + (3 * 4); // parameters store
+    jumpdest += (2 * 4) + 21 + 33 + 1; // call
+    jumpdest += 1 + 2 + 1 + (2 * 2) + 1; // check and return
+
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3294,6 +3317,21 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
+        // Check if STATICCALL returned 0 (failure)
+        Operation::IsZero,
+        Operation::Push((1_u8, jumpdest.into())), // Push the location of revert
+        Operation::Jumpi,
+        // Continue execution if STATICCALL returned 1 (shouldn't happen)
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Return,
+        // Revert
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+        Operation::Push0, // Ret size
+        Operation::Push0, // Ret offset
+        Operation::Revert,
     ];
 
     let program = Program::from(caller_ops);
@@ -3302,7 +3340,7 @@ fn staticcall_on_precompile_ecadd_with_invalid_second_point() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_num_result(env, db, BigUint::ZERO);
+    run_program_assert_revert(env, db);
 }
 
 #[test]
@@ -3372,6 +3410,10 @@ fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
     let x2: u8 = 1;
     let y2: u8 = 2;
 
+    let mut jumpdest: u8 = (33 * 4) + (3 * 4); // parameters store
+    jumpdest += (2 * 4) + 21 + 33 + 1; // call
+    jumpdest += 1 + 2 + 1 + (2 * 2) + 1; // check and return
+
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3394,6 +3436,21 @@ fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
+        // Check if STATICCALL returned 0 (failure)
+        Operation::IsZero,
+        Operation::Push((1_u8, jumpdest.into())), // Push the location of revert
+        Operation::Jumpi,
+        // Continue execution if STATICCALL returned 1 (shouldn't happen)
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Return,
+        // Revert
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
+        Operation::Push0, // Ret size
+        Operation::Push0, // Ret offset
+        Operation::Revert,
     ];
 
     let program = Program::from(caller_ops);
@@ -3402,7 +3459,7 @@ fn staticcall_on_precompile_ecadd_with_not_enough_gas() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_num_result(env, db, BigUint::ZERO);
+    run_program_assert_revert(env, db);
 }
 
 #[test]
@@ -3977,8 +4034,8 @@ fn staticcall_on_precompile_ecpairing_invalid_point() {
         .unwrap(),
     );
 
-    let mut jumpdest: u16 = (33 + 3 + 1) * 12;  // operations inside for
-    jumpdest += (3 * 4) + 21 + 33 + 1 + 1 + 3 + 1 + (2 * 2) + 1; 
+    let mut jumpdest: u16 = (33 + 3 + 1) * 12; // operations inside for
+    jumpdest += (3 * 4) + 21 + 33 + 1 + 1 + 3 + 1 + (2 * 2) + 1;
 
     let mut caller_ops = vec![];
     // Store the entire calldata in memory (384 bytes, broken into 12 chunks of 32 bytes)
@@ -4009,7 +4066,9 @@ fn staticcall_on_precompile_ecpairing_invalid_point() {
         Operation::Push((1_u8, ret_offset.into())), // Ret offset
         Operation::Return,
         // Revert
-        Operation::Jumpdest { pc: jumpdest as usize },
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
         Operation::Push0, // Ret size
         Operation::Push0, // Ret offset
         Operation::Revert,
@@ -4053,7 +4112,7 @@ fn staticcall_on_precompile_ecpairing_invalid_calldata() {
         .unwrap(),
     );
 
-    let mut jumpdest: u16 = (33 + 3 + 1) * 11;  // operations inside for
+    let mut jumpdest: u16 = (33 + 3 + 1) * 11; // operations inside for
     jumpdest += (3 * 4) + 21 + 33 + 1 + 1 + 3 + 1 + (2 * 2) + 1;
 
     let mut caller_ops = vec![];
@@ -4085,7 +4144,9 @@ fn staticcall_on_precompile_ecpairing_invalid_calldata() {
         Operation::Push((1_u8, ret_offset.into())), // Ret offset
         Operation::Return,
         // Revert
-        Operation::Jumpdest { pc: jumpdest as usize },
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
         Operation::Push0, // Ret size
         Operation::Push0, // Ret offset
         Operation::Revert,
@@ -4130,8 +4191,8 @@ fn staticcall_on_precompile_ecpairing_with_not_enough_gas() {
         .unwrap(),
     );
 
-    let mut jumpdest: u16 = (33 + 3 + 1) * 12;  // operations inside for
-    jumpdest += (3 * 4) + 21 + 33 + 1 + 1 + 3 + 1 + (2 * 2) + 1; 
+    let mut jumpdest: u16 = (33 + 3 + 1) * 12; // operations inside for
+    jumpdest += (3 * 4) + 21 + 33 + 1 + 1 + 3 + 1 + (2 * 2) + 1;
 
     let mut caller_ops = vec![];
     // Store the entire calldata in memory (384 bytes, broken into 12 chunks of 32 bytes)
@@ -4162,7 +4223,9 @@ fn staticcall_on_precompile_ecpairing_with_not_enough_gas() {
         Operation::Push((1_u8, ret_offset.into())), // Ret offset
         Operation::Return,
         // Revert
-        Operation::Jumpdest { pc: jumpdest as usize },
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
         Operation::Push0, // Ret size
         Operation::Push0, // Ret offset
         Operation::Revert,
