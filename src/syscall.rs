@@ -178,6 +178,9 @@ impl<'c> SyscallContext<'c> {
 
     pub fn return_values(&self) -> &[u8] {
         let (offset, size) = self.inner_context.return_data.unwrap_or((0, 0));
+        if offset + size > self.inner_context.memory.len() {
+            return &[];
+        }
         &self.inner_context.memory[offset..offset + size]
     }
 

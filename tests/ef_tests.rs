@@ -34,7 +34,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -59,13 +59,12 @@ fn get_ignored_groups() -> HashSet<String> {
         "stCallCodes".into(),
         "stRandom2".into(),
         "stMemoryStressTest".into(),
-        "stStaticFlagEnabled".into(),
         "vmTests".into(),
         "stZeroKnowledge".into(),
         "stLogTests".into(),
         "stBugs".into(),
         "stEIP1559".into(),
-        "stStaticCall".into(),
+        //"stStaticCall".into(), this works, but is very slow also (the return 50000 test)
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
@@ -197,6 +196,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
+                    if unit.out.as_ref() != res.result.output() {
+                        return Err("Wrong output".into());
+                    }
                     if let Some((expected_output, output)) =
                         unit.out.as_ref().zip(res.result.output())
                     // for some reason, if we just compare unit.out.as_ref() != res.result.output()
