@@ -128,6 +128,64 @@ pub fn generate_code_for_op<'c>(
     }
 }
 
+fn get_gas_ptr<'c>(
+    context: &&'c melior::Context,
+    block: &'c BlockRef<'c, 'c>,
+    location: Location<'c>,
+) -> Result<melior::ir::Value<'c, 'c>, CodegenError> {
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let ptr_type = pointer(context, 0);
+
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let number_of_elements = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
+        location,
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
+
+    Ok(gas_ptr)
+}
+
 fn codegen_blockhash<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -4180,64 +4238,6 @@ fn codegen_gasprice<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
-fn get_gas_ptr<'c>(
-    context: &&'c melior::Context,
-    block: &'c BlockRef<'c, 'c>,
-    location: Location<'c>,
-) -> Result<melior::ir::Value<'c, 'c>, CodegenError> {
-    let uint64 = IntegerType::new(context, 64);
-    let uint32 = IntegerType::new(context, 32);
-
-    let ptr_type = pointer(context, 0);
-
-    let gas_counter_ptr = block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            GAS_COUNTER_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_counter = block
-        .append_operation(llvm::load(
-            context,
-            gas_counter_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let number_of_elements = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint32.into(), 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_ptr = block
-        .append_operation(llvm::alloca(
-            context,
-            number_of_elements,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
-        ))
-        .result(0)?
-        .into();
-    block.append_operation(llvm::store(
-        context,
-        gas_counter,
-        gas_ptr,
-        location,
-        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
-    ));
-
-    Ok(gas_ptr)
-}
-
 fn codegen_extcodesize<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -5121,7 +5121,7 @@ fn codegen_call<'c, 'r>(
         .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
         .result(0)?
         .into();
-    // 0 cost, because we no longer consume gas here, we consumed it with the call_gas_cost_syscall
+    // 0 cost, because we no longer consume gas here, we consume it with the call_syscall
     extend_memory(op_ctx, &ok_block, &mem_ext_block, region, req_mem_size, 0)?;
 
     // Invoke call syscall
