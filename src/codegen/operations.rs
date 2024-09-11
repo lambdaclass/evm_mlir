@@ -4180,6 +4180,64 @@ fn codegen_gasprice<'c, 'r>(
     Ok((start_block, ok_block))
 }
 
+fn get_gas_ptr<'c>(
+    context: &&'c melior::Context,
+    block: &'c BlockRef<'c, 'c>,
+    location: Location<'c>,
+) -> Result<melior::ir::Value<'c, 'c>, CodegenError> {
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let ptr_type = pointer(context, 0);
+
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let number_of_elements = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
+        location,
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
+
+    Ok(gas_ptr)
+}
+
 fn codegen_extcodesize<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -4189,8 +4247,6 @@ fn codegen_extcodesize<'c, 'r>(
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256).into();
     let uint64 = IntegerType::new(context, 64);
-    let uint32 = IntegerType::new(context, 32);
-    let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
     let ok_block = region.append_block(Block::new(&[]));
@@ -4208,50 +4264,7 @@ fn codegen_extcodesize<'c, 'r>(
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    let gas_counter_ptr = ok_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            GAS_COUNTER_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_counter = ok_block
-        .append_operation(llvm::load(
-            context,
-            gas_counter_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let number_of_elements = ok_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint32.into(), 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_ptr = ok_block
-        .append_operation(llvm::alloca(
-            context,
-            number_of_elements,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
-        ))
-        .result(0)?
-        .into();
-    ok_block.append_operation(llvm::store(
-        context,
-        gas_counter,
-        gas_ptr,
-        location,
-        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
-    ));
+    let gas_ptr = get_gas_ptr(context, &ok_block, location)?;
 
     let codesize =
         op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, gas_ptr, location)?;
@@ -5352,7 +5365,6 @@ fn codegen_create<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
     let uint64 = IntegerType::new(context, 64);
     let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
     let stack_size = if is_create2 { 4 } else { 3 };
@@ -5406,51 +5418,7 @@ fn codegen_create<'c, 'r>(
 
     let value_ptr = allocate_and_store_value(op_ctx, &create_block, value, location)?;
 
-    // Load the gas counter and copy the value into a new pointer
-    let gas_counter_ptr = create_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            GAS_COUNTER_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_counter = create_block
-        .append_operation(llvm::load(
-            context,
-            gas_counter_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let number_of_elements = create_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint32.into(), 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_ptr = create_block
-        .append_operation(llvm::alloca(
-            context,
-            number_of_elements,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
-        ))
-        .result(0)?
-        .into();
-    create_block.append_operation(llvm::store(
-        context,
-        gas_counter,
-        gas_ptr,
-        location,
-        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
-    ));
+    let gas_ptr = get_gas_ptr(context, &create_block, location)?;
 
     let result = if is_create2 {
         let salt = stack_pop(context, &create_block)?;
