@@ -297,6 +297,12 @@ impl<'c> SyscallContext<'c> {
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
+
+        if off + size > self.inner_context.memory.len() {
+            eprintln!("ERROR: size + offset too big");
+            return call_opcode::REVERT_RETURN_CODE;
+        }
+
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
         let (return_code, return_data) = match callee_address {
@@ -526,6 +532,10 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
         let offset = offset as usize;
         let size = size as usize;
+        if offset + size > self.inner_context.memory.len() {
+            eprintln!("ERROR: size + offset too big");
+            return;
+        }
         let data = &self.inner_context.memory[offset..offset + size];
         let mut hasher = Keccak256::new();
         hasher.update(data);
@@ -614,6 +624,11 @@ impl<'c> SyscallContext<'c> {
         } else {
             size
         };
+
+        if dest_offset + size > self.inner_context.memory.len() {
+            eprintln!("Error on copy_code_to_memory, too big");
+            return;
+        }
 
         let Some(code_slice) = &self
             .inner_context
@@ -786,6 +801,12 @@ impl<'c> SyscallContext<'c> {
     fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
         let offset = offset as usize;
         let size = size as usize;
+
+        if offset + size > self.inner_context.memory.len() {
+            eprintln!("ERROR: size + offset too big");
+            return;
+        }
+
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
 
         let log = LogData { data, topics };
@@ -875,8 +896,14 @@ impl<'c> SyscallContext<'c> {
         let code = self.journal.code_by_address(&address);
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
+
+        if code_offset + code_to_copy_size > code_size {
+            eprintln!("ERROR: code_offset + code_to_copy_size > code_size");
+            return;
+        }
+
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];
-        let padding_size = size - code_to_copy_size;
+        let padding_size = size.saturating_sub(code_to_copy_size);
         let padding_offset = dest_offset + code_to_copy_size;
         // copy the program into memory
         self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
@@ -909,6 +936,11 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
 
         if size > MAX_CODE_SIZE * 2 {
+            return create_return_codes::REVERT_RETURN_CODE;
+        }
+
+        if offset + size > self.inner_context.memory.len() {
+            eprintln!("ERROR: size + offset too big");
             return create_return_codes::REVERT_RETURN_CODE;
         }
 
