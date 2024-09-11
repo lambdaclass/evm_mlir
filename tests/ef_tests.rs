@@ -232,8 +232,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stSStoreTest/sstore_0to0to0.json",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

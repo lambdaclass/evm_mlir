@@ -47,24 +47,33 @@ impl<DB: Database + Default> Evm<DB> {
 }
 
 impl Evm<Db> {
-    fn run_program(&mut self, program: Program) -> Result<ResultAndState, EVMError> {
-        // validate transaction
+    fn validate_transaction(&mut self) -> Result<(), EVMError> {
         self.env.consume_intrinsic_cost()?;
         self.env.validate_transaction()?;
 
+        Ok(())
+    }
+
+    fn create_syscall_context(&mut self) -> SyscallContext {
+        let call_frame = CallFrame::new(self.env.tx.caller);
+        let journal = Journal::new(&mut self.db);
+        SyscallContext::new(self.env.clone(), journal, call_frame)
+    }
+
+    fn run_program(&mut self, program: Program) -> Result<ResultAndState, EVMError> {
+        self.validate_transaction()?;
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
 
-        let call_frame = CallFrame::new(self.env.tx.caller);
-        let journal = Journal::new(&mut self.db);
-        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
+        let initial_gas = self.env.tx.gas_limit;
+        let mut context = self.create_syscall_context();
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
-        executor.execute(&mut context, self.env.tx.gas_limit);
+        executor.execute(&mut context, initial_gas);
 
         context.get_result()
     }
@@ -81,31 +90,30 @@ impl Evm<Db> {
         self.run_program(program)
     }
 
-    fn create(&mut self) -> Result<ResultAndState, EVMError> {
-        self.env.consume_intrinsic_cost()?;
-        self.env.validate_transaction()?;
-
-        let call_frame = CallFrame::new(self.env.tx.caller);
-        let journal = Journal::new(&mut self.db);
-        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
-        context.inner_context.memory = self.env.tx.data.to_vec();
+    fn get_env_value(&self) -> syscall::U256 {
         let mut ethereum_value = self.env.tx.value.0.to_vec();
-        eprintln!("ETH VAL: {:?}", ethereum_value);
+        ethereum_value.reverse(); // we have to reverse the bytes, it's in little endian and we use big endian with syscall
         let mut value = [0u8; 32];
 
         for (i, num) in ethereum_value.iter().enumerate() {
-            value[i * 8..(i + 1) * 8].copy_from_slice(&num.to_le_bytes());
+            value[i * 8..(i + 1) * 8].copy_from_slice(&num.to_be_bytes());
         }
 
-        let mut value = syscall::U256::from_fixed_be_bytes(value);
-        eprintln!("VALUE ES: {:?}", value);
+        syscall::U256::from_fixed_be_bytes(value)
+    }
 
-        context.create(
-            self.env.tx.data.len() as u32,
-            0,
-            &mut value,
-            &mut self.env.tx.gas_limit,
-        );
+    fn create(&mut self) -> Result<ResultAndState, EVMError> {
+        self.validate_transaction()?;
+
+        let mut value = self.get_env_value();
+        let mut gas_limit = self.env.tx.gas_limit;
+        let program = self.env.tx.data.to_vec();
+        let program_size = program.len() as u32;
+
+        let mut context = self.create_syscall_context();
+        context.inner_context.memory = program;
+
+        context.create(program_size, 0, &mut value, &mut gas_limit);
         context.get_result()
     }
 
