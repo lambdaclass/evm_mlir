@@ -61,7 +61,6 @@ impl Evm<Db> {
     }
 
     fn run_program(&mut self, program: Program) -> Result<ResultAndState, EVMError> {
-        self.validate_transaction()?;
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
@@ -79,6 +78,7 @@ impl Evm<Db> {
     }
 
     fn call(&mut self) -> Result<ResultAndState, EVMError> {
+        self.validate_transaction()?;
         let code_address = self.env.tx.get_address();
 
         let bytecode = match self.db.code_by_address(code_address) {
