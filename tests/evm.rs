@@ -4910,8 +4910,7 @@ fn coinbase_address_is_warm() {
     let mut env = Env::default();
     env.tx.transact_to = TransactTo::Call(caller_address);
     env.tx.caller = caller_address;
-    let mut access_list = AccessList::default();
-    access_list.push((coinbase_addr, Vec::new()));
+    let access_list = vec![(coinbase_addr, Vec::new())];
     env.tx.access_list = access_list;
     env.block.coinbase = coinbase_addr;
     let mut db = Db::new().with_contract(caller_address, bytecode);
@@ -4943,8 +4942,7 @@ fn balance_warm_cold_gas_cost() {
 #[test]
 fn addresses_in_access_list_are_warm() {
     let address_in_access_list = Address::from_low_u64_be(10000);
-    let mut access_list = AccessList::default();
-    access_list.push((address_in_access_list, Vec::new()));
+    let access_list = vec![(address_in_access_list, Vec::new())];
     let gas = 255_u8;
     let value = 0_u8;
     let args_offset = 0_u8;
