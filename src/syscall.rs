@@ -847,6 +847,7 @@ impl<'c> SyscallContext<'c> {
             let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
 
             let address = Address::from_slice(&address_slice);
+            let is_cold = !self.journal.account_is_warm(&address);
 
             match self.journal.get_account(&address) {
                 Some(a) => {
@@ -858,8 +859,6 @@ impl<'c> SyscallContext<'c> {
                     balance.lo = 0;
                 }
             };
-
-            let is_cold = !self.journal.account_is_warm(&address);
             if is_cold {
                 self.journal.add_account_as_warm(address);
                 gas_cost = gas_cost::BALANCE_COLD
