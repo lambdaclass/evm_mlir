@@ -3618,7 +3618,6 @@ fn staticcall_on_precompile_ecmul_invalid_point() {
 
 #[test]
 fn staticcall_on_precompile_ecmul_with_missing_stack_parameter() {
-    let ret_size: u8 = 64;
     let ret_offset: u8 = 96;
     let args_size: u8 = 96;
     let args_offset: u8 = 0;
@@ -3649,10 +3648,6 @@ fn staticcall_on_precompile_ecmul_with_missing_stack_parameter() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),       // Gas
         Operation::StaticCall,
-        // Return
-        Operation::Push((1_u8, ret_size.into())),
-        Operation::Push((1_u8, ret_offset.into())),
-        Operation::Return,
     ];
 
     let program = Program::from(caller_ops);
@@ -3697,6 +3692,19 @@ fn staticcall_on_precompile_ecmul_with_not_enough_gas() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
+        // Check if STATICCALL returned 0 (failure)
+        Operation::IsZero,
+        Operation::Push((1_u8, 180_u8.into())), // Push the location of revert
+        Operation::Jumpi,
+        // Continue execution if STATICCALL returned 1 (shouldn't happen)
+        Operation::Push((1_u8, ret_size.into())), // Ret size
+        Operation::Push((1_u8, ret_offset.into())), // Ret offset
+        Operation::Return,
+        // Revert
+        Operation::Jumpdest { pc: 180 },
+        Operation::Push0, // Ret size
+        Operation::Push0, // Ret offset
+        Operation::Revert,
     ];
 
     let program = Program::from(caller_ops);
@@ -3705,7 +3713,7 @@ fn staticcall_on_precompile_ecmul_with_not_enough_gas() {
     let db = Db::new().with_contract(caller_address, caller_bytecode);
     env.tx.transact_to = TransactTo::Call(caller_address);
 
-    run_program_assert_num_result(env, db, BigUint::ZERO);
+    run_program_assert_revert(env, db);
 }
 
 #[test]
