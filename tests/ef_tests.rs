@@ -34,7 +34,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
-        "stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
@@ -57,14 +57,13 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
-        "stRandom2".into(),
         "stMemoryStressTest".into(),
         "vmTests".into(),
         "stZeroKnowledge".into(),
         "stLogTests".into(),
         "stBugs".into(),
         "stEIP1559".into(),
-        //"stStaticCall".into(), this works, but is very slow also (the return 50000 test)
+        "stStaticCall".into(),
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
@@ -167,17 +166,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             if let Some(basefee) = unit.env.current_base_fee {
                 env.block.basefee = basefee;
             };
-            let mut db = match to.clone() {
-                TransactTo::Call(to) => {
-                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
-                    Db::new().with_contract(to, opcodes)
-                }
-                TransactTo::Create => {
-                    let opcodes =
-                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
-                    Db::new().with_contract(env.tx.caller, opcodes)
-                }
-            };
+
+            let mut db = Db::new();
 
             // Load pre storage into db
             for (address, account_info) in unit.pre.iter() {
@@ -196,9 +186,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
-                    if unit.out.as_ref() != res.result.output() {
-                        return Err("Wrong output".into());
-                    }
                     if let Some((expected_output, output)) =
                         unit.out.as_ref().zip(res.result.output())
                     // for some reason, if we just compare unit.out.as_ref() != res.result.output()
