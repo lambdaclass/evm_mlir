@@ -3630,6 +3630,10 @@ fn staticcall_on_precompile_ecmul_invalid_point() {
     let y1: u8 = 1;
     let s: u8 = 2;
 
+    let mut jumpdest: u8 = (33 * 3) + (3 * 3); // parameters store
+    jumpdest += (2 * 4) + 21 + 33 + 1; // call
+    jumpdest += 1 + 2 + 1 + (2 * 2) + 1; // check and return
+
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3651,14 +3655,16 @@ fn staticcall_on_precompile_ecmul_invalid_point() {
         Operation::StaticCall,
         // Check if STATICCALL returned 0 (failure)
         Operation::IsZero,
-        Operation::Push((1_u8, 180_u8.into())), // Push the location of revert
+        Operation::Push((1_u8, jumpdest.into())), // Push the location of revert
         Operation::Jumpi,
         // Continue execution if STATICCALL returned 1 (shouldn't happen)
         Operation::Push((1_u8, ret_size.into())), // Ret size
         Operation::Push((1_u8, ret_offset.into())), // Ret offset
         Operation::Return,
         // Revert
-        Operation::Jumpdest { pc: 180 },
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
         Operation::Push0, // Ret size
         Operation::Push0, // Ret offset
         Operation::Revert,
@@ -3730,6 +3736,10 @@ fn staticcall_on_precompile_ecmul_with_not_enough_gas() {
     let y1: u8 = 2;
     let s: u8 = 2;
 
+    let mut jumpdest: u8 = (33 * 3) + (3 * 3); // parameters store
+    jumpdest += (2 * 4) + 21 + 33 + 1; // call
+    jumpdest += 1 + 2 + 1 + (2 * 2) + 1; // check and return
+
     let caller_ops = vec![
         // Store the parameters in memory
         Operation::Push((32_u8, x1.into())),
@@ -3751,14 +3761,16 @@ fn staticcall_on_precompile_ecmul_with_not_enough_gas() {
         Operation::StaticCall,
         // Check if STATICCALL returned 0 (failure)
         Operation::IsZero,
-        Operation::Push((1_u8, 180_u8.into())), // Push the location of revert
+        Operation::Push((1_u8, jumpdest.into())), // Push the location of revert
         Operation::Jumpi,
         // Continue execution if STATICCALL returned 1 (shouldn't happen)
         Operation::Push((1_u8, ret_size.into())), // Ret size
         Operation::Push((1_u8, ret_offset.into())), // Ret offset
         Operation::Return,
         // Revert
-        Operation::Jumpdest { pc: 180 },
+        Operation::Jumpdest {
+            pc: jumpdest as usize,
+        },
         Operation::Push0, // Ret size
         Operation::Push0, // Ret offset
         Operation::Revert,
