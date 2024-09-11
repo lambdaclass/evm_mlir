@@ -12,15 +12,26 @@ use crate::{
     result::PrecompileError,
 };
 use bytes::Bytes;
-use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgProof, KzgSettings};
+use lambdaworks_crypto::commitments::{
+    kzg::{KateZaveruchaGoldberg, StructuredReferenceString},
+    traits::IsCommitmentScheme,
+};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
-        short_weierstrass::curves::bn_254::{
-            curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
-            field_extension::Degree12ExtensionField,
-            pairing::BN254AtePairing,
-            twist::BN254TwistCurve,
+        short_weierstrass::{
+            curves::{
+                bls12_381::{
+                    curve::BLS12381Curve, default_types::FrField, pairing::BLS12381AtePairing,
+                },
+                bn_254::{
+                    curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+                    field_extension::Degree12ExtensionField,
+                    pairing::BN254AtePairing,
+                    twist::BN254TwistCurve,
+                },
+            },
+            traits::Compress,
         },
         traits::{IsEllipticCurve, IsPairing},
     },
@@ -31,7 +42,7 @@ use lambdaworks_math::{
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use std::{array::TryFromSliceError, path::Path};
+use std::array::TryFromSliceError;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -464,22 +475,49 @@ const POINT_EVAL_CALLDATA_LEN: usize = 192;
 #[derive(Debug)]
 struct TrustedSetupError;
 
-fn get_trusted_setup(trusted_setup_file: &Path) -> Result<KzgSettings, TrustedSetupError> {
-    debug_assert!(
-        trusted_setup_file.exists(),
-        "Missing trusted setup file at: {:?}",
-        trusted_setup_file.to_str().unwrap()
-    );
+fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, TrustedSetupError> {
+    type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
-    KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)
-}
+    let mut trusted_setup_g1_point: [u8; 48] = [
+        160, 65, 60, 13, 202, 254, 198, 219, 201, 244, 125, 102, 120, 92, 241, 232, 201, 129, 4,
+        79, 125, 19, 207, 227, 228, 252, 187, 113, 181, 64, 141, 253, 230, 49, 36, 147, 203, 60,
+        29, 48, 81, 108, 179, 202, 136, 192, 54, 84,
+    ];
 
-pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
-    let bytes = commitment.to_bytes().to_vec();
-    let mut hash: [u8; 32] = sha2::Sha256::digest(bytes).into();
-    hash[0] = VERSIONED_HASH_VERSION_KZG;
+    let mut trusted_setup_first_g2_point: [u8; 96] = [
+        147, 224, 43, 96, 82, 113, 159, 96, 125, 172, 211, 160, 136, 39, 79, 101, 89, 107, 208,
+        208, 153, 32, 182, 26, 181, 218, 97, 187, 220, 127, 80, 73, 51, 76, 241, 18, 19, 148, 93,
+        87, 229, 172, 125, 5, 93, 4, 43, 126, 2, 74, 162, 178, 240, 143, 10, 145, 38, 8, 5, 39, 45,
+        197, 16, 81, 198, 228, 122, 212, 250, 64, 59, 2, 180, 81, 11, 100, 122, 227, 209, 119, 11,
+        172, 3, 38, 168, 5, 187, 239, 212, 128, 86, 200, 193, 33, 189, 184,
+    ];
 
-    Bytes32::from_bytes(&hash).unwrap()
+    let mut trusted_setup_second_g2_point: [u8; 96] = [
+        181, 191, 215, 221, 140, 222, 177, 40, 132, 59, 194, 135, 35, 10, 243, 137, 38, 24, 112,
+        117, 203, 251, 239, 168, 16, 9, 162, 206, 97, 90, 197, 61, 41, 20, 229, 135, 12, 180, 82,
+        210, 175, 170, 171, 36, 243, 73, 159, 114, 24, 92, 191, 238, 83, 73, 39, 20, 115, 68, 41,
+        183, 179, 134, 8, 226, 57, 38, 201, 17, 204, 236, 234, 201, 163, 104, 81, 71, 123, 164,
+        198, 11, 8, 112, 65, 222, 98, 16, 0, 237, 201, 142, 218, 218, 32, 193, 222, 242,
+    ];
+
+    let g1_point = BLS12381Curve::decompress_g1_point(&mut trusted_setup_g1_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let g2_a_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_first_g2_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let g2_b_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_second_g2_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let main_group = vec![g1_point];
+    let secondary_group = [g2_a_point, g2_b_point];
+
+    let kzg = KZG::new(StructuredReferenceString::new(
+        &main_group,
+        &secondary_group,
+    ));
+
+    Ok(kzg)
 }
 
 #[derive(Debug)]
@@ -511,23 +549,34 @@ pub fn point_eval(
        [144: 192]   proof           Proof associated with the commitment
     */
 
-    let commitment = KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PointEvalErr)?;
-    let versioned_hash = Bytes32::from_bytes(&input[..32]).map_err(|_| PointEvalErr)?;
+    let versioned_hash = &input[..32];
 
-    if commitment_to_versioned_hash(&commitment) != versioned_hash {
+    let kzg = get_kzg().map_err(|_| PointEvalErr)?;
+
+    let commitmet_bytes = &input[96..144];
+    let mut commitmet_array: [u8; 48] = [0; 48];
+    commitmet_array.copy_from_slice(commitmet_bytes);
+
+    let mut commitment_bytes_hash: [u8; 32] = sha2::Sha256::digest(&commitmet_array).into();
+    commitment_bytes_hash[0] = VERSIONED_HASH_VERSION_KZG;
+
+    if commitment_bytes_hash != versioned_hash {
         return Err(PointEvalErr);
     }
 
-    let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PointEvalErr)?;
-    let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PointEvalErr)?;
-    let proof = Bytes48::from_bytes(&input[144..192]).map_err(|_| PointEvalErr)?;
+    let commitment =
+        BLS12381Curve::decompress_g1_point(&mut commitmet_array).map_err(|_| PointEvalErr)?;
 
-    let trusted_setup =
-        get_trusted_setup(Path::new("./official_trusted_setup.txt")).map_err(|_| PointEvalErr)?;
+    let proof_bytes = &input[144..192];
+    let mut proof_array: [u8; 48] = [0; 48];
+    proof_array.copy_from_slice(proof_bytes);
 
-    if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
-        .map_err(|_| PointEvalErr)?
-    {
+    let proof = BLS12381Curve::decompress_g1_point(&mut proof_array).map_err(|_| PointEvalErr)?;
+
+    let x = FieldElement::from_bytes_be(&input[32..64]).map_err(|_| PointEvalErr)?;
+    let y = FieldElement::from_bytes_be(&input[64..96]).map_err(|_| PointEvalErr)?;
+
+    if kzg.verify(&x, &y, &commitment, &proof) {
         Err(PointEvalErr)
     } else {
         Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
