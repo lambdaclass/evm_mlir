@@ -57,7 +57,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
-        //"stRandom2".into(),
+        "stRandom2".into(),
         "stMemoryStressTest".into(),
         "stStaticFlagEnabled".into(),
         "vmTests".into(),
@@ -73,7 +73,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
         "stMemoryTest".into(),
-        //"stRandom".into(),
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
@@ -244,10 +243,4 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(
-    run_test,
-    "ethtests/GeneralStateTests/stRandom2/",
-    r"^.*/*.json",
-);
-
-// randomstatetest2 falla en 642, 644 y 645
+datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
