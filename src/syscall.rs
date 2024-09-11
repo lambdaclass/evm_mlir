@@ -113,7 +113,7 @@ impl ExitStatusCode {
 pub struct InnerContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
     // The program bytecode
