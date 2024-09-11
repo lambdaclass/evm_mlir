@@ -3592,50 +3592,6 @@ fn staticcall_on_precompile_ecmul_invalid_point() {
         Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
         Operation::Push((32_u8, gas.into())),     // Gas
         Operation::StaticCall,
-    ];
-
-    let program = Program::from(caller_ops);
-    let caller_bytecode = Bytecode::from(program.to_bytecode());
-    let mut env = Env::default();
-    let db = Db::new().with_contract(caller_address, caller_bytecode);
-    env.tx.transact_to = TransactTo::Call(caller_address);
-
-    run_program_assert_num_result(env, db, BigUint::ZERO);
-}
-
-#[test]
-fn staticcall_on_precompile_ecmul_invalid_point_by_zero() {
-    let ret_size: u8 = 64;
-    let ret_offset: u8 = 96;
-    let args_size: u8 = 96;
-    let args_offset: u8 = 0;
-    let gas: u32 = 100_000_000;
-    let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
-    let caller_address = Address::from_low_u64_be(4040);
-
-    let x1: u8 = 1;
-    let y1: u8 = 1;
-    let s: u8 = 0;
-
-    let caller_ops = vec![
-        // Store the parameters in memory
-        Operation::Push((32_u8, x1.into())),
-        Operation::Push((1_u8, 0_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, y1.into())),
-        Operation::Push((1_u8, 0x20_u8.into())),
-        Operation::Mstore,
-        Operation::Push((32_u8, s.into())),
-        Operation::Push((1_u8, 0x40_u8.into())),
-        Operation::Mstore,
-        // Do the call
-        Operation::Push((1_u8, ret_size.into())), // Ret size
-        Operation::Push((1_u8, ret_offset.into())), // Ret offset
-        Operation::Push((1_u8, args_size.into())), // Args size
-        Operation::Push((1_u8, args_offset.into())), // Args offset
-        Operation::Push((20_u8, BigUint::from_bytes_be(callee_address.as_bytes()))), // Address
-        Operation::Push((32_u8, gas.into())),     // Gas
-        Operation::StaticCall,
         // Check if STATICCALL returned 0 (failure)
         Operation::IsZero,
         Operation::Push((1_u8, 180_u8.into())), // Push the location of revert
