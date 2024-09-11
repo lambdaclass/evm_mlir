@@ -1775,17 +1775,17 @@ pub fn access_list_cost(access_list: &AccessList) -> u64 {
 }
 
 pub fn precompiled_addresses() -> AccessList {
-    let mut access_list = AccessList::new();
-
-    access_list.push((H160::from_low_u64_be(ECRECOVER_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(SHA2_256_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(RIPEMD_160_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(IDENTITY_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(MODEXP_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(ECADD_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(ECMUL_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(ECPAIRING_ADDRESS), Vec::new()));
-    access_list.push((H160::from_low_u64_be(BLAKE2F_ADDRESS), Vec::new()));
+    let access_list = vec![
+        (H160::from_low_u64_be(ECRECOVER_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(SHA2_256_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(RIPEMD_160_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(IDENTITY_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(MODEXP_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECADD_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECMUL_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECPAIRING_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(BLAKE2F_ADDRESS), Vec::new()),
+    ];
 
     access_list
 }

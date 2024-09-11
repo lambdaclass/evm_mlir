@@ -797,15 +797,15 @@ impl<'c> SyscallContext<'c> {
 
     pub extern "C" fn get_codesize_from_address(&mut self, address: &U256, gas: &mut u64) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        let is_cold = self.journal.account_is_warm(&Address::from(address));
-
+        let is_cold = !self.journal.account_is_warm(&Address::from(address));
+        let codesize = self.journal.code_by_address(&Address::from(address)).len();
         if is_cold {
+            self.journal.add_account_as_warm(Address::from(address));
             *gas = gas_cost::EXTCODESIZE_COLD as u64;
         } else {
             *gas = gas_cost::EXTCODESIZE_WARM as u64;
         }
 
-        let codesize = self.journal.code_by_address(&Address::from(address)).len();
         codesize as u64
     }
 
@@ -921,13 +921,11 @@ impl<'c> SyscallContext<'c> {
             .journal
             .account_is_warm(&Address::from(address as &U256));
 
-        let gas_cost;
-
-        if is_cold {
-            gas_cost = gas_cost::EXTCODEHASH_COLD;
+        let gas_cost = if is_cold {
+            gas_cost::EXTCODEHASH_COLD
         } else {
-            gas_cost = gas_cost::EXTCODEHASH_WARM
-        }
+            gas_cost::EXTCODEHASH_WARM
+        };
 
         let hash = match self.journal.get_account(&Address::from(address as &U256)) {
             Some(account_info) => account_info.code_hash,
@@ -1686,7 +1684,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::GET_CODESIZE_FROM_ADDRESS),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, uint64], &[uint64]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,

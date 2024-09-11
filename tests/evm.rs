@@ -1785,7 +1785,7 @@ fn extcodesize() {
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
     let expected_result = program.to_bytecode().len();
-    run_program_assert_num_result(env, db, expected_result.into())
+    run_program_assert_num_result(env, db, expected_result.into());
 }
 
 #[test]
@@ -1804,7 +1804,7 @@ fn extcodesize_gas_check() {
         Operation::Push((1_u8, address.into())),
         Operation::ExtcodeSize,
     ];
-    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_WARM;
+    let needed_gas = gas_cost::PUSHN + gas_cost::EXTCODESIZE_COLD;
     let env = Env::default();
     run_program_assert_gas_exact(operations, env, needed_gas as _);
 }
@@ -5158,7 +5158,7 @@ fn extcodecopy_warm_cold_gas_cost() {
 #[test]
 fn extcodesize_warm_cold_gas_cost() {
     let address = 40_u8;
-    let mut operations = vec![
+    let operations = vec![
         Operation::Push((1_u8, BigUint::from(200_u8))),
         Operation::ExtcodeSize,
         Operation::Push((1_u8, BigUint::from(200_u8))),

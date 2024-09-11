@@ -2649,7 +2649,7 @@ fn extcodecopy_gas_check() {
     let static_gas = gas_cost::PUSHN * 4;
     let dynamic_gas = gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
-        + gas_cost::EXTCODECOPY_WARM;
+        + gas_cost::EXTCODECOPY_COLD;
     let expected_gas = static_gas + dynamic_gas;
     run_program_assert_gas_exact(program, expected_gas as _);
 }

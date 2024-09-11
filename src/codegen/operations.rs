@@ -4193,7 +4193,6 @@ fn codegen_extcodesize<'c, 'r>(
     let ptr_type = pointer(context, 0);
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    // TODO: handle cold and warm accesses for dynamic gas computation
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
@@ -4228,7 +4227,6 @@ fn codegen_extcodesize<'c, 'r>(
         ))
         .result(0)?
         .into();
-
     let number_of_elements = ok_block
         .append_operation(arith::constant(
             context,
@@ -4874,8 +4872,6 @@ fn codegen_extcodecopy<'c, 'r>(
         .append_operation(arith::addi(dest_offset, size, location))
         .result(0)?
         .into();
-
-    // TODO: compute address access cost (cold and warm accesses)
 
     // consume 3 * (size + 31) / 32 gas
     let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
