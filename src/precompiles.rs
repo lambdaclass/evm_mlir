@@ -1,13 +1,6 @@
-use crate::{
-    constants::precompiles::{
-        blake2_gas_cost, ecpairing_dynamic_cost, identity_dynamic_cost, ripemd_160_dynamic_cost,
-        sha2_256_dynamic_cost, ECADD_COST, ECMUL_COST, ECPAIRING_STATIC_COST, ECRECOVER_COST,
-        IDENTITY_COST, RIPEMD_160_COST, SHA2_256_COST,
-    },
-    primitives::U256,
-    result::PrecompileError,
-};
+use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
 use bytes::Bytes;
+use ethereum_types::Address;
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -26,27 +19,33 @@ use lambdaworks_math::{
 use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use std::array::TryFromSliceError;
 
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, secp256k1::Error> {
-    if gas_limit < ECRECOVER_COST || calldata.len() < 128 {
-        return Ok(Bytes::new());
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 128 {
+        return Err(PrecompileError::InvalidCalldata);
+    }
+    if gas_limit < ECRECOVER_COST {
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += ECRECOVER_COST;
+
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
     let sig = &calldata[64..128];
 
-    let msg = Message::from_digest_slice(hash)?;
-    let id = ecdsa::RecoveryId::from_i32(v)?;
-    let sig = ecdsa::RecoverableSignature::from_compact(sig, id)?;
+    let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
+    let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
+    let sig = ecdsa::RecoverableSignature::from_compact(sig, id)
+        .map_err(|_| PrecompileError::Secp256k1Error)?;
 
     let secp = Secp256k1::new();
-    let public_address = secp.recover_ecdsa(&msg, &sig)?;
+    let public_address = secp
+        .recover_ecdsa(&msg, &sig)
+        .map_err(|_| PrecompileError::Secp256k1Error)?;
 
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
@@ -55,59 +54,72 @@ pub fn ecrecover(
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
-pub fn identity(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn identity(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
-    calldata.clone()
+    Ok(calldata.clone())
 }
 
-pub fn sha2_256(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = SHA2_256_COST + sha2_256_dynamic_cost(calldata.len() as u64);
+pub fn sha2_256(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    let gas_cost = SHA2_256_STATIC_COST + sha2_256_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
     let hash = sha2::Sha256::digest(calldata);
-    Bytes::copy_from_slice(&hash)
+    Ok(Bytes::copy_from_slice(&hash))
 }
 
-pub fn ripemd_160(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn ripemd_160(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     let gas_cost = RIPEMD_160_COST + ripemd_160_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
     let mut hasher = ripemd::Ripemd160::new();
     hasher.update(calldata);
     let mut output = [0u8; 32];
     hasher.finalize_into((&mut output[12..]).into());
-    Bytes::copy_from_slice(&output)
+    Ok(Bytes::copy_from_slice(&output))
 }
 
-pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
+pub fn modexp(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
     if calldata.len() < 96 {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let Ok(b_size) = usize::try_from(U256::from_big_endian(&calldata[0..32])) else {
-        return Bytes::new();
-    };
-    let Ok(e_size) = usize::try_from(U256::from_big_endian(&calldata[32..64])) else {
-        return Bytes::new();
-    };
-    let Ok(m_size) = usize::try_from(U256::from_big_endian(&calldata[64..96])) else {
-        return Bytes::new();
-    };
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
     if calldata.len() < params_len {
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
     let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
     let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
@@ -127,7 +139,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     let calculate_iteration_count = iteration_count.max(1);
     let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(200);
     if gas_limit < gas_cost {
-        return Bytes::new();
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += gas_cost;
 
@@ -140,7 +152,7 @@ pub fn modexp(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes
     };
 
     let output = &result.to_bytes_be()[..m_size];
-    Bytes::copy_from_slice(output)
+    Ok(Bytes::copy_from_slice(output))
 }
 
 pub fn ecadd(
@@ -156,7 +168,6 @@ pub fn ecadd(
         *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += ECADD_COST;
 
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
@@ -170,19 +181,26 @@ pub fn ecadd(
     let p2_is_infinity = x2.eq(&zero_el) && y2.eq(&zero_el);
 
     match (p1_is_infinity, p2_is_infinity) {
-        (true, true) => return Ok(Bytes::from([0u8; 64].to_vec())),
+        (true, true) => {
+            *consumed_gas += ECADD_COST;
+            return Ok(Bytes::from([0u8; 64].to_vec()));
+        }
         (true, false) => {
             if let Ok(p2) = BN254Curve::create_point_from_affine(x2, y2) {
+                *consumed_gas += ECADD_COST;
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         (false, true) => {
             if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+                *consumed_gas += ECADD_COST;
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
+            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         _ => {}
@@ -192,19 +210,29 @@ pub fn ecadd(
         BN254Curve::create_point_from_affine(x1, y1),
         BN254Curve::create_point_from_affine(x2, y2),
     ) else {
+        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidEcPoint);
     };
+
+    *consumed_gas += ECADD_COST;
     let sum = p1.operate_with(&p2).to_affine();
     let res = [sum.x().to_bytes_be(), sum.y().to_bytes_be()].concat();
     Ok(Bytes::from(res))
 }
 
-pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    if calldata.len() < 96 || gas_limit < ECMUL_COST {
+pub fn ecmul(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() < 96 {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
-    *consumed_gas += ECMUL_COST;
+    if gas_limit < ECMUL_COST {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
+    }
 
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
@@ -213,32 +241,44 @@ pub fn ecmul(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes 
 
     // if the point is infinity it is directly returned
     let zero_el = BN254FieldElement::from(0);
-    let zero_u256 = LambdaWorksU256::from(0_u16);
     let p1_is_infinity = x1.eq(&zero_el) && y1.eq(&zero_el);
-
     if p1_is_infinity {
-        return Bytes::from([0u8; 64].to_vec());
-    }
-    // scalar is 0 and the point is valid
-    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
-        return Bytes::from([0u8; 64].to_vec());
+        *consumed_gas += ECMUL_COST;
+        return Ok(Bytes::from([0u8; 64].to_vec()));
     }
 
-    if let Ok(p) = BN254Curve::create_point_from_affine(x1, y1) {
-        let mul = p.operate_with_self(s).to_affine();
-        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
-        return Bytes::from(res);
+    // scalar is 0 and the point is valid
+    let zero_u256 = LambdaWorksU256::from(0_u16);
+    if s.eq(&zero_u256) && BN254Curve::create_point_from_affine(x1.clone(), y1.clone()).is_ok() {
+        *consumed_gas += ECMUL_COST;
+        return Ok(Bytes::from([0u8; 64].to_vec()));
     }
-    Bytes::new()
+
+    if let Ok(p1) = BN254Curve::create_point_from_affine(x1, y1) {
+        *consumed_gas += ECMUL_COST;
+        let mul = p1.operate_with_self(s).to_affine();
+        let res = [mul.x().to_bytes_be(), mul.y().to_bytes_be()].concat();
+        return Ok(Bytes::from(res));
+    }
+
+    *consumed_gas += gas_limit;
+    Err(PrecompileError::InvalidEcPoint)
 }
 
-pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> Bytes {
-    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
-    if calldata.len() % 192 != 0 || gas_limit < gas_cost {
+pub fn ecpairing(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if calldata.len() % 192 != 0 {
         *consumed_gas += gas_limit;
-        return Bytes::new();
+        return Err(PrecompileError::InvalidCalldata);
     }
-    *consumed_gas += gas_cost;
+    let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        *consumed_gas += gas_limit;
+        return Err(PrecompileError::NotEnoughGas);
+    }
 
     let rounds = calldata.len() / 192;
     let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
@@ -266,7 +306,8 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
         let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
-            return Bytes::from([0u8; 32].to_vec());
+            *consumed_gas += gas_limit;
+            return Err(PrecompileError::InvalidEcPoint);
         };
 
         // if any point is (0,0) the pairing is ok
@@ -282,20 +323,22 @@ pub fn ecpairing(calldata: &Bytes, gas_limit: u64, consumed_gas: &mut u64) -> By
             BN254Curve::create_point_from_affine(g1_x, g1_y),
             BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
         ) else {
-            return Bytes::from([0u8; 32].to_vec());
+            *consumed_gas += gas_limit;
+            return Err(PrecompileError::InvalidEcPoint);
         };
 
         let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
-            return Bytes::from([0u8; 32].to_vec());
+            *consumed_gas += gas_limit;
+            return Err(PrecompileError::InvalidEcPoint);
         };
         mul *= pairing_result;
     }
 
+    *consumed_gas += gas_cost;
     let success = mul.eq(&QuadraticExtensionFieldElement::one());
     let mut output = vec![0_u8; 32];
     output[31] = success as u8;
-
-    Bytes::from(output)
+    Ok(Bytes::from(output))
 }
 
 // Extracted from https://datatracker.ietf.org/doc/html/rfc7693#section-2.7
@@ -379,50 +422,46 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 
 const CALLDATA_LEN: usize = 213;
 
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-#[error("Blake2Error")]
-pub struct Blake2fError;
-
-impl From<TryFromSliceError> for Blake2fError {
-    fn from(_: TryFromSliceError) -> Self {
-        Self {}
-    }
-}
-
 pub fn blake2f(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, Blake2fError> {
+) -> Result<Bytes, PrecompileError> {
     /*
     [0; 3] (4 bytes)	rounds	Number of rounds (big-endian unsigned integer)
     [4; 67] (64 bytes)	h	State vector (8 8-byte little-endian unsigned integer)
     [68; 195] (128 bytes)	m	Message block vector (16 8-byte little-endian unsigned integer)
     [196; 211] (16 bytes)	t	Offset counters (2 8-byte little-endian integer)
-    [212; 212] (1 bytes)	f	Final block indicator flag (0 or 1)
+    [212; 212] (1 byte)	f	Final block indicator flag (0 or 1)
     */
 
     if calldata.len() != CALLDATA_LEN {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::InvalidCalldata);
     }
 
-    let rounds = u32::from_be_bytes(calldata[0..4].try_into()?);
+    let rounds = u32::from_be_bytes(
+        calldata[0..4]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     let needed_gas = blake2_gas_cost(rounds);
     if needed_gas > gas_limit {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::NotEnoughGas);
     }
     *consumed_gas += needed_gas;
 
     let mut h: [u64; 8] = [0_u64; 8];
     let mut m: [u64; 16] = [0_u64; 16];
     let mut t: [u64; 2] = [0_u64; 2];
-    let f = u8::from_be_bytes(calldata[212..213].try_into()?);
+    let f = u8::from_be_bytes(
+        calldata[212..213]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     if f > 1 {
-        return Err(Blake2fError {});
+        return Err(PrecompileError::InvalidCalldata);
     }
     let f = f == 1;
 
@@ -430,22 +469,84 @@ pub fn blake2f(
 
     for (i, h) in h.iter_mut().enumerate() {
         let start = 4 + i * 8;
-        *h = u64::from_le_bytes(calldata[start..start + 8].try_into()?);
+        *h = u64::from_le_bytes(
+            calldata[start..start + 8]
+                .try_into()
+                .map_err(|_| PrecompileError::InvalidCalldata)?,
+        );
     }
 
     for (i, m) in m.iter_mut().enumerate() {
         let start = 68 + i * 8;
-        *m = u64::from_le_bytes(calldata[start..start + 8].try_into()?);
+        *m = u64::from_le_bytes(
+            calldata[start..start + 8]
+                .try_into()
+                .map_err(|_| PrecompileError::InvalidCalldata)?,
+        );
     }
 
-    t[0] = u64::from_le_bytes(calldata[196..204].try_into()?);
-    t[1] = u64::from_le_bytes(calldata[204..212].try_into()?);
+    t[0] = u64::from_le_bytes(
+        calldata[196..204]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
+    t[1] = u64::from_le_bytes(
+        calldata[204..212]
+            .try_into()
+            .map_err(|_| PrecompileError::InvalidCalldata)?,
+    );
 
     blake2f_compress(rounds as _, &mut h, &m, &t, f);
 
     let out: Vec<u8> = h.iter().flat_map(|&num| num.to_le_bytes()).collect();
 
     Ok(Bytes::from(out))
+}
+
+pub fn is_precompile(callee_address: Address) -> bool {
+    let addr_as_u64 = callee_address.to_low_u64_be();
+    // TODO: replace 10 with point evaluation address constant
+    callee_address[0..12] == [0u8; 12] && (ECRECOVER_ADDRESS..=10).contains(&addr_as_u64)
+}
+
+pub fn execute_precompile(
+    callee_address: Address,
+    calldata: Bytes,
+    gas_to_send: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    match callee_address {
+        x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => {
+            ecrecover(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(IDENTITY_ADDRESS) => {
+            identity(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(SHA2_256_ADDRESS) => {
+            sha2_256(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(RIPEMD_160_ADDRESS) => {
+            ripemd_160(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(MODEXP_ADDRESS) => {
+            modexp(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECADD_ADDRESS) => {
+            ecadd(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECMUL_ADDRESS) => {
+            ecmul(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(ECPAIRING_ADDRESS) => {
+            ecpairing(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(BLAKE2F_ADDRESS) => {
+            blake2f(&calldata, gas_to_send, consumed_gas)
+        }
+        _ => {
+            unreachable!()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -472,7 +573,7 @@ mod tests {
 
         let expected_gas = 200;
         let mut consumed_gas = 0;
-        modexp(
+        let _ = modexp(
             &Bytes::copy_from_slice(&calldata),
             expected_gas,
             &mut consumed_gas,
@@ -499,7 +600,7 @@ mod tests {
 
         let expected_gas = 682;
         let mut consumed_gas = 0;
-        modexp(
+        let _ = modexp(
             &Bytes::copy_from_slice(&calldata),
             expected_gas,
             &mut consumed_gas,
@@ -629,14 +730,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -651,14 +751,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -679,7 +778,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -700,7 +799,7 @@ mod tests {
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_err());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -728,7 +827,7 @@ mod tests {
         let expected_result = Bytes::from([expected_x, expected_y].concat());
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -749,7 +848,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -770,7 +869,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -785,14 +884,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -806,14 +904,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -833,7 +930,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -853,7 +950,7 @@ mod tests {
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -887,12 +984,12 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
     #[test]
-    fn ecpairing_invalid_points() {
+    fn ecpairing_invalid_point() {
         // changed last byte from `fc` to `fd`
         let calldata = Bytes::from(
             hex::decode(
@@ -912,15 +1009,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 113_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_result = Bytes::from([0u8; 32].to_vec());
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -947,7 +1042,7 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -975,9 +1070,25 @@ mod tests {
         );
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert_eq!(result.unwrap(), expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
+
+    #[test]
+    fn ecpairing_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let expected_result = Bytes::from(
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap(),
+        );
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), expected_result);
+        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
+    }
+
     #[test]
     fn ecpairing_out_of_curve() {
         let calldata = Bytes::from(
@@ -992,15 +1103,13 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 79_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_result = Bytes::from([0u8; 32].to_vec());
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1014,26 +1123,10 @@ mod tests {
         );
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let expected_result = Bytes::new();
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result, expected_result);
+        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
         assert_eq!(consumed_gas, gas_limit);
-    }
-
-    #[test]
-    fn ecpairing_empty_calldata() {
-        let calldata = Bytes::new();
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-        let expected_result = Bytes::from(
-            hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-                .unwrap(),
-        );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
-
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
     }
 
     #[test]
@@ -1062,7 +1155,7 @@ mod tests {
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(result.is_empty());
+        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
         assert_eq!(consumed_gas, gas_limit);
     }
 
@@ -1087,7 +1180,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
     }
@@ -1137,7 +1229,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1156,7 +1247,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1175,7 +1265,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
     }
 
@@ -1195,7 +1284,6 @@ mod tests {
         let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
         assert!(result.is_ok());
         let result = result.unwrap();
-        assert_eq!(result.len(), expected_result.len());
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
     }
