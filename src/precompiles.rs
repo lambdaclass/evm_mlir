@@ -160,7 +160,7 @@ pub fn ecadd(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 128 {
+    if calldata.len() != 128 {
         *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
@@ -225,7 +225,7 @@ pub fn ecmul(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 96 {
+    if calldata.len() != 96 {
         *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
