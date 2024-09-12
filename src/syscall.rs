@@ -500,39 +500,6 @@ impl<'c> SyscallContext<'c> {
         return_code
     }
 
-    fn copy_exact(
-        target: &mut [u8],
-        source: &[u8],
-        target_offset: u32,
-        source_offset: u32,
-        size: u32,
-    ) {
-        // Convert u32 to usize
-        let target_offset = target_offset as usize;
-        let source_offset = source_offset as usize;
-        let size = size as usize;
-
-        // Check if the offsets are within their respective slices
-        if size + target_offset > target.len() {
-            eprintln!("ERROR: Specified target offset and size are bigger than target len");
-            return;
-        }
-
-        if size + source_offset > source.len() {
-            eprintln!("ERROR: Specified source offset and size are bigger than source len");
-            return;
-        }
-
-        // Calculate the actual number of bytes we can copy
-        let available_target_space = target.len() - target_offset;
-        let available_source_bytes = source.len() - source_offset;
-        let bytes_to_copy = size.min(available_target_space).min(available_source_bytes);
-
-        // Perform the copy
-        target[target_offset..target_offset + bytes_to_copy]
-            .copy_from_slice(&source[source_offset..source_offset + bytes_to_copy]);
-    }
-
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
         let account = match self.env.tx.transact_to {
             TransactTo::Call(address) => self.journal.get_account(&address).unwrap_or_default(),
