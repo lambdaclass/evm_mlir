@@ -7,7 +7,10 @@ use crate::{
 };
 use bytes::Bytes;
 use ethereum_types::Address;
-use lambdaworks_crypto::commitments::kzg::{KateZaveruchaGoldberg, StructuredReferenceString};
+use lambdaworks_crypto::commitments::{
+    kzg::{KateZaveruchaGoldberg, StructuredReferenceString},
+    traits::IsCommitmentScheme,
+};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
@@ -613,6 +616,9 @@ pub fn point_eval(
         return Err(PrecompileError::PointEvalError);
     }
 
+    let commitment = BLS12381Curve::decompress_g1_point(&mut commitment_array)
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+
     let x = FieldElement::from_bytes_be(&input[32..64])
         .map_err(|_| PrecompileError::InvalidCalldata)?;
     let y = FieldElement::from_bytes_be(&input[64..96])
@@ -627,9 +633,7 @@ pub fn point_eval(
 
     let kzg = get_kzg().map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
-        .map_err(|_| PrecompileError::PointEvalError)?
-    {
+    if kzg.verify(&x, &y, &commitment, &proof) {
         Err(PrecompileError::PointEvalError)
     } else {
         Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
