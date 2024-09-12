@@ -1761,3 +1761,12 @@ pub fn compute_contract_address2(address: H160, salt: U256, initialization_code:
     hasher.update(initialization_code_hash);
     Address::from_slice(&hasher.finalize()[12..])
 }
+
+// Right pads calldata with zeros until specified length
+pub fn right_pad(calldata: &Bytes, target_len: usize) -> Bytes {
+    let mut padded_calldata = calldata.to_vec();
+    if padded_calldata.len() < target_len {
+        padded_calldata.extend(vec![0u8; target_len - padded_calldata.len()]);
+    }
+    padded_calldata.into()
+}

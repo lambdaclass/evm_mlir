@@ -1,4 +1,6 @@
-use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
+use crate::{
+    constants::precompiles::*, primitives::U256, result::PrecompileError, utils::right_pad,
+};
 use bytes::Bytes;
 use ethereum_types::Address;
 use lambdaworks_math::{
@@ -160,13 +162,11 @@ pub fn ecadd(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() != 128 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECADD_COST {
         return Err(PrecompileError::NotEnoughGas);
     }
 
+    let calldata = right_pad(calldata, 128);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
     let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
@@ -220,13 +220,11 @@ pub fn ecmul(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() != 96 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECMUL_COST {
         return Err(PrecompileError::NotEnoughGas);
     }
 
+    let calldata = right_pad(calldata, 96);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
     let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
@@ -705,6 +703,18 @@ mod tests {
     }
 
     #[test]
+    fn ecadd_with_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECADD_COST);
+    }
+
+    #[test]
     fn ecadd_with_invalid_first_point() {
         let calldata = Bytes::from(
             hex::decode(
@@ -742,27 +752,6 @@ mod tests {
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-    }
-
-    #[test]
-    fn ecadd_with_invalid_calldata() {
-        // calldata's len = 127
-        let calldata = Bytes::from(
-            hex::decode(
-                "\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            0000000000000000000000000000000000000000000000000000000000000002\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            00000000000000000000000000000000000000000000000000000000000002",
-            )
-            .unwrap(),
-        );
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
-
-        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
     }
 
     #[test]
@@ -856,6 +845,18 @@ mod tests {
     }
 
     #[test]
+    fn ecmul_with_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECMUL_COST);
+    }
+
+    #[test]
     fn ecmul_invalid_point() {
         let calldata = Bytes::from(
             hex::decode(
@@ -891,26 +892,6 @@ mod tests {
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-    }
-
-    #[test]
-    fn ecmul_with_invalid_calldata() {
-        // calldata's len = 95
-        let calldata = Bytes::from(
-            hex::decode(
-                "\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            0000000000000000000000000000000000000000000000000000000000000002\
-            00000000000000000000000000000000000000000000000000000000000002",
-            )
-            .unwrap(),
-        );
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-
-        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
-
-        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
     }
 
     #[test]
