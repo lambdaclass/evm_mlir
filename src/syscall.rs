@@ -124,6 +124,43 @@ pub struct InnerContext {
     logs: Vec<LogData>,
 }
 
+impl InnerContext {
+    pub fn get_memory_slice(&mut self, memory_offset: usize, size: usize) -> &mut [u8] {
+        let memory_end = memory_offset + size;
+
+        &mut self.memory[memory_offset..memory_end]
+    }
+
+    pub fn resize_memory_if_necessary(&mut self, offset: usize, new_size: usize) {
+        if offset + new_size > self.memory.len() {
+            self.memory.resize(offset + new_size, 0);
+        }
+    }
+
+    pub fn set_value_to_memory(
+        &mut self,
+        memory_offset: usize,
+        value_offset: usize,
+        size: usize,
+        value: &[u8],
+    ) {
+        if value_offset >= value.len() {
+            self.get_memory_slice(memory_offset, size).fill(0);
+            return;
+        }
+
+        let value_memory_end = value.len().min(value_offset + size);
+        let value_memory_size = value_memory_end - value_offset;
+        debug_assert!(value_offset < value.len() && value_memory_end <= value.len());
+        let value = &value[value_offset..value_memory_end];
+        self.get_memory_slice(memory_offset, value_memory_size)
+            .copy_from_slice(value);
+
+        self.get_memory_slice(memory_offset + value_memory_size, size - value_memory_size)
+            .fill(0);
+    }
+}
+
 /// Information about current call frame
 #[derive(Debug, Default)]
 pub struct CallFrame {
@@ -857,23 +894,14 @@ impl<'c> SyscallContext<'c> {
         let address = Address::from(address_value);
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
+        // ----> If the code is not found, it should be a fatal error
         let code = self.journal.code_by_address(&address);
-        let code_size = code.len();
-        let code_to_copy_size = code_size.saturating_sub(code_offset);
 
-        if code_offset + code_to_copy_size > code_size {
-            eprintln!("ERROR: code_offset + code_to_copy_size > code_size");
-            return;
-        }
-
-        let code_slice = &code[code_offset..code_offset + code_to_copy_size];
-        let padding_size = size.saturating_sub(code_to_copy_size);
-        let padding_offset = dest_offset + code_to_copy_size;
-        // copy the program into memory
-        self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
-            .copy_from_slice(code_slice);
-        // pad the left part with zero
-        self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
+        let code_offset = code_offset.min(code.len());
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset, size);
+        self.inner_context
+            .set_value_to_memory(dest_offset, code_offset, size, &code);
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
