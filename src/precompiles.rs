@@ -531,14 +531,6 @@ fn get_trusted_setup(trusted_setup_file: &Path) -> Result<KzgSettings, TrustedSe
     KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)
 }
 
-pub fn commitment_to_versioned_hash(commitment: &KzgCommitment) -> Bytes32 {
-    let bytes = commitment.to_bytes().to_vec();
-    let mut hash: [u8; 32] = sha2::Sha256::digest(bytes).into();
-    hash[0] = VERSIONED_HASH_VERSION_KZG;
-
-    Bytes32::from_bytes(&hash).unwrap()
-}
-
 pub fn point_eval(
     input: &Bytes,
     gas_limit: u64,
@@ -565,12 +557,16 @@ pub fn point_eval(
        [144: 192]   proof           Proof associated with the commitment
     */
 
-    let commitment =
-        KzgCommitment::from_bytes(&input[96..144]).map_err(|_| PrecompileError::InvalidCalldata)?;
-    let versioned_hash =
-        Bytes32::from_bytes(&input[..32]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let versioned_hash = &input[..32];
 
-    if commitment_to_versioned_hash(&commitment) != versioned_hash {
+    let commitment_bytes = &input[96..144];
+    let mut commitment_array: [u8; 48] = [0; 48];
+    commitment_array.copy_from_slice(commitment_bytes);
+
+    let mut commitment_bytes_hash: [u8; 32] = sha2::Sha256::digest(&commitment_array).into();
+    commitment_bytes_hash[0] = VERSIONED_HASH_VERSION_KZG;
+
+    if commitment_bytes_hash != versioned_hash {
         return Err(PrecompileError::PointEvalError);
     }
 
