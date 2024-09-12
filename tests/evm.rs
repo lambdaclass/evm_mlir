@@ -9,6 +9,7 @@ use evm_mlir::{
             BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECRECOVER_ADDRESS, IDENTITY_ADDRESS,
             MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
         },
+        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
         EMPTY_CODE_HASH_STR,
     },
     db::{Bytecode, Database, Db},
@@ -1980,7 +1981,7 @@ fn call_simple_callee_call(#[case] call_type: Operation) {
     let res_bytes: &[u8] = result.output().unwrap();
 
     let expected_contract_data_result = a + b;
-    let expected_contract_status_result = 1_u8.into();
+    let expected_contract_status_result = SUCCESS_RETURN_CODE.into();
 
     let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
     let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..]);
@@ -2075,7 +2076,7 @@ fn call_addition_with_value_transfer(#[case] call_type: Operation) {
     let expected_contract_data_result = a + b;
     let expected_caller_balance_result = (caller_balance - value).into();
     let expected_callee_balance_result = (callee_balance + value).into();
-    let expected_contract_status_result = 1_u8.into();
+    let expected_contract_status_result = SUCCESS_RETURN_CODE.into();
 
     let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
     let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..]);
@@ -2155,7 +2156,7 @@ fn call_without_enough_balance(#[case] call_type: Operation) {
     let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
-    let expected_contract_call_result = 0_u8.into(); //Call failed
+    let expected_contract_call_result = REVERT_RETURN_CODE.into(); //Call failed
     let expected_caller_balance_result = caller_balance.into();
     let expected_callee_balance_result = callee_balance.into();
 
@@ -4302,7 +4303,7 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
-    let expected_result = 0_u8.into();
+    let expected_result = REVERT_RETURN_CODE.into();
 
     run_program_assert_num_result(env, db, expected_result);
 }
@@ -4672,7 +4673,7 @@ fn selfdestruct_on_newly_created_account() {
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
     let call_return_code = BigUint::from_bytes_be(result.output().unwrap());
-    let expected_return_code = 1_u8.into();
+    let expected_return_code = SUCCESS_RETURN_CODE.into();
     assert_eq!(call_return_code, expected_return_code);
 
     let expected_caller_balance = (caller_init_balance - transfer_value).into();
