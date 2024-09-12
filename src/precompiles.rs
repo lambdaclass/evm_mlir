@@ -31,7 +31,6 @@ pub fn ecrecover(
     if gas_limit < ECRECOVER_COST {
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += ECRECOVER_COST;
 
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
@@ -47,6 +46,7 @@ pub fn ecrecover(
         .recover_ecdsa(&msg, &sig)
         .map_err(|_| PrecompileError::Secp256k1Error)?;
 
+    *consumed_gas += ECRECOVER_COST;
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
@@ -436,7 +436,6 @@ pub fn blake2f(
     if needed_gas > gas_limit {
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas = needed_gas;
 
     let mut h: [u64; 8] = [0_u64; 8];
     let mut m: [u64; 16] = [0_u64; 16];
@@ -484,9 +483,9 @@ pub fn blake2f(
     );
 
     blake2f_compress(rounds as _, &mut h, &m, &t, f);
+    *consumed_gas = needed_gas;
 
     let out: Vec<u8> = h.iter().flat_map(|&num| num.to_le_bytes()).collect();
-
     Ok(Bytes::from(out))
 }
 
