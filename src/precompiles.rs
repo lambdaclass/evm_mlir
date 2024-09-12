@@ -625,10 +625,7 @@ pub fn point_eval(
     let proof = BLS12381Curve::decompress_g1_point(&mut proof_array)
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let trusted_setup = get_trusted_setup(Path::new("./official_trusted_setup.txt"))
-        .map_err(|_| PrecompileError::PointEvalError)?;
-
-    let kzg = get_kzg().map_err(|_| PointEvalErr)?;
+    let kzg = get_kzg().map_err(|_| PrecompileError::InvalidCalldata)?;
 
     if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
         .map_err(|_| PrecompileError::PointEvalError)?
