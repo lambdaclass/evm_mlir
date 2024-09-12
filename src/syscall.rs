@@ -314,13 +314,6 @@ impl<'c> SyscallContext<'c> {
             size as usize,
             &self.call_frame.last_call_return_data,
         );
-        /*Self::copy_exact(
-            &mut self.inner_context.memory,
-            &self.call_frame.last_call_return_data,
-            dest_offset,
-            offset,
-            size,
-        );*/
     }
 
     pub extern "C" fn call(
