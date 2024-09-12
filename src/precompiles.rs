@@ -618,8 +618,12 @@ pub fn point_eval(
     let y = FieldElement::from_bytes_be(&input[64..96])
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let proof =
-        Bytes48::from_bytes(&input[144..192]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let proof_bytes = &input[144..192];
+    let mut proof_array: [u8; 48] = [0; 48];
+    proof_array.copy_from_slice(proof_bytes);
+
+    let proof = BLS12381Curve::decompress_g1_point(&mut proof_array)
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     let trusted_setup = get_trusted_setup(Path::new("./official_trusted_setup.txt"))
         .map_err(|_| PrecompileError::PointEvalError)?;
