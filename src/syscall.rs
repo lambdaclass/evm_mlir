@@ -859,9 +859,16 @@ impl<'c> SyscallContext<'c> {
         let code_size = code.len();
         let code_to_copy_size = code_size.saturating_sub(code_offset);
         let code_slice = &code[code_offset..code_offset + code_to_copy_size];
-        let padding_size = size - code_to_copy_size;
+        let padding_size = size.saturating_sub(code_to_copy_size);
         let padding_offset = dest_offset + code_to_copy_size;
         // copy the program into memory
+        if dest_offset + code_to_copy_size > self.inner_context.memory.len() {
+            eprintln!(
+                "Error on copy_ext_code_to_memory, dest_offset + code_to_copy_size > memory.len()"
+            );
+            return gas_cost::EXTCODECOPY_COLD as u64;
+        }
+
         self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
             .copy_from_slice(code_slice);
         // pad the left part with zero
