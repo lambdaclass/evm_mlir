@@ -7,18 +7,23 @@ use crate::{
 };
 use bytes::Bytes;
 use ethereum_types::Address;
-use lambdaworks_crypto::commitments::kzg::KateZaveruchaGoldberg;
+use lambdaworks_crypto::commitments::kzg::{KateZaveruchaGoldberg, StructuredReferenceString};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
-        short_weierstrass::curves::{
-            bls12_381::{default_types::FrField, pairing::BLS12381AtePairing},
-            bn_254::{
-                curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
-                field_extension::Degree12ExtensionField,
-                pairing::BN254AtePairing,
-                twist::BN254TwistCurve,
+        short_weierstrass::{
+            curves::{
+                bls12_381::{
+                    curve::BLS12381Curve, default_types::FrField, pairing::BLS12381AtePairing,
+                },
+                bn_254::{
+                    curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+                    field_extension::Degree12ExtensionField,
+                    pairing::BN254AtePairing,
+                    twist::BN254TwistCurve,
+                },
             },
+            traits::Compress,
         },
         traits::{IsEllipticCurve, IsPairing},
     },
@@ -549,7 +554,24 @@ fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, Trust
         198, 11, 8, 112, 65, 222, 98, 16, 0, 237, 201, 142, 218, 218, 32, 193, 222, 242,
     ];
 
-    todo!()
+    let g1_point = BLS12381Curve::decompress_g1_point(&mut trusted_setup_g1_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let g2_a_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_first_g2_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let g2_b_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_second_g2_point)
+        .map_err(|_| TrustedSetupError)?;
+
+    let main_group = vec![g1_point];
+    let secondary_group = [g2_a_point, g2_b_point];
+
+    let kzg = KZG::new(StructuredReferenceString::new(
+        &main_group,
+        &secondary_group,
+    ));
+
+    Ok(kzg)
 }
 
 pub fn point_eval(
