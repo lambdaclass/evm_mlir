@@ -305,13 +305,22 @@ impl<'c> SyscallContext<'c> {
         offset: u32,
         size: u32,
     ) {
-        Self::copy_exact(
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset as usize, size as usize);
+
+        self.inner_context.set_value_to_memory(
+            dest_offset as usize,
+            offset as usize,
+            size as usize,
+            &self.call_frame.last_call_return_data,
+        );
+        /*Self::copy_exact(
             &mut self.inner_context.memory,
             &self.call_frame.last_call_return_data,
             dest_offset,
             offset,
             size,
-        );
+        );*/
     }
 
     pub extern "C" fn call(
@@ -477,12 +486,15 @@ impl<'c> SyscallContext<'c> {
         self.call_frame
             .last_call_return_data
             .clone_from(&return_data.to_vec());
-        Self::copy_exact(
-            &mut self.inner_context.memory,
-            &return_data,
-            ret_offset,
+
+        self.inner_context
+            .resize_memory_if_necessary(ret_offset as usize, ret_size as usize);
+
+        self.inner_context.set_value_to_memory(
+            ret_offset as usize,
             0,
-            ret_size,
+            ret_size as usize,
+            &return_data,
         );
 
         return_code
