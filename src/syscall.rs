@@ -533,10 +533,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
         let offset = offset as usize;
         let size = size as usize;
-        if offset + size > self.inner_context.memory.len() {
-            eprintln!("ERROR: size + offset too big");
-            return;
-        }
+        self.inner_context.resize_memory_if_necessary(offset, size);
         let data = &self.inner_context.memory[offset..offset + size];
         let mut hasher = Keccak256::new();
         hasher.update(data);
