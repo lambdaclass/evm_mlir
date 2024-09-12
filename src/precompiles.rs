@@ -613,13 +613,18 @@ pub fn point_eval(
         return Err(PrecompileError::PointEvalError);
     }
 
-    let x = Bytes32::from_bytes(&input[32..64]).map_err(|_| PrecompileError::InvalidCalldata)?;
-    let y = Bytes32::from_bytes(&input[64..96]).map_err(|_| PrecompileError::InvalidCalldata)?;
+    let x = FieldElement::from_bytes_be(&input[32..64])
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let y = FieldElement::from_bytes_be(&input[64..96])
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+
     let proof =
         Bytes48::from_bytes(&input[144..192]).map_err(|_| PrecompileError::InvalidCalldata)?;
 
     let trusted_setup = get_trusted_setup(Path::new("./official_trusted_setup.txt"))
         .map_err(|_| PrecompileError::PointEvalError)?;
+
+    let kzg = get_kzg().map_err(|_| PointEvalErr)?;
 
     if !KzgProof::verify_kzg_proof(&commitment.to_bytes(), &x, &y, &proof, &trusted_setup)
         .map_err(|_| PrecompileError::PointEvalError)?
