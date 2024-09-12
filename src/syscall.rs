@@ -185,6 +185,7 @@ pub struct SyscallContext<'c> {
     pub journal: Journal<'c>,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
+    pub halt_reason: Option<HaltReason>,
     pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
@@ -207,6 +208,7 @@ impl<'c> SyscallContext<'c> {
             env,
             journal,
             call_frame,
+            halt_reason: None,
             inner_context: Default::default(),
             transient_storage: Default::default(),
         }
@@ -245,6 +247,7 @@ impl<'c> SyscallContext<'c> {
             .clone()
             .unwrap_or(ExitStatusCode::Default);
         let return_values = self.return_values().to_vec();
+        let halt_reason = self.halt_reason.unwrap_or(HaltReason::OpcodeNotFound);
         let result = match exit_status {
             ExitStatusCode::Return => ExecutionResult::Success {
                 reason: SuccessReason::Return,
@@ -265,7 +268,7 @@ impl<'c> SyscallContext<'c> {
                 gas_used,
             },
             ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt {
-                reason: HaltReason::OpcodeNotFound, // TODO: check which Halt error
+                reason: halt_reason,
                 gas_used,
             },
         };
@@ -339,6 +342,7 @@ impl<'c> SyscallContext<'c> {
 
         if off + size > self.inner_context.memory.len() {
             eprintln!("ERROR: size + offset too big");
+            self.halt_reason = Some(HaltReason::OutOfOffset);
             return return_codes::HALT_RETURN_CODE;
         }
 
@@ -347,7 +351,10 @@ impl<'c> SyscallContext<'c> {
         let (return_code, return_data) = if is_precompile(callee_address) {
             match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
                 Ok(res) => (return_codes::SUCCESS_RETURN_CODE, res),
-                Err(_) => (return_codes::REVERT_RETURN_CODE, Bytes::new()),
+                Err(_) => {
+                    self.halt_reason = Some(HaltReason::PrecompileError);
+                    (return_codes::HALT_RETURN_CODE, Bytes::new())
+                }
             }
         } else {
             // Execute subcontext
@@ -387,7 +394,9 @@ impl<'c> SyscallContext<'c> {
                     *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
                 }
                 if available_gas < *consumed_gas {
-                    return return_codes::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
+                    self.halt_reason =
+                        Some(HaltReason::OutOfGas(crate::result::OutOfGasError::Basic));
+                    return return_codes::HALT_RETURN_CODE; //It acctually doesn't matter what we return here
                 }
                 stipend = call_opcode::STIPEND_GAS_ADDITION;
 
@@ -876,7 +885,8 @@ impl<'c> SyscallContext<'c> {
         let sender_address = self.env.tx.get_address();
 
         if size > MAX_CODE_SIZE * 2 {
-            return return_codes::REVERT_RETURN_CODE;
+            self.halt_reason = Some(HaltReason::CreateContractSizeLimit);
+            return return_codes::HALT_RETURN_CODE;
         }
 
         self.inner_context.resize_memory_if_necessary(offset, size);
@@ -888,6 +898,7 @@ impl<'c> SyscallContext<'c> {
         // creacion recursiva, por lo que ejecutaria el programa hasta quedarme sin gas y haria halt al final
         // de esta forma nos ahorramos esos pasos y ya tiramos halt directamente
         if self.inner_context.program == program.clone().to_bytecode() {
+            self.halt_reason = Some(HaltReason::OutOfGas(crate::result::OutOfGasError::Basic));
             return return_codes::HALT_RETURN_CODE;
         }
 
@@ -904,7 +915,8 @@ impl<'c> SyscallContext<'c> {
             ),
             _ => {
                 if sender_account.nonce.checked_add(1).is_none() {
-                    return return_codes::REVERT_RETURN_CODE;
+                    self.halt_reason = Some(HaltReason::NonceOverflow);
+                    return return_codes::HALT_RETURN_CODE;
                 }
 
                 (
@@ -916,7 +928,8 @@ impl<'c> SyscallContext<'c> {
 
         // Check if there is already a contract stored in dest_address
         if self.journal.get_account(&dest_addr).is_some() {
-            return return_codes::REVERT_RETURN_CODE;
+            self.halt_reason = Some(HaltReason::CreateCollision);
+            return return_codes::HALT_RETURN_CODE;
         }
 
         // Create subcontext for the initialization code
@@ -963,6 +976,7 @@ impl<'c> SyscallContext<'c> {
             .new_contract(dest_addr, bytecode, value_as_u256);
 
         let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
+            self.halt_reason = Some(HaltReason::NonceOverflow);
             return return_codes::HALT_RETURN_CODE;
         };
 
