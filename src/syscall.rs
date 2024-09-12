@@ -763,11 +763,7 @@ impl<'c> SyscallContext<'c> {
         let offset = offset as usize;
         let size = size as usize;
 
-        if offset + size > self.inner_context.memory.len() {
-            eprintln!("ERROR: size + offset too big");
-            return;
-        }
-
+        self.inner_context.resize_memory_if_necessary(offset, size);
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
 
         let log = LogData { data, topics };
@@ -891,10 +887,7 @@ impl<'c> SyscallContext<'c> {
             return create_return_codes::REVERT_RETURN_CODE;
         }
 
-        if offset + size > self.inner_context.memory.len() {
-            eprintln!("ERROR: size + offset too big");
-            return create_return_codes::REVERT_RETURN_CODE;
-        }
+        self.inner_context.resize_memory_if_necessary(offset, size);
 
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
