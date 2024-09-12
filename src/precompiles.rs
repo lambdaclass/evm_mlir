@@ -14,11 +14,11 @@ use lambdaworks_math::{
         short_weierstrass::curves::{
             bls12_381::{default_types::FrField, pairing::BLS12381AtePairing},
             bn_254::{
-            curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
-            field_extension::Degree12ExtensionField,
-            pairing::BN254AtePairing,
-            twist::BN254TwistCurve,
-        },
+                curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+                field_extension::Degree12ExtensionField,
+                pairing::BN254AtePairing,
+                twist::BN254TwistCurve,
+            },
         },
         traits::{IsEllipticCurve, IsPairing},
     },
@@ -524,14 +524,32 @@ const POINT_EVAL_CALLDATA_LEN: usize = 192;
 #[derive(Debug)]
 struct TrustedSetupError;
 
-fn get_trusted_setup(trusted_setup_file: &Path) -> Result<KzgSettings, TrustedSetupError> {
-    debug_assert!(
-        trusted_setup_file.exists(),
-        "Missing trusted setup file at: {:?}",
-        trusted_setup_file.to_str().unwrap()
-    );
+fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, TrustedSetupError> {
+    type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
-    KzgSettings::load_trusted_setup_file(trusted_setup_file).map_err(|_| TrustedSetupError)
+    let mut trusted_setup_g1_point: [u8; 48] = [
+        160, 65, 60, 13, 202, 254, 198, 219, 201, 244, 125, 102, 120, 92, 241, 232, 201, 129, 4,
+        79, 125, 19, 207, 227, 228, 252, 187, 113, 181, 64, 141, 253, 230, 49, 36, 147, 203, 60,
+        29, 48, 81, 108, 179, 202, 136, 192, 54, 84,
+    ];
+
+    let mut trusted_setup_first_g2_point: [u8; 96] = [
+        147, 224, 43, 96, 82, 113, 159, 96, 125, 172, 211, 160, 136, 39, 79, 101, 89, 107, 208,
+        208, 153, 32, 182, 26, 181, 218, 97, 187, 220, 127, 80, 73, 51, 76, 241, 18, 19, 148, 93,
+        87, 229, 172, 125, 5, 93, 4, 43, 126, 2, 74, 162, 178, 240, 143, 10, 145, 38, 8, 5, 39, 45,
+        197, 16, 81, 198, 228, 122, 212, 250, 64, 59, 2, 180, 81, 11, 100, 122, 227, 209, 119, 11,
+        172, 3, 38, 168, 5, 187, 239, 212, 128, 86, 200, 193, 33, 189, 184,
+    ];
+
+    let mut trusted_setup_second_g2_point: [u8; 96] = [
+        181, 191, 215, 221, 140, 222, 177, 40, 132, 59, 194, 135, 35, 10, 243, 137, 38, 24, 112,
+        117, 203, 251, 239, 168, 16, 9, 162, 206, 97, 90, 197, 61, 41, 20, 229, 135, 12, 180, 82,
+        210, 175, 170, 171, 36, 243, 73, 159, 114, 24, 92, 191, 238, 83, 73, 39, 20, 115, 68, 41,
+        183, 179, 134, 8, 226, 57, 38, 201, 17, 204, 236, 234, 201, 163, 104, 81, 71, 123, 164,
+        198, 11, 8, 112, 65, 222, 98, 16, 0, 237, 201, 142, 218, 218, 32, 193, 222, 242,
+    ];
+
+    todo!()
 }
 
 pub fn point_eval(
