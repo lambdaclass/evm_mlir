@@ -6,16 +6,19 @@ use crate::{
     result::PrecompileError,
 };
 use bytes::Bytes;
-use c_kzg::{Bytes32, Bytes48, KzgCommitment, KzgProof, KzgSettings};
 use ethereum_types::Address;
+use lambdaworks_crypto::commitments::kzg::KateZaveruchaGoldberg;
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
-        short_weierstrass::curves::bn_254::{
+        short_weierstrass::curves::{
+            bls12_381::{default_types::FrField, pairing::BLS12381AtePairing},
+            bn_254::{
             curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
             field_extension::Degree12ExtensionField,
             pairing::BN254AtePairing,
             twist::BN254TwistCurve,
+        },
         },
         traits::{IsEllipticCurve, IsPairing},
     },
