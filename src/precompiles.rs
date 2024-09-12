@@ -161,11 +161,9 @@ pub fn ecadd(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
     if calldata.len() != 128 {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
     if gas_limit < ECADD_COST {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
@@ -191,7 +189,6 @@ pub fn ecadd(
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         (false, true) => {
@@ -200,7 +197,6 @@ pub fn ecadd(
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         _ => {}
@@ -210,7 +206,6 @@ pub fn ecadd(
         BN254Curve::create_point_from_affine(x1, y1),
         BN254Curve::create_point_from_affine(x2, y2),
     ) else {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidEcPoint);
     };
 
@@ -226,11 +221,9 @@ pub fn ecmul(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
     if calldata.len() != 96 {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
     if gas_limit < ECMUL_COST {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
@@ -261,7 +254,6 @@ pub fn ecmul(
         return Ok(Bytes::from(res));
     }
 
-    *consumed_gas += gas_limit;
     Err(PrecompileError::InvalidEcPoint)
 }
 
@@ -271,12 +263,10 @@ pub fn ecpairing(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
     if calldata.len() % 192 != 0 {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
     let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
@@ -306,7 +296,6 @@ pub fn ecpairing(
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
         let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
@@ -323,12 +312,10 @@ pub fn ecpairing(
             BN254Curve::create_point_from_affine(g1_x, g1_y),
             BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
         ) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
         let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
         mul *= pairing_result;
@@ -736,7 +723,6 @@ mod tests {
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -757,7 +743,6 @@ mod tests {
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -779,7 +764,6 @@ mod tests {
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -800,7 +784,6 @@ mod tests {
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -890,7 +873,6 @@ mod tests {
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -910,7 +892,6 @@ mod tests {
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -931,7 +912,6 @@ mod tests {
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -951,7 +931,6 @@ mod tests {
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1086,7 +1065,6 @@ mod tests {
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1109,7 +1087,6 @@ mod tests {
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1126,7 +1103,6 @@ mod tests {
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
@@ -1156,7 +1132,6 @@ mod tests {
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
         assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
-        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
