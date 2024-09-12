@@ -616,28 +616,12 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let dest_offset = dest_offset as usize;
 
-        // adjust the size so it does not go out of bounds
-        let size: usize = if (code_offset + size) > code_size || size > code_size {
-            code_size.saturating_sub(code_offset)
-        } else {
-            size
-        };
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset, size);
 
-        if dest_offset + size > self.inner_context.memory.len() {
-            eprintln!("Error on copy_code_to_memory, too big");
-            return;
-        }
-
-        let Some(code_slice) = &self
-            .inner_context
-            .program
-            .get(code_offset..code_offset + size)
-        else {
-            eprintln!("Error on copy_code_to_memory");
-            return; // TODO: fix bug with code indexes
-        };
-        // copy the program into memory
-        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
+        let code = &self.inner_context.program.clone()[..code_size];
+        self.inner_context
+            .set_value_to_memory(dest_offset, code_offset, size, code);
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
