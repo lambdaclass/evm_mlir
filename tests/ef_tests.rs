@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    env,
     path::Path,
 };
 mod ef_tests_executor;
@@ -241,4 +242,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    format!("ethtests/GeneralStateTests/{}", env::var("TEST").unwrap()),
+    r"^.*/*.json",
+);
