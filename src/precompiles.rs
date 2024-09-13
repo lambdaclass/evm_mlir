@@ -103,9 +103,7 @@ pub fn modexp(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 96 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
+    let calldata = right_pad(&calldata, 96);
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
@@ -116,11 +114,9 @@ pub fn modexp(
     let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
-    if calldata.len() < params_len {
-        return Err(PrecompileError::InvalidCalldata);
-    }
+    let calldata = right_pad(&calldata, params_len);
+
     let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
     let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
     let m = BigUint::from_bytes_be(&calldata[96 + b_size + e_size..params_len]);
@@ -533,8 +529,6 @@ pub fn execute_precompile(
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::U256;
-
     use super::*;
 
     #[test]
@@ -589,6 +583,17 @@ mod tests {
         );
 
         assert_eq!(consumed_gas, expected_gas);
+    }
+
+    #[test]
+    fn modexp_with_empty_calldata() {
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+        let result = modexp(&calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(result.unwrap(), Bytes::new());
+        assert_eq!(consumed_gas, 200);
     }
 
     #[test]
