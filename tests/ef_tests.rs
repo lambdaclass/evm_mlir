@@ -3,7 +3,6 @@ use std::{
     path::Path,
 };
 mod ef_tests_executor;
-use bytes::Bytes;
 use ef_tests_executor::{
     models::{AccountInfo, TestSuite},
     test_utils::decode_hex,
