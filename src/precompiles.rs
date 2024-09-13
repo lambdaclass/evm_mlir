@@ -1,5 +1,11 @@
 use crate::{
-    constants::precompiles::*, primitives::U256, result::PrecompileError, utils::right_pad,
+    constants::{
+        call_opcode::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
+        precompiles::*,
+    },
+    primitives::U256,
+    result::PrecompileError,
+    utils::right_pad,
 };
 use bytes::Bytes;
 use ethereum_types::Address;
@@ -492,8 +498,8 @@ pub fn execute_precompile(
     calldata: Bytes,
     gas_to_send: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, PrecompileError> {
-    match callee_address {
+) -> (u8, Bytes) {
+    let result = match callee_address {
         x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => {
             ecrecover(&calldata, gas_to_send, consumed_gas)
         }
@@ -523,6 +529,13 @@ pub fn execute_precompile(
         }
         _ => {
             unreachable!()
+        }
+    };
+    match result {
+        Ok(res) => (SUCCESS_RETURN_CODE, res),
+        Err(_) => {
+            *consumed_gas += gas_to_send;
+            (REVERT_RETURN_CODE, Bytes::new())
         }
     }
 }

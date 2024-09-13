@@ -293,13 +293,7 @@ impl<'c> SyscallContext<'c> {
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
         let (return_code, return_data) = if is_precompile(callee_address) {
-            match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
-                Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
-                Err(_) => {
-                    *consumed_gas += gas_to_send;
-                    (call_opcode::REVERT_RETURN_CODE, Bytes::new())
-                }
-            }
+            execute_precompile(callee_address, calldata, gas_to_send, consumed_gas)
         } else {
             // Execute subcontext
             //TODO: Add call depth check
