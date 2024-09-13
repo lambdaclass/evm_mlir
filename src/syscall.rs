@@ -351,10 +351,7 @@ impl<'c> SyscallContext<'c> {
         let (return_code, return_data) = if is_precompile(callee_address) {
             match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
                 Ok(res) => (return_codes::SUCCESS_RETURN_CODE, res),
-                Err(_) => {
-                    self.halt_reason = Some(HaltReason::PrecompileError);
-                    (return_codes::HALT_RETURN_CODE, Bytes::new())
-                }
+                Err(_) => (return_codes::REVERT_RETURN_CODE, Bytes::new()),
             }
         } else {
             // Execute subcontext

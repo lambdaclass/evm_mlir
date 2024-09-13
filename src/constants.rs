@@ -157,9 +157,9 @@ pub mod call_opcode {
 }
 
 pub mod return_codes {
-    pub const SUCCESS_RETURN_CODE: u8 = 0;
-    pub const HALT_RETURN_CODE: u8 = 1;
-    pub const REVERT_RETURN_CODE: u8 = 2;
+    pub const REVERT_RETURN_CODE: u8 = 0;
+    pub const SUCCESS_RETURN_CODE: u8 = 1;
+    pub const HALT_RETURN_CODE: u8 = 2;
 }
 
 pub mod precompiles {

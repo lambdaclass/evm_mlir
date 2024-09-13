@@ -5381,10 +5381,10 @@ fn codegen_create<'c, 'r>(
     };
 
     // Check if the return code is error
-    let zero_constant_value = create_block
+    let one_constant_value = create_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint8.into(), 0).into(),
+            IntegerAttribute::new(uint8.into(), 1).into(),
             location,
         ))
         .result(0)?
@@ -5393,7 +5393,7 @@ fn codegen_create<'c, 'r>(
         .append_operation(arith::cmpi(
             context,
             CmpiPredicate::Eq,
-            zero_constant_value,
+            one_constant_value,
             result,
             location,
         ))
