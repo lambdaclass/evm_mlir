@@ -59,7 +59,7 @@ test:
 	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
 
 test-eth: check-ethtests
-	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+	cargo nextest run --workspace --all-features --no-capture --no-fail-fast -E 'binary(ef_tests)'
 
 revm-comparison:
 	$(MAKE) build-revm-comparison
