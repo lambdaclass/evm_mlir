@@ -116,7 +116,8 @@ impl Evm<Db> {
         context.inner_context.memory = program;
 
         context.create(program_size, 0, &mut value, &mut remaining_gas);
-        context.inner_context.gas_remaining = Some(self.env.tx.gas_limit - remaining_gas);
+        context.inner_context.gas_remaining =
+            Some(self.env.tx.gas_limit.saturating_sub(remaining_gas));
         context.get_result()
     }
 
