@@ -488,16 +488,17 @@ impl<'c> SyscallContext<'c> {
             .last_call_return_data
             .clone_from(&return_data.to_vec());
 
-        self.inner_context
-            .resize_memory_if_necessary(ret_offset as usize, ret_size as usize);
+        if return_code == return_codes::SUCCESS_RETURN_CODE {
+            self.inner_context
+                .resize_memory_if_necessary(ret_offset as usize, ret_size as usize);
 
-        self.inner_context.set_value_to_memory(
-            ret_offset as usize,
-            0,
-            ret_size as usize,
-            &return_data,
-        );
-
+            self.inner_context.set_value_to_memory(
+                ret_offset as usize,
+                0,
+                ret_size as usize,
+                &return_data,
+            );
+        }
         return_code
     }
 
