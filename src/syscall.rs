@@ -117,7 +117,7 @@ pub struct InnerContext {
     return_data: Option<(usize, usize)>,
     // The program bytecode
     pub program: Vec<u8>,
-    gas_remaining: Option<u64>,
+    pub gas_remaining: Option<u64>,
     gas_refund: u64,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
@@ -951,6 +951,7 @@ impl<'c> SyscallContext<'c> {
         context.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         context.inner_context.program = program.to_bytecode();
+        let program_len = context.inner_context.program.len() as u32;
         executor.execute(&mut context, new_env.tx.gas_limit);
 
         let result = context.get_result().unwrap().result;
@@ -968,6 +969,12 @@ impl<'c> SyscallContext<'c> {
         // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
+            self.write_result(
+                offset as u32,
+                program_len,
+                *remaining_gas,
+                return_codes::SUCCESS_RETURN_CODE,
+            );
             return return_codes::SUCCESS_RETURN_CODE;
         };
 
@@ -986,6 +993,12 @@ impl<'c> SyscallContext<'c> {
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list
+        self.write_result(
+            offset as u32,
+            program_len,
+            *remaining_gas,
+            return_codes::SUCCESS_RETURN_CODE,
+        );
         return_codes::SUCCESS_RETURN_CODE
     }
 

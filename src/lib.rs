@@ -106,14 +106,17 @@ impl Evm<Db> {
         self.validate_transaction()?;
 
         let mut value = self.get_env_value();
-        let mut gas_limit = self.env.tx.gas_limit;
+        let mut remaining_gas = self.env.tx.gas_limit;
         let program = self.env.tx.data.to_vec();
         let program_size = program.len() as u32;
-
-        let mut context = self.create_syscall_context();
+        let call_frame = CallFrame::new(self.env.tx.caller);
+        let journal = Journal::new(&mut self.db);
+        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
+        //let mut context = self.create_syscall_context();
         context.inner_context.memory = program;
 
-        context.create(program_size, 0, &mut value, &mut gas_limit);
+        context.create(program_size, 0, &mut value, &mut remaining_gas);
+        context.inner_context.gas_remaining = Some(self.env.tx.gas_limit - remaining_gas);
         context.get_result()
     }
 

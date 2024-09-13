@@ -4890,3 +4890,42 @@ fn recursive_create() {
     let result = evm.transact_commit().unwrap();
     assert!(result.is_halt());
 }
+
+#[test]
+fn transact_to_create() {
+    let value: u8 = 10;
+    let sender_nonce = 1;
+    let sender_balance = EU256::from(25);
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+
+    let mut db = Db::new();
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.value = EU256::from(value);
+    env.tx.transact_to = TransactTo::Create;
+    env.tx.caller = sender_addr;
+    env.tx.data = Bytes::from(initialization_code.clone());
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
+
+    // Check the returned value is equals to the initialization code
+    let returned_code = result.output().unwrap().to_vec();
+    assert_eq!(returned_code, initialization_code);
+
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+    assert_eq!(sender_account.balance, sender_balance - value);
+}
