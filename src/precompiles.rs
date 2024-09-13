@@ -27,13 +27,11 @@ pub fn ecrecover(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 128 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECRECOVER_COST {
         return Err(PrecompileError::NotEnoughGas);
     }
 
+    let calldata = right_pad(calldata, 128);
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
     let sig = &calldata[64..128];
