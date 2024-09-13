@@ -107,7 +107,7 @@ jobs:
           tool: cargo-nextest
 
       - name: Run tests
-        run: cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
+        run: make test
     
   ethereum-tests:
     name: Ethereum Tests (Ubuntu)
