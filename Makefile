@@ -56,7 +56,7 @@ fmt:
 	cargo fmt --all
 
 test:
-	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests) - binary(time_consuming_test)'
+	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(time_consuming) - binary(normal)'
 
 test-eth: check-ethtests
 	cargo nextest run --workspace --all-features --no-capture --test normal
