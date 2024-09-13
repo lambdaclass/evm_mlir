@@ -894,9 +894,8 @@ impl<'c> SyscallContext<'c> {
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
 
-        // si al hacer un create desde un programa, voy a crear el mismo programa, esto indica una
-        // creacion recursiva, por lo que ejecutaria el programa hasta quedarme sin gas y haria halt al final
-        // de esta forma nos ahorramos esos pasos y ya tiramos halt directamente
+        // if we do a create from a program, and the created program would be the same, that means a recursive create
+        // and we should directly halt to avoid an stack overflow
         if self.inner_context.program == program.clone().to_bytecode() {
             self.halt_reason = Some(HaltReason::OutOfGas(crate::result::OutOfGasError::Basic));
             return return_codes::HALT_RETURN_CODE;
