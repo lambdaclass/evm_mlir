@@ -1,8 +1,9 @@
 pragma solidity ^0.8.0;
 
 contract Fibonacci {
-    // Función para calcular el número de Fibonacci n-ésimo de manera iterativa
-    function fibonacci(uint n) public pure returns (uint) {
+    function fibonacci() public pure returns (uint) {
+        uint n = 10;
+
         if (n == 0) {
             return 0;
         } else if (n == 1) {
