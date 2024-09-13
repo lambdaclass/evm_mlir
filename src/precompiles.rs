@@ -103,7 +103,7 @@ pub fn modexp(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    let calldata = right_pad(&calldata, 96);
+    let calldata = right_pad(calldata, 96);
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
