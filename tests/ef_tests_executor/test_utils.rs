@@ -90,11 +90,9 @@ pub fn verify_result(
             Ok(())
         }
         (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
-            return Ok(()); //Halt/Revert and want an error
+            Ok(()) //Halt/Revert and want an error
         }
-        _ => {
-            return Err("Expected exception but got none".into());
-        }
+        _ => Err("Expected exception but got none".into()),
     }
 }
 
