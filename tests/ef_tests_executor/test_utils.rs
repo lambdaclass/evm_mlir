@@ -24,13 +24,13 @@ pub fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
     Some(Bytes::from(opcodes))
 }
 
-pub fn setup_evm(
-    test: &Test,
-    unit: &TestUnit,
-    to: &TransactTo,
-    sender: H160,
-    gas_price: U256,
-) -> Evm<Db> {
+pub fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
+    let to = match unit.transaction.to {
+        Some(to) => TransactTo::Call(to),
+        None => TransactTo::Create,
+    };
+    let sender = unit.transaction.sender.unwrap_or_default();
+    let gas_price = unit.transaction.gas_price.unwrap_or_default();
     let mut env = Env::default();
     env.tx.transact_to = to.clone();
     env.tx.gas_price = gas_price;

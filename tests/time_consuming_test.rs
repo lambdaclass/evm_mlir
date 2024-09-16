@@ -15,15 +15,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         let Some(tests) = unit.post.get("Cancun") else {
             continue;
         };
-        let to = match unit.transaction.to {
-            Some(to) => TransactTo::Call(to),
-            None => TransactTo::Create,
-        };
-        let sender = unit.transaction.sender.unwrap_or_default();
-        let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         for test in tests {
-            let mut evm = setup_evm(test, &unit, &to, sender, gas_price);
+            let mut evm = setup_evm(test, &unit);
             let res = evm.transact().unwrap();
             verify_result(test, unit.out.as_ref(), &res.result)?;
             // TODO: use rlp and hash to check logs
