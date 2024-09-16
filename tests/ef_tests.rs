@@ -41,7 +41,6 @@ fn get_ignored_groups() -> HashSet<String> {
         //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
-        "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
@@ -152,12 +151,15 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
 
         let sender = unit.transaction.sender.unwrap_or_default();
-        let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         for test in tests {
             let mut env = Env::default();
             env.tx.transact_to = to.clone();
-            env.tx.gas_price = gas_price;
+            env.tx.gas_price = unit
+                .transaction
+                .gas_price
+                .or(unit.transaction.max_fee_per_gas)
+                .unwrap_or_default();
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
@@ -208,11 +210,15 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     account_info.storage.clone(),
                 );
             }
+
             let mut evm = Evm::new(env, db);
 
             let res = evm.transact();
 
             // Tests if the error was expected by the test.
+            // TODO: if many more tests return these "named exceptions",
+            // like "TR_BLOBLIST_OVERSIZE", it could be useful to have a
+            // utils function to map them to some error types used here.
             match (&test.expect_exception.as_deref(), &res) {
                 (
                     Some("TR_BLOBLIST_OVERSIZE"),
