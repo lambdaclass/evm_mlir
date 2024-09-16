@@ -31,15 +31,20 @@ use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
 // for ecRecover
-const HASH_START: usize = 0;
-const HASH_END: usize = 32;
-const V_START: usize = 32;
-const V_POS: usize = 63;
-const V_BASE: i32 = 27;
-const SIG_START: usize = 64;
-const SIG_END: usize = 128;
-const PAD_LEN: usize = 128;
-const ADDR_PADDING_LEN: usize = 12;
+const ECR_HASH_START: usize = 0;
+const ECR_HASH_END: usize = 32;
+const ECR_V_START: usize = 32;
+const ECR_V_POS: usize = 63;
+const ECR_V_BASE: i32 = 27;
+const ECR_SIG_START: usize = 64;
+const ECR_SIG_END: usize = 128;
+const ECR_PAD_LEN: usize = 128;
+const ECR_PADDING_LEN: usize = 12;
+
+// for ripemd160
+const RIPEMD_OUTPUT_LEN: usize = 32;
+const RIPEMD_PADDING_LEN: usize = 12;
+
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -50,10 +55,10 @@ pub fn ecrecover(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, PAD_LEN);
-    let hash = &calldata[HASH_START..HASH_END];
+    let calldata = right_pad(calldata, ECR_PAD_LEN);
+    let hash = &calldata[ECR_HASH_START..ECR_HASH_END];
     let v = calldata[V_POS] as i32 - V_BASE;
-    let sig = &calldata[SIG_START..SIG_END];
+    let sig = &calldata[ECR_SIG_START..ECR_SIG_END];
 
     let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
     let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
@@ -69,7 +74,7 @@ pub fn ecrecover(
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
-    address_hash[..ADDR_PADDING_LEN].fill(0);
+    address_hash[..ECR_PADDING_LEN].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
@@ -99,8 +104,8 @@ pub fn ripemd_160(
     *consumed_gas += gas_cost;
     let mut hasher = ripemd::Ripemd160::new();
     hasher.update(calldata);
-    let mut output = [0u8; 32];
-    hasher.finalize_into((&mut output[12..]).into());
+    let mut output = [0u8; RIPEMD_OUTPUT_LEN];
+    hasher.finalize_into((&mut output[RIPEMD_PADDING_LEN..]).into());
     Ok(Bytes::copy_from_slice(&output))
 }
 
