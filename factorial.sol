@@ -1,14 +1,21 @@
 pragma solidity ^0.8.0;
 
 contract Factorial {
-    function factorial() public pure returns (uint) {
-        uint n = 10;
-        uint result = 1;
+    
+    uint public result;
+
+    constructor() {
+        result = factorial(10);
+    }
+
+
+    function factorial(uint n) public pure returns (uint) {
+        uint acc = 1;
         
         for (uint i = 2; i <= n; i++) {
-            result *= i;
+            acc *= i;
         }
         
-        return result;
+        return acc;
     }
 }
