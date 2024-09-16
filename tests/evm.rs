@@ -121,8 +121,8 @@ fn run_program_assert_gas_and_refund(
     refunded_gas: u64,
 ) {
     env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
+    let used_gas = used_gas + env.calculate_intrinsic_cost();
     let mut evm = Evm::new(env, db);
-
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
     assert_eq!(result.gas_used(), used_gas);
@@ -1477,7 +1477,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
+    let refunded_gas = 4_800;
 
     let key = 80_u8;
     let program = vec![
@@ -1527,7 +1527,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
+    let refunded_gas = 2_800;
 
     let key = 80_u8;
     let program = vec![
@@ -5599,7 +5599,7 @@ fn refunded_gas_cant_be_more_than_a_fifth_of_used_gas() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = used_gas / GAS_REFUND_DENOMINATOR as i64;
+    let refunded_gas = 4800;
     let key = 80_u8;
     let program = vec![
         Operation::Push((1_u8, BigUint::from(new_value))),

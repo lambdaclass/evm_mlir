@@ -235,7 +235,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_initial = self.env.tx.gas_limit;
+        let gas_initial = self.env.tx.initial_gas;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let gas_refunded = self
             .inner_context
@@ -428,6 +428,7 @@ impl<'c> SyscallContext<'c> {
             env.tx.value = new_value;
             env.tx.transact_to = TransactTo::Call(transact_to);
             env.tx.gas_limit = gas_to_send;
+            env.tx.initial_gas = env.tx.gas_limit;
 
             //Copy the calldata from memory
             let off = args_offset as usize;
@@ -934,6 +935,7 @@ impl<'c> SyscallContext<'c> {
         let mut new_env = self.env.clone();
         new_env.tx.transact_to = TransactTo::Call(dest_addr);
         new_env.tx.gas_limit = *remaining_gas;
+        new_env.tx.initial_gas = *remaining_gas;
         let call_frame = CallFrame::new(sender_address);
 
         // Execute initialization code
