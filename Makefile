@@ -103,3 +103,9 @@ ethtests: ${ETHTEST_TAR}
 	tar -xzmf "$<" --strip-components=1 -C "$@"
 	@cat ${ETHTEST_SHASUM}
 	sha256sum -c ${ETHTEST_SHASUM}
+
+install-solc:
+	brew install solidity
+
+compile-solidity:
+	solc --bin sources/fibonacci.sol -o ./compiled; solc --bin sources/factorial.sol -o ./compiled

@@ -1,8 +1,15 @@
 pragma solidity ^0.8.0;
 
 contract Fibonacci {
-    function fibonacci() public pure returns (uint) {
-        uint n = 10;
+
+    uint public result;
+
+    constructor() {
+        result = fibonacci(10);
+    }
+
+
+    function fibonacci(uint n) public pure returns (uint) {
 
         if (n == 0) {
             return 0;
@@ -12,14 +19,14 @@ contract Fibonacci {
 
         uint a = 0;
         uint b = 1;
-        uint result;
+        uint acc;
 
         for (uint i = 2; i <= n; i++) {
-            result = a + b;
+            acc = a + b;
             a = b;
-            b = result;
+            b = acc;
         }
 
-        return result;
+        return acc;
     }
 }
