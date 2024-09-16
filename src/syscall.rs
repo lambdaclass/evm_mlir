@@ -130,9 +130,9 @@ impl InnerContext {
         &mut self.memory[memory_offset..memory_end]
     }
 
-    pub fn resize_memory_if_necessary(&mut self, offset: usize, new_size: usize) {
-        if offset + new_size > self.memory.len() {
-            self.memory.resize(offset + new_size, 0);
+    pub fn resize_memory_if_necessary(&mut self, offset: usize, data_size: usize) {
+        if offset + data_size > self.memory.len() {
+            self.memory.resize(offset + data_size, 0);
         }
     }
 
