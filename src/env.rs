@@ -2,16 +2,16 @@ use crate::{
     constants::{
         call_opcode::GAS_PER_BLOB,
         gas_cost::{
-            init_code_cost, BLOB_GASPRICE_UPDATE_FRACTION, MAX_CODE_SIZE, MIN_BLOB_GASPRICE,
-            TX_ACCESS_LIST_ADDRESS_COST, TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST,
-            TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
+            init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
+            TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
+            TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
-    utils::{calc_blob_gasprice, fake_exponential},
+    utils::calc_blob_gasprice,
 };
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
@@ -55,12 +55,12 @@ impl Env {
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
 
-            if self.tx.blob_hashes.is_empty() {
-                return Err(InvalidTransaction::EmptyBlobs);
-            }
-
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
+            }
+
+            if self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::EmptyBlobs);
             }
 
             if self.tx.blob_hashes.is_empty() {
@@ -84,10 +84,6 @@ impl Env {
                     have: num_blobs,
                     max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
                 });
-            }
-
-            if max < self.calculate_blob_gas_price().into() {
-                return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
         } else {
             if !self.tx.blob_hashes.is_empty() {
@@ -122,14 +118,6 @@ impl Env {
             max_fee_per_blob_gas
                 .saturating_mul(U256::from(GAS_PER_BLOB) * self.tx.blob_hashes.len())
         })
-    }
-
-    fn calculate_blob_gas_price(&self) -> u128 {
-        fake_exponential(
-            MIN_BLOB_GASPRICE,
-            self.block.excess_blob_gas.unwrap(),
-            BLOB_GASPRICE_UPDATE_FRACTION,
-        )
     }
 
     ///  Calculates the gas that is charged before execution is started.
