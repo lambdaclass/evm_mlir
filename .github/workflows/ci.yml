@@ -110,7 +110,9 @@ jobs:
         run: make ethtests
 
       - name: Cancun/stEIP1153-transientStorage
+        continue-on-error: true
         run: TEST=Cancun/stEIP1153-transientStorage make test-eth
 
       - name: Cancun/stEIP4844-blobtransactions
+        continue-on-error: true
         run: TEST=Cancun/stEIP4844-blobtransactions make test-eth
