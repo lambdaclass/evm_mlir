@@ -59,7 +59,25 @@ test:
 	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
 
 test-eth: check-ethtests
-	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+	cargo nextest run --workspace --all-features --no-capture --no-fail-fast -E 'binary(ef_tests)'
+
+ETH_TESTS := \
+	Cancun/stEIP1153-transientStorage \
+	Cancun/stEIP4844-blobtransactions \
+	Cancun/stEIP5656-MCOPY \
+	Pyspecs/berlin \
+	Pyspecs/byzantium \
+	Pyspecs/cancun \
+	Pyspecs/frontier \
+	Pyspecs/homestead \
+	Pyspecs/istanbul \
+	Pyspecs/shanghai \
+
+test-eth-all: check-ethtests
+	@for file in $(ETH_TESTS); do \
+		echo "Running test-eth with TEST=$$file"; \
+		TEST=$$file $(MAKE) test-eth; \
+	done
 
 revm-comparison:
 	$(MAKE) build-revm-comparison

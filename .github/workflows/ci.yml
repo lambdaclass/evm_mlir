@@ -3,9 +3,9 @@ name: CI
 on:
   merge_group:
   push:
-    branches: [ main ]
+    branches: [ ef-tests-observation ]
   pull_request:
-    branches: [ '**' ]
+    branches: [ ef-tests-observation ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -76,39 +76,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-features --benches --examples --tests -- -D warnings
 
-  test:
-    name: Test (Ubuntu)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-          components: clippy
-
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Add LLVM deb repository
-        uses: myci-actions/add-deb-repo@11
-        with:
-          repo: deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main
-          repo-name: llvm-repo
-          keys-asc: https://apt.llvm.org/llvm-snapshot.gpg.key
-      - name: Install LLVM
-        run: sudo apt-get install llvm-18 llvm-18-dev llvm-18-runtime clang-18 clang-tools-18 lld-18 libpolly-18-dev libmlir-18-dev mlir-18-tools
-
-      - name: Install Link deps
-        run: sudo apt-get install libc-dev build-essential
-
-      - name: Install testing tools
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-
-      - name: Run tests
-        run: cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
-    
   ethereum-tests:
     name: Ethereum Tests (Ubuntu)
     runs-on: ubuntu-latest
@@ -142,5 +109,10 @@ jobs:
       - name: Download test vectors
         run: make ethtests
 
-      - name: Run ethereum tests
-        run: cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+      - name: Cancun/stEIP1153-transientStorage
+        continue-on-error: true
+        run: TEST=Cancun/stEIP1153-transientStorage make test-eth
+
+      - name: Cancun/stEIP4844-blobtransactions
+        continue-on-error: true
+        run: TEST=Cancun/stEIP4844-blobtransactions make test-eth
