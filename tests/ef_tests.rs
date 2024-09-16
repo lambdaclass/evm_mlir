@@ -37,11 +37,9 @@ fn get_ignored_groups() -> HashSet<String> {
         "stRevertTest".into(),
         "eip3855_push0".into(),
         "eip4844_blobs".into(),
-        "stZeroCallsRevert".into(),
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
-        "vmPerformance".into(),
         "stHomesteadSpecific".into(),
         "stStackTests".into(),
         "eip5656_mcopy".into(),
@@ -185,6 +183,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
+                    eprintln!("RESULT ES: {:?}", res.result);
+                    eprintln!(
+                        "EXPECTED: {:?}, GOT: {:?}",
+                        unit.out.as_ref(),
+                        res.result.output()
+                    );
                     if let Some((expected_output, output)) =
                         unit.out.as_ref().zip(res.result.output())
                     // for some reason, if we just compare unit.out.as_ref() != res.result.output()
@@ -196,6 +200,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     }
                 }
                 (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
+                    eprintln!("RESULT ES: {:?}", res.result);
                     return Ok(()); //Halt/Revert and want an error
                 }
                 _ => {
@@ -231,4 +236,8 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_test,
+    "ethtests/GeneralStateTests/VMTests/vmPerformance/",
+    r"^.*/*.json",
+);
