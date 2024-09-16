@@ -181,7 +181,7 @@ impl<'c> SyscallContext<'c> {
             .logs
             .iter()
             .map(|logdata| Log {
-                address: self.env.tx.caller,
+                address: self.env.tx.get_address(),
                 data: logdata.clone(),
             })
             .collect()
@@ -435,14 +435,16 @@ impl<'c> SyscallContext<'c> {
         self.call_frame
             .last_call_return_data
             .clone_from(&return_data.to_vec());
-        Self::copy_exact(
-            &mut self.inner_context.memory,
-            &return_data,
-            ret_offset,
-            0,
-            ret_size,
-        );
 
+        if return_code == call_opcode::SUCCESS_RETURN_CODE {
+            Self::copy_exact(
+                &mut self.inner_context.memory,
+                &return_data,
+                ret_offset,
+                0,
+                ret_size,
+            );
+        }
         return_code
     }
 
