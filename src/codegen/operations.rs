@@ -5387,7 +5387,7 @@ fn codegen_create<'c, 'r>(
     let success_return_code = create_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint8.into(), SUCCESS_RETURN_CODE).into(),
+            IntegerAttribute::new(uint8.into(), SUCCESS_RETURN_CODE as i64).into(),
             location,
         ))
         .result(0)?
