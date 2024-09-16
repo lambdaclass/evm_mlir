@@ -1,3 +1,5 @@
+use std::collections::btree_set::Range;
+
 use crate::{
     constants::{
         call_opcode::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
@@ -28,6 +30,17 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
+// for ecRecover
+const HASH_START: usize = 0;
+const HASH_END: usize = 32;
+const V_START: usize = 32;
+const V_POS: usize = 63;
+const V_BASE: i32 = 27;
+const SIG_START: usize = 64;
+const SIG_END: usize = 128;
+const PAD_LEN: usize = 128;
+const ADDR_PADDING_LEN: usize = 12;
+
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
@@ -37,10 +50,10 @@ pub fn ecrecover(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 128);
-    let hash = &calldata[0..32];
-    let v = calldata[63] as i32 - 27;
-    let sig = &calldata[64..128];
+    let calldata = right_pad(calldata, PAD_LEN);
+    let hash = &calldata[HASH_START..HASH_END];
+    let v = calldata[V_POS] as i32 - V_BASE;
+    let sig = &calldata[SIG_START..SIG_END];
 
     let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
     let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
@@ -56,7 +69,7 @@ pub fn ecrecover(
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
-    address_hash[..12].fill(0);
+    address_hash[..ADDR_PADDING_LEN].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
