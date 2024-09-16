@@ -55,6 +55,10 @@ impl Env {
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
 
+            if self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::EmptyBlobs);
+            }
+
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
