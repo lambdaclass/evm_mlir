@@ -231,6 +231,10 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
                 ) => return Ok(()),
                 (
+                    Some("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS"),
+                    Err(EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })),
+                ) => return Ok(()),
+                (
                     Some("TR_EMPTYBLOB"),
                     Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
                 ) => return Ok(()),

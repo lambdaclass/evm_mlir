@@ -1,15 +1,17 @@
 use crate::{
     constants::{
+        call_opcode::GAS_PER_BLOB,
         gas_cost::{
-            init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
-            TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
-            TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
+            init_code_cost, BLOB_GASPRICE_UPDATE_FRACTION, MAX_CODE_SIZE, MIN_BLOB_GASPRICE,
+            TX_ACCESS_LIST_ADDRESS_COST, TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST,
+            TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
+    db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
-    utils::calc_blob_gasprice,
+    utils::{calc_blob_gasprice, fake_exponential},
 };
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
@@ -36,7 +38,7 @@ impl Env {
     }
 
     /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
-    pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
+    pub fn validate_transaction(&mut self, account: AccountInfo) -> Result<(), InvalidTransaction> {
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
@@ -73,9 +75,51 @@ impl Env {
                     max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
                 });
             }
+
+            if max < self.calculate_blob_gas_price().into() {
+                return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
+            }
+        } else {
+            if !self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::BlobVersionedHashesNotSupported);
+            }
         }
+
+        let mut balance_check = U256::from(self.tx.gas_limit)
+            .checked_mul(self.tx.gas_price)
+            .and_then(|gas_cost| gas_cost.checked_add(self.tx.value))
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
+        let data_fee = self.calc_max_data_fee().unwrap_or_default();
+
+        balance_check = balance_check
+            .checked_add(U256::from(data_fee))
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
+        if balance_check > account.balance {
+            return Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(balance_check),
+                balance: Box::new(account.balance),
+            });
+        }
+
         // TODO: check if more validations are needed
         Ok(())
+    }
+
+    fn calc_max_data_fee(&self) -> Option<U256> {
+        self.tx.max_fee_per_blob_gas.map(|max_fee_per_blob_gas| {
+            max_fee_per_blob_gas
+                .saturating_mul(U256::from(GAS_PER_BLOB) * self.tx.blob_hashes.len())
+        })
+    }
+
+    fn calculate_blob_gas_price(&self) -> u128 {
+        fake_exponential(
+            MIN_BLOB_GASPRICE,
+            self.block.excess_blob_gas.unwrap(),
+            BLOB_GASPRICE_UPDATE_FRACTION,
+        )
     }
 
     ///  Calculates the gas that is charged before execution is started.
