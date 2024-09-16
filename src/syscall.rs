@@ -896,7 +896,9 @@ impl<'c> SyscallContext<'c> {
         // if we do a create from a program, and the created program would be the same, that means a recursive create
         // and we should directly halt to avoid an stack overflow
         if self.inner_context.program == program.clone().to_bytecode() {
-            self.halt_reason = Some(HaltReason::OutOfGas(crate::result::OutOfGasError::Basic));
+            self.halt_reason = Some(HaltReason::OutOfGas(
+                crate::result::OutOfGasError::RecursiveCreate,
+            ));
             return return_codes::HALT_RETURN_CODE;
         }
 
