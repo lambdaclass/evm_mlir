@@ -85,10 +85,8 @@ impl Env {
                     max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
                 });
             }
-        } else {
-            if !self.tx.blob_hashes.is_empty() {
-                return Err(InvalidTransaction::BlobVersionedHashesNotSupported);
-            }
+        } else if !self.tx.blob_hashes.is_empty() {
+            return Err(InvalidTransaction::BlobVersionedHashesNotSupported);
         }
 
         let mut balance_check = U256::from(self.tx.gas_limit)
@@ -99,7 +97,7 @@ impl Env {
         let data_fee = self.calc_max_data_fee().unwrap_or_default();
 
         balance_check = balance_check
-            .checked_add(U256::from(data_fee))
+            .checked_add(data_fee)
             .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
 
         if balance_check > account.balance {

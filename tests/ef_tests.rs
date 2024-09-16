@@ -164,7 +164,9 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
-            env.tx.blob_hashes = unit.transaction.blob_versioned_hashes.clone();
+            env.tx
+                .blob_hashes
+                .clone_from(&unit.transaction.blob_versioned_hashes);
             env.tx.max_fee_per_blob_gas = unit.transaction.max_fee_per_blob_gas;
 
             env.block.number = unit.env.current_number;
