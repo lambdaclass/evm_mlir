@@ -120,6 +120,7 @@ impl Evm<Db> {
 
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
+    self.validate_transaction()?;
         match self.env.tx.transact_to {
             TransactTo::Call(_) => self.call(),
             TransactTo::Create => self.create(),
