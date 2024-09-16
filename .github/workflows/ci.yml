@@ -3,9 +3,9 @@ name: CI
 on:
   merge_group:
   push:
-    branches: [ main ]
+    branches: [ ef-tests-observation ]
   pull_request:
-    branches: [ 'ef-tests-observation' ]
+    branches: [ ef-tests-observation ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
