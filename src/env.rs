@@ -40,7 +40,7 @@ impl Env {
     }
 
     /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
-    pub fn validate_transaction(&mut self, account: AccountInfo) -> Result<(), InvalidTransaction> {
+    pub fn validate_transaction(&mut self, balance: U256) -> Result<(), InvalidTransaction> {
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
@@ -100,10 +100,10 @@ impl Env {
             .checked_add(data_fee)
             .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
 
-        if balance_check > account.balance {
+        if balance_check > balance {
             return Err(InvalidTransaction::LackOfFundForMaxFee {
                 fee: Box::new(balance_check),
-                balance: Box::new(account.balance),
+                balance: Box::new(balance),
             });
         }
 

@@ -58,10 +58,12 @@ impl Evm<Db> {
             .expect("Failed to get code from address");
         let program = Program::from_bytecode(&bytecode);
 
-        let mut journal = Journal::new(&mut self.db);
-
-        self.env
-            .validate_transaction(journal.get_account(&self.env.tx.caller).unwrap())?;
+        let balance = self
+            .db
+            .get_balance(self.env.tx.caller)
+            .unwrap_or_default()
+            .clone();
+        self.env.validate_transaction(balance)?;
         self.env.consume_intrinsic_cost()?;
 
         // validate transaction
@@ -69,6 +71,8 @@ impl Evm<Db> {
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
+
+        let journal = Journal::new(&mut self.db);
 
         let call_frame = CallFrame::new(self.env.tx.caller);
         let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
