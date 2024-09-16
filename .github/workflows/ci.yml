@@ -145,6 +145,10 @@ jobs:
       - name: Download test vectors
         run: make ethtests
 
-      - name: Run ethereum tests
+      - name: Run fast ethereum tests
+        if: ${{ matrix.type == 'fast' }}
+        run: make test-eth
+      
+      - name: Run slow ethereum tests
         if: ${{ matrix.type == 'slow' }}
         run: make test-eth
