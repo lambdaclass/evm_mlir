@@ -16,7 +16,7 @@ use evm_mlir::{
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::{Operation, Program},
-    syscall::{LogData, GAS_REFUND_DENOMINATOR, U256},
+    syscall::{LogData, U256},
     utils::compute_contract_address2,
     Env, Evm,
 };
