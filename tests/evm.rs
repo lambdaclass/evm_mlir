@@ -5665,7 +5665,7 @@ fn recursive_create() {
     let mut env = Env::default();
     env.tx.value = EU256::from(value);
     env.tx.caller = sender_addr;
-    env.tx.transact_to = TransactTo::Call(Address::from_low_u64_be(3000));
+    env.tx.transact_to = TransactTo::Call(to_addr);
     env.tx.gas_limit = 1_000_000;
     let program = Program::from(operations);
 
