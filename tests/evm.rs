@@ -125,7 +125,6 @@ fn run_program_assert_gas_and_refund(
     let used_gas = used_gas + env.calculate_intrinsic_cost();
     let mut evm = Evm::new(env, db);
     let result = evm.transact_commit().unwrap();
-    eprintln!("RESULT ES: {:?}", result);
     assert!(result.is_success());
     assert_eq!(result.gas_used(), used_gas);
     assert_eq!(result.gas_refunded(), refunded_gas);
