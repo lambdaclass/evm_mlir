@@ -1,9 +1,6 @@
 use std::{collections::HashSet, path::Path};
 mod ef_tests_executor;
-use ef_tests_executor::{
-    models::TestSuite,
-    test_utils::{setup_evm, verify_result, verify_storage},
-};
+use ef_tests_executor::test_utils::run_test;
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -102,7 +99,7 @@ fn get_ignored_suites() -> HashSet<String> {
     ])
 }
 
-fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
+fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     let group_name = get_group_name_from_path(path);
     if get_ignored_groups().contains(&group_name) {
         return Ok(());
@@ -113,24 +110,7 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         return Ok(());
     }
 
-    let test_suite: TestSuite = serde_json::from_reader(contents.as_bytes())
-        .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
-
-    for (_name, unit) in test_suite.0 {
-        // NOTE: currently we only support Cancun spec
-        let Some(tests) = unit.post.get("Cancun") else {
-            continue;
-        };
-
-        for test in tests {
-            let mut evm = setup_evm(test, &unit);
-            let res = evm.transact().unwrap();
-            verify_result(test, unit.out.as_ref(), &res.result)?;
-            // TODO: use rlp and hash to check logs
-            verify_storage(&test.post_state, res.state);
-        }
-    }
-    Ok(())
+    run_test(path, contents)
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

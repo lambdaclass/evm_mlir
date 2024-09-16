@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use bytes::Bytes;
 use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
-use super::models::{AccountInfo, Test, TestUnit};
+use super::models::{AccountInfo, Test, TestSuite, TestUnit};
 
 /// Receives a Bytes object with the hex representation
 /// And returns a Bytes object with the decimal representation
@@ -23,7 +23,7 @@ fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
     Some(Bytes::from(opcodes))
 }
 
-pub fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
+fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     let to = match unit.transaction.to {
         Some(to) => TransactTo::Call(to),
         None => TransactTo::Create,
@@ -77,7 +77,7 @@ pub fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     Evm::new(env, db)
 }
 
-pub fn verify_result(
+fn verify_result(
     test: &Test,
     expected_result: Option<&Bytes>,
     execution_result: &ExecutionResult,
@@ -97,7 +97,7 @@ pub fn verify_result(
 }
 
 /// Test the resulting storage is the same as the expected storage
-pub fn verify_storage(
+fn verify_storage(
     post_state: &HashMap<ethereum_types::H160, AccountInfo>,
     res_state: HashMap<ethereum_types::H160, evm_mlir::state::Account>,
 ) {
@@ -121,4 +121,25 @@ pub fn verify_storage(
         );
     }
     assert_eq!(*post_state, result_state);
+}
+
+pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
+    let test_suite: TestSuite = serde_json::from_reader(contents.as_bytes())
+        .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
+
+    for (_name, unit) in test_suite.0 {
+        // NOTE: currently we only support Cancun spec
+        let Some(tests) = unit.post.get("Cancun") else {
+            continue;
+        };
+
+        for test in tests {
+            let mut evm = setup_evm(test, &unit);
+            let res = evm.transact().unwrap();
+            verify_result(test, unit.out.as_ref(), &res.result)?;
+            // TODO: use rlp and hash to check logs
+            verify_storage(&test.post_state, res.state);
+        }
+    }
+    Ok(())
 }
