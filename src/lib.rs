@@ -58,11 +58,7 @@ impl Evm<Db> {
             .expect("Failed to get code from address");
         let program = Program::from_bytecode(&bytecode);
 
-        let balance = self
-            .db
-            .get_balance(self.env.tx.caller)
-            .unwrap_or_default()
-            .clone();
+        let balance = self.db.get_balance(self.env.tx.caller).unwrap_or_default();
         self.env.validate_transaction(balance)?;
         self.env.consume_intrinsic_cost()?;
 

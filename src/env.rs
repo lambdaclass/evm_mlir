@@ -8,7 +8,6 @@ use crate::{
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
-    db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
     utils::calc_blob_gasprice,
