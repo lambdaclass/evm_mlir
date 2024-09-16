@@ -20,6 +20,15 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
+// for ecRecover
+const HASH_START: usize = 0;
+const HASH_END: usize = 32;
+const V_START: usize = 32;
+const V_POS: usize = 63;
+const V_BASE: i32 = 27;
+const SIG_START: usize = 64;
+const SIG_END: usize = 128;
+
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
@@ -33,9 +42,9 @@ pub fn ecrecover(
     }
     *consumed_gas += ECRECOVER_COST;
 
-    let hash = &calldata[0..32];
-    let v = calldata[63] as i32 - 27;
-    let sig = &calldata[64..128];
+    let hash = &calldata[HASH_START..HASH_END];
+    let v = calldata[V_POS] as i32 - V_BASE;
+    let sig = &calldata[SIG_START..SIG_END];
 
     let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
     let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
