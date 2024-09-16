@@ -151,4 +151,4 @@ jobs:
       
       - name: Run slow ethereum tests
         if: ${{ matrix.type == 'slow' }}
-        run: make test-eth
+        run: make test-eth-slow
