@@ -28,6 +28,7 @@ const V_POS: usize = 63;
 const V_BASE: i32 = 27;
 const SIG_START: usize = 64;
 const SIG_END: usize = 128;
+const ADDR_PADDING_LEN: usize = 12;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -59,7 +60,7 @@ pub fn ecrecover(
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
-    address_hash[..12].fill(0);
+    address_hash[..ADDR_PADDING_LEN].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
