@@ -183,12 +183,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {
-                    eprintln!("RESULT ES: {:?}", res.result);
-                    eprintln!(
-                        "EXPECTED: {:?}, GOT: {:?}",
-                        unit.out.as_ref(),
-                        res.result.output()
-                    );
                     if let Some((expected_output, output)) =
                         unit.out.as_ref().zip(res.result.output())
                     // for some reason, if we just compare unit.out.as_ref() != res.result.output()
@@ -200,7 +194,6 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     }
                 }
                 (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
-                    eprintln!("RESULT ES: {:?}", res.result);
                     return Ok(()); //Halt/Revert and want an error
                 }
                 _ => {
