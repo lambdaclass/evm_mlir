@@ -29,8 +29,10 @@ pub struct Env {
 
 impl Env {
     pub fn consume_intrinsic_cost(&mut self) -> Result<(), InvalidTransaction> {
-        if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
-            self.tx.gas_limit -= self.calculate_intrinsic_cost();
+        let cost = self.calculate_intrinsic_cost();
+
+        if self.tx.gas_limit >= cost {
+            self.tx.gas_limit -= cost;
             Ok(())
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
@@ -131,13 +133,16 @@ impl Env {
                 TX_DATA_COST_PER_NON_ZERO
             }
         });
+
         let create_cost = match self.tx.transact_to {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
+
         let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
             acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
         });
+
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }
