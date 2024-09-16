@@ -5652,12 +5652,12 @@ fn recursive_create() {
 
     let operations = vec![
         Operation::Push((1, BigUint::from(32_u8))),
-        Operation::Push((1, BigUint::ZERO)),
-        Operation::Push((1, BigUint::ZERO)),
+        Operation::Push0,
+        Operation::Push0,
         Operation::Codecopy,
         Operation::Push((1, BigUint::from(32_u8))),
-        Operation::Push((1, BigUint::ZERO)),
-        Operation::Push((1, BigUint::ZERO)),
+        Operation::Push0,
+        Operation::Push0,
         Operation::Create,
         Operation::Stop,
     ];
