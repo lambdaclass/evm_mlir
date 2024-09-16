@@ -1,13 +1,9 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::{collections::HashSet, path::Path};
 mod ef_tests_executor;
 use ef_tests_executor::{
-    models::{AccountInfo, TestSuite},
-    test_utils::{decode_hex, setup_evm, verify_result, verify_storage},
+    models::TestSuite,
+    test_utils::{setup_evm, verify_result, verify_storage},
 };
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.

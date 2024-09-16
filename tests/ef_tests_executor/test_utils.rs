@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use bytes::Bytes;
-use ethereum_types::{H160, U256};
 use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
 
 use super::models::{AccountInfo, Test, TestUnit};
@@ -9,7 +8,7 @@ use super::models::{AccountInfo, Test, TestUnit};
 /// Receives a Bytes object with the hex representation
 /// And returns a Bytes object with the decimal representation
 /// Taking the hex numbers by pairs
-pub fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
+fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
     let hex_header = &bytes_in_hex[0..2];
     if hex_header != b"0x" {
         return None;

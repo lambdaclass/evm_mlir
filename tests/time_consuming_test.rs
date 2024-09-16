@@ -4,7 +4,6 @@ use ef_tests_executor::{
     models::TestSuite,
     test_utils::{setup_evm, verify_result, verify_storage},
 };
-use evm_mlir::env::TransactTo;
 
 fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     let test_suite: TestSuite = serde_json::from_reader(contents.as_bytes())
