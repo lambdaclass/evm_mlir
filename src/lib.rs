@@ -78,7 +78,6 @@ impl Evm<Db> {
     }
 
     fn call(&mut self) -> Result<ResultAndState, EVMError> {
-        self.validate_transaction()?;
         let code_address = self.env.tx.get_address();
 
         let bytecode = match self.db.code_by_address(code_address) {
@@ -103,8 +102,6 @@ impl Evm<Db> {
     }
 
     fn create(&mut self) -> Result<ResultAndState, EVMError> {
-        self.validate_transaction()?;
-
         let mut value = self.get_env_value();
         let mut remaining_gas = self.env.tx.gas_limit;
         let gas_limit = self.env.tx.gas_limit;
@@ -120,7 +117,7 @@ impl Evm<Db> {
 
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
-    self.validate_transaction()?;
+        self.validate_transaction()?;
         match self.env.tx.transact_to {
             TransactTo::Call(_) => self.call(),
             TransactTo::Create => self.create(),
