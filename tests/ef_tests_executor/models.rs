@@ -83,6 +83,17 @@ pub struct AccountInfo {
     pub storage: HashMap<U256, U256>,
 }
 
+impl Default for AccountInfo {
+    fn default() -> Self {
+        Self {
+            balance: Default::default(),
+            nonce: Default::default(),
+            storage: Default::default(),
+            code: Bytes::from("0x"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Env {

@@ -5,7 +5,12 @@ use std::{
 mod ef_tests_executor;
 use bytes::Bytes;
 use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::TransactTo,
+    result::{EVMError, ExecutionResult, InvalidTransaction},
+    Env, Evm,
+};
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -30,14 +35,12 @@ fn get_suite_name_from_path(path: &Path) -> String {
 
 fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
-        "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
         "stArgsZeroOneBalance".into(),
         //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
         "stRevertTest".into(),
         "eip3855_push0".into(),
-        "eip4844_blobs".into(),
         "stZeroCallsRevert".into(),
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
@@ -148,16 +151,21 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
 
         let sender = unit.transaction.sender.unwrap_or_default();
-        let gas_price = unit.transaction.gas_price.unwrap_or_default();
 
         for test in tests {
             let mut env = Env::default();
             env.tx.transact_to = to.clone();
-            env.tx.gas_price = gas_price;
+            env.tx.gas_price = unit
+                .transaction
+                .gas_price
+                .or(unit.transaction.max_fee_per_gas)
+                .unwrap_or_default();
             env.tx.caller = sender;
             env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
             env.tx.value = unit.transaction.value[test.indexes.value];
             env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
+            env.tx.blob_hashes = unit.transaction.blob_versioned_hashes.clone();
+            env.tx.max_fee_per_blob_gas = unit.transaction.max_fee_per_blob_gas;
 
             env.block.number = unit.env.current_number;
             env.block.coinbase = unit.env.current_coinbase;
@@ -174,7 +182,14 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             };
             let mut db = match to.clone() {
                 TransactTo::Call(to) => {
-                    let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
+                    let opcodes = decode_hex(
+                        unit.pre
+                            .get(&to)
+                            .unwrap_or(&AccountInfo::default())
+                            .code
+                            .clone(),
+                    )
+                    .unwrap();
                     Db::new().with_contract(to, opcodes)
                 }
                 TransactTo::Create => {
@@ -195,9 +210,61 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     account_info.storage.clone(),
                 );
             }
+
             let mut evm = Evm::new(env, db);
 
-            let res = evm.transact().unwrap();
+            let res = evm.transact();
+
+            // Tests if the error was expected by the test.
+            // TODO: if many more tests return these "named exceptions",
+            // like "TR_BLOBLIST_OVERSIZE", it could be useful to have a
+            // utils function to map them to some error types used here.
+            match (&test.expect_exception.as_deref(), &res) {
+                (
+                    Some("TR_BLOBLIST_OVERSIZE"),
+                    Err(EVMError::Transaction(InvalidTransaction::TooManyBlobs { .. })),
+                ) => return Ok(()),
+                (
+                    Some("TR_BLOBCREATE"),
+                    Err(EVMError::Transaction(InvalidTransaction::BlobCreateTransaction)),
+                ) => return Ok(()),
+                (
+                    Some("TR_BLOBVERSION_INVALID"),
+                    Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
+                ) => return Ok(()),
+                (
+                    Some("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"),
+                    Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
+                ) => return Ok(()),
+                (
+                    Some("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS"),
+                    Err(EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })),
+                ) => return Ok(()),
+                (
+                    Some("TransactionException.TYPE_3_TX_ZERO_BLOBS"),
+                    Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs { .. })),
+                ) => return Ok(()),
+                (
+                    Some("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"),
+                    Err(EVMError::Transaction(InvalidTransaction::BlobGasPriceGreaterThanMax {
+                        ..
+                    })),
+                ) => return Ok(()),
+                (
+                    Some("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS"),
+                    Err(EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee {
+                        ..
+                    })),
+                ) => return Ok(()),
+                (
+                    Some("TR_EMPTYBLOB"),
+                    Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
+                ) => return Ok(()),
+                (Some(_), Err(_)) => todo!(),
+                _ => {}
+            }
+
+            let res = res.unwrap();
 
             match (&test.expect_exception, &res.result) {
                 (None, _) => {

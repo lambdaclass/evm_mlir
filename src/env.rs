@@ -1,5 +1,6 @@
 use crate::{
     constants::{
+        call_opcode::GAS_PER_BLOB,
         gas_cost::{
             init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
             TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
@@ -7,6 +8,7 @@ use crate::{
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
+    db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
     utils::calc_blob_gasprice,
@@ -27,8 +29,10 @@ pub struct Env {
 
 impl Env {
     pub fn consume_intrinsic_cost(&mut self) -> Result<(), InvalidTransaction> {
-        if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
-            self.tx.gas_limit -= self.calculate_intrinsic_cost();
+        let cost = self.calculate_intrinsic_cost();
+
+        if self.tx.gas_limit >= cost {
+            self.tx.gas_limit -= cost;
             Ok(())
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
@@ -36,23 +40,37 @@ impl Env {
     }
 
     /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
-    pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
+    pub fn validate_transaction(&mut self, account: AccountInfo) -> Result<(), InvalidTransaction> {
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
+
+        if self.tx.gas_price < self.block.basefee {
+            return Err(InvalidTransaction::GasPriceLessThanBasefee);
+        }
+
+        // Is a blob transaction.
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
+
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
+
             if self.tx.blob_hashes.is_empty() {
                 return Err(InvalidTransaction::EmptyBlobs);
             }
+
+            if self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::EmptyBlobs);
+            }
+
             if is_create {
                 return Err(InvalidTransaction::BlobCreateTransaction);
             }
+
             for blob in self.tx.blob_hashes.iter() {
                 if blob[0] != VERSIONED_HASH_VERSION_KZG {
                     return Err(InvalidTransaction::BlobVersionNotSupported);
@@ -60,15 +78,46 @@ impl Env {
             }
 
             let num_blobs = self.tx.blob_hashes.len();
+
             if num_blobs > MAX_BLOB_NUMBER_PER_BLOCK as usize {
                 return Err(InvalidTransaction::TooManyBlobs {
                     have: num_blobs,
                     max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
                 });
             }
+        } else {
+            if !self.tx.blob_hashes.is_empty() {
+                return Err(InvalidTransaction::BlobVersionedHashesNotSupported);
+            }
         }
+
+        let mut balance_check = U256::from(self.tx.gas_limit)
+            .checked_mul(self.tx.gas_price)
+            .and_then(|gas_cost| gas_cost.checked_add(self.tx.value))
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
+        let data_fee = self.calc_max_data_fee().unwrap_or_default();
+
+        balance_check = balance_check
+            .checked_add(U256::from(data_fee))
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
+        if balance_check > account.balance {
+            return Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(balance_check),
+                balance: Box::new(account.balance),
+            });
+        }
+
         // TODO: check if more validations are needed
         Ok(())
+    }
+
+    fn calc_max_data_fee(&self) -> Option<U256> {
+        self.tx.max_fee_per_blob_gas.map(|max_fee_per_blob_gas| {
+            max_fee_per_blob_gas
+                .saturating_mul(U256::from(GAS_PER_BLOB) * self.tx.blob_hashes.len())
+        })
     }
 
     ///  Calculates the gas that is charged before execution is started.
@@ -80,13 +129,16 @@ impl Env {
                 TX_DATA_COST_PER_NON_ZERO
             }
         });
+
         let create_cost = match self.tx.transact_to {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
+
         let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
             acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
         });
+
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }

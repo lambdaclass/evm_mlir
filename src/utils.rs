@@ -1618,7 +1618,7 @@ pub(crate) fn get_basefee<'a>(
 /// (`get_blob_gasprice`).
 pub fn calc_blob_gasprice(excess_blob_gas: u64) -> u128 {
     fake_exponential(
-        gas_cost::MIN_BLOB_GASPRICE,
+        gas_cost::MIN_BASE_FEE_PER_BLOB_GAS,
         excess_blob_gas,
         gas_cost::BLOB_GASPRICE_UPDATE_FRACTION,
     )

@@ -16,7 +16,7 @@ pub const EMPTY_CODE_HASH_STR: &str =
     "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
 pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
-pub const MAX_BLOB_NUMBER_PER_BLOCK: u8 = 0x01;
+pub const MAX_BLOB_NUMBER_PER_BLOCK: u8 = 6; // TODO: source?
 
 //TODO: Add missing opcodes gas consumption costs
 //  -> This implies refactoring codegen/operations.rs
@@ -99,7 +99,7 @@ pub mod gas_cost {
     pub const SELFDESTRUCT: i64 = 5_000;
     pub const SELFDESTRUCT_DYNAMIC_GAS: i64 = 25_000;
 
-    pub const MIN_BLOB_GASPRICE: u64 = 1;
+    pub const MIN_BASE_FEE_PER_BLOB_GAS: u64 = 1;
     pub const BLOB_GASPRICE_UPDATE_FRACTION: u64 = 3338477;
 
     pub const BYTE_DEPOSIT_COST: i64 = 200;
@@ -158,6 +158,7 @@ pub mod call_opcode {
     pub const EMPTY_CALLEE_COST: u64 = 25000;
     pub const STIPEND_GAS_ADDITION: u64 = 2300;
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
+    pub const GAS_PER_BLOB: u64 = 1 << 17;
 }
 
 pub mod precompiles {
