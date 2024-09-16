@@ -241,6 +241,12 @@ fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
                     Err(EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })),
                 ) => return Ok(()),
                 (
+                    Some("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS"),
+                    Err(EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee {
+                        ..
+                    })),
+                ) => return Ok(()),
+                (
                     Some("TR_EMPTYBLOB"),
                     Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
                 ) => return Ok(()),

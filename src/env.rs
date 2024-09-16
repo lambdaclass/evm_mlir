@@ -47,6 +47,10 @@ impl Env {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
 
+        if self.tx.gas_price < self.block.basefee {
+            return Err(InvalidTransaction::GasPriceLessThanBasefee);
+        }
+
         // Is a blob transaction.
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
