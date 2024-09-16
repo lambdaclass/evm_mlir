@@ -564,8 +564,8 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_gas = 200;
         let expected_result = Bytes::from(8_u8.to_be_bytes().to_vec());
+        let expected_gas = 200;
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -595,14 +595,14 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let expected_result = Bytes::from(4_u8.to_be_bytes().to_vec());
         let expected_gas = 682;
-        //let expected_result = Bytes::from(8_u8.to_be_bytes().to_vec());
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
-        //assert_eq!(return_data, expected_result);
+        assert_eq!(return_data, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -613,8 +613,8 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let expected_gas = 200;
         let expected_result = Bytes::new();
+        let expected_gas = 200;
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -637,7 +637,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -648,6 +647,8 @@ mod tests {
             hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
+        let expected_gas = ECADD_COST;
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -669,7 +670,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -680,9 +680,13 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        let expected_gas = ECADD_COST;
 
-        assert_eq!(result.unwrap(), expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
@@ -699,7 +703,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -710,9 +713,13 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        let expected_gas = ECADD_COST;
 
-        assert_eq!(result.unwrap(), expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
         assert_eq!(consumed_gas, expected_gas);
     }
 
