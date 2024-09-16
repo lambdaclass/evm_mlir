@@ -142,5 +142,8 @@ jobs:
       - name: Download test vectors
         run: make ethtests
 
-      - name: Run ethereum tests
-        run: cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+      - name: Cancun/stEIP1153-transientStorage
+        run: TEST=Cancun/stEIP1153-transientStorage make test-eth
+
+      - name: Cancun/stEIP4844-blobtransactions
+        run: TEST=Cancun/stEIP4844-blobtransactions make test-eth
