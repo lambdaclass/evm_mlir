@@ -146,4 +146,5 @@ jobs:
         run: make ethtests
 
       - name: Run ethereum tests
+        if: ${{ matrix.type == 'fast' }}
         run: make test-eth
