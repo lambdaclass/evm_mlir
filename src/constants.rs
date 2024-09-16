@@ -158,6 +158,7 @@ pub mod call_opcode {
     pub const EMPTY_CALLEE_COST: u64 = 25000;
     pub const STIPEND_GAS_ADDITION: u64 = 2300;
     pub const GAS_CAP_DIVISION_FACTOR: u64 = 64;
+    pub const GAS_PER_BLOB: u64 = 1 << 17;
 }
 
 pub mod precompiles {
