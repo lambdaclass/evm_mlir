@@ -38,6 +38,11 @@ hex = "0.4.3"
 cc = "1.0.83"
 
 [[test]]
-name = "ef_tests"
+name = "time_consuming"
+path = "tests/time_consuming_test.rs"
+harness = false
+
+[[test]]
+name = "normal"
 path = "tests/ef_tests.rs"
 harness = false
