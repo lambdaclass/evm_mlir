@@ -26,10 +26,11 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn consume_intrinsic_cost(&mut self) -> Result<(), InvalidTransaction> {
-        if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
-            self.tx.gas_limit -= self.calculate_intrinsic_cost();
-            Ok(())
+    pub fn consume_intrinsic_cost(&mut self) -> Result<u64, InvalidTransaction> {
+        let intrinsic_cost = self.calculate_intrinsic_cost();
+        if self.tx.gas_limit >= intrinsic_cost {
+            self.tx.gas_limit -= intrinsic_cost;
+            Ok(intrinsic_cost)
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         }
@@ -72,7 +73,7 @@ impl Env {
     }
 
     ///  Calculates the gas that is charged before execution is started.
-    fn calculate_intrinsic_cost(&self) -> u64 {
+    pub fn calculate_intrinsic_cost(&self) -> u64 {
         let data_cost = self.tx.data.iter().fold(0, |acc, byte| {
             acc + if *byte == 0 {
                 TX_DATA_COST_PER_ZERO
@@ -243,8 +244,7 @@ impl TxEnv {
     pub fn get_address(&self) -> Address {
         match self.transact_to {
             TransactTo::Call(addr) => addr,
-            // TODO: check if its ok to return zero in this case
-            TransactTo::Create => Address::zero(),
+            TransactTo::Create => self.caller,
         }
     }
 }

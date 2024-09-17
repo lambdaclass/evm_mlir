@@ -51,16 +51,7 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     if let Some(basefee) = unit.env.current_base_fee {
         env.block.basefee = basefee;
     };
-    let mut db = match to.clone() {
-        TransactTo::Call(to) => {
-            let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
-            Db::new().with_contract(to, opcodes)
-        }
-        TransactTo::Create => {
-            let opcodes = decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
-            Db::new().with_contract(env.tx.get_address(), opcodes)
-        }
-    };
+    let mut db = Db::new();
 
     // Load pre storage into db
     for (address, account_info) in unit.pre.iter() {
@@ -84,8 +75,12 @@ fn verify_result(
 ) -> Result<(), String> {
     match (&test.expect_exception, execution_result) {
         (None, _) => {
-            if expected_result != execution_result.output() {
-                return Err("Wrong output".into());
+            // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
+            if let Some((expected_output, output)) = expected_result.zip(execution_result.output())
+            {
+                if expected_output != output {
+                    return Err("Wrong output".into());
+                }
             }
             Ok(())
         }
