@@ -10,7 +10,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Region, Value, ValueLike,
+        Block, BlockRef, Location, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -1788,4 +1788,62 @@ pub fn precompiled_addresses() -> AccessList {
     ];
 
     access_list
+}
+
+pub fn allocate_gas_counter_ptr<'c>(
+    context: &&'c melior::Context,
+    block: &'c BlockRef<'c, 'c>,
+    location: Location<'c>,
+) -> Result<melior::ir::Value<'c, 'c>, CodegenError> {
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let ptr_type = pointer(context, 0);
+
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let number_of_elements = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
+        location,
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
+
+    Ok(gas_ptr)
 }
