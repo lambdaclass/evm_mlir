@@ -1,5 +1,3 @@
-use std::collections::btree_set::Range;
-
 use crate::{
     constants::{
         call_opcode::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
