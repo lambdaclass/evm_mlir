@@ -47,37 +47,41 @@ impl<DB: Database + Default> Evm<DB> {
 }
 
 impl Evm<Db> {
-    fn validate_transaction(&mut self) -> Result<(), EVMError> {
-        self.env.consume_intrinsic_cost()?;
+    fn validate_transaction(&mut self) -> Result<u64, EVMError> {
+        let initial_gas_consumed = self.env.consume_intrinsic_cost()?;
         self.env.validate_transaction()?;
 
-        Ok(())
+        Ok(initial_gas_consumed)
     }
 
-    fn create_syscall_context(&mut self) -> SyscallContext {
+    fn create_syscall_context(&mut self, initial_gas: u64) -> SyscallContext {
         let call_frame = CallFrame::new(self.env.tx.caller);
         let journal = Journal::new(&mut self.db);
-        SyscallContext::new(self.env.clone(), journal, call_frame)
+        SyscallContext::new(self.env.clone(), journal, call_frame, initial_gas)
     }
 
-    fn run_program(&mut self, program: Program) -> Result<ResultAndState, EVMError> {
+    fn run_program(
+        &mut self,
+        program: Program,
+        initial_gas_consumed: u64,
+    ) -> Result<ResultAndState, EVMError> {
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
             .expect("failed to compile program");
 
-        let initial_gas = self.env.tx.gas_limit;
-        let mut context = self.create_syscall_context();
+        let gas_limit = self.env.tx.gas_limit;
+        let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
-        executor.execute(&mut context, initial_gas);
+        executor.execute(&mut context, gas_limit);
 
         context.get_result()
     }
 
-    fn call(&mut self) -> Result<ResultAndState, EVMError> {
+    fn call(&mut self, initial_gas_consumed: u64) -> Result<ResultAndState, EVMError> {
         let code_address = self.env.tx.get_address();
 
         let bytecode = match self.db.code_by_address(code_address) {
@@ -86,7 +90,7 @@ impl Evm<Db> {
         };
 
         let program = Program::from_bytecode(&bytecode);
-        self.run_program(program)
+        self.run_program(program, initial_gas_consumed)
     }
 
     fn get_env_value(&self) -> syscall::U256 {
@@ -101,13 +105,13 @@ impl Evm<Db> {
         syscall::U256::from_fixed_be_bytes(value)
     }
 
-    fn create(&mut self) -> Result<ResultAndState, EVMError> {
+    fn create(&mut self, initial_gas_consumed: u64) -> Result<ResultAndState, EVMError> {
         let mut value = self.get_env_value();
         let mut remaining_gas = self.env.tx.gas_limit;
         let gas_limit = self.env.tx.gas_limit;
         let program = self.env.tx.data.to_vec();
         let program_size = program.len() as u32;
-        let mut context = self.create_syscall_context();
+        let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
         context.inner_context.memory = program;
 
         context.create(program_size, 0, &mut value, &mut remaining_gas);
@@ -117,10 +121,10 @@ impl Evm<Db> {
 
     /// Executes [the configured transaction](Env::tx).
     pub fn transact(&mut self) -> Result<ResultAndState, EVMError> {
-        self.validate_transaction()?;
+        let initial_gas_consumed = self.validate_transaction()?;
         match self.env.tx.transact_to {
-            TransactTo::Call(_) => self.call(),
-            TransactTo::Create => self.create(),
+            TransactTo::Call(_) => self.call(initial_gas_consumed),
+            TransactTo::Create => self.create(initial_gas_consumed),
         }
     }
 

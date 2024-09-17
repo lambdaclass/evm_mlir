@@ -26,10 +26,10 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn consume_intrinsic_cost(&mut self) -> Result<(), InvalidTransaction> {
+    pub fn consume_intrinsic_cost(&mut self) -> Result<u64, InvalidTransaction> {
         if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
             self.tx.gas_limit -= self.calculate_intrinsic_cost();
-            Ok(())
+            Ok(self.calculate_intrinsic_cost())
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         }
@@ -72,7 +72,7 @@ impl Env {
     }
 
     ///  Calculates the gas that is charged before execution is started.
-    fn calculate_intrinsic_cost(&self) -> u64 {
+    pub fn calculate_intrinsic_cost(&self) -> u64 {
         let data_cost = self.tx.data.iter().fold(0, |acc, byte| {
             acc + if *byte == 0 {
                 TX_DATA_COST_PER_ZERO

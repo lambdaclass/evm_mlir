@@ -186,6 +186,7 @@ pub struct SyscallContext<'c> {
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
     pub halt_reason: Option<HaltReason>,
+    initial_gas: u64,
     pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
@@ -203,9 +204,10 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame) -> Self {
+    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame, initial_gas: u64) -> Self {
         Self {
             env,
+            initial_gas,
             journal,
             call_frame,
             halt_reason: None,
@@ -235,7 +237,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_initial = self.env.tx.gas_limit;
+        let gas_initial = self.initial_gas;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let gas_refunded = self
             .inner_context
@@ -456,7 +458,7 @@ impl<'c> SyscallContext<'c> {
 
             let journal = self.journal.eject_base();
 
-            let mut context = SyscallContext::new(env.clone(), journal, call_frame);
+            let mut context = SyscallContext::new(env.clone(), journal, call_frame, gas_to_send);
             let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
             executor.execute(&mut context, env.tx.gas_limit);
@@ -946,7 +948,8 @@ impl<'c> SyscallContext<'c> {
 
         // NOTE: Here we are not taking into account what happens if the deployment code reverts
         let ctx_journal = self.journal.eject_base();
-        let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
+        let mut context =
+            SyscallContext::new(new_env.clone(), ctx_journal, call_frame, *remaining_gas);
         context.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
         context.inner_context.program = program.to_bytecode();
