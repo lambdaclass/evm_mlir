@@ -1,16 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::{collections::HashSet, path::Path};
 mod ef_tests_executor;
-use bytes::Bytes;
-use ef_tests_executor::models::{AccountInfo, TestSuite};
-use evm_mlir::{
-    db::Db,
-    env::TransactTo,
-    result::{EVMError, ExecutionResult, InvalidTransaction},
-    Env, Evm,
-};
+use ef_tests_executor::test_utils::run_test;
 
 fn get_group_name_from_path(path: &Path) -> String {
     // Gets the parent directory's name.
@@ -37,15 +27,13 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stArgsZeroOneBalance".into(),
-        //"stTimeConsuming".into(), // this works, but it's REALLY time consuming
+        "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
         "eip3855_push0".into(),
-        "stZeroCallsRevert".into(),
+        "eip4844_blobs".into(),
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
-        "vmPerformance".into(),
         "stHomesteadSpecific".into(),
         "stStackTests".into(),
         "eip5656_mcopy".into(),
@@ -55,16 +43,12 @@ fn get_ignored_groups() -> HashSet<String> {
         "stZeroKnowledge2".into(),
         "stDelegatecallTestHomestead".into(),
         "stEIP150singleCodeGasPrices".into(),
-        "stCreate2".into(),
         "stSpecialTest".into(),
-        "stRecursiveCreate".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
         "stExtCodeHash".into(),
         "stCallCodes".into(),
-        "stRandom2".into(),
         "stMemoryStressTest".into(),
-        "stStaticFlagEnabled".into(),
         "vmTests".into(),
         "stZeroKnowledge".into(),
         "stLogTests".into(),
@@ -78,14 +62,12 @@ fn get_ignored_groups() -> HashSet<String> {
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
         "stMemoryTest".into(),
-        "stRandom".into(),
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
         "stSolidityTest".into(),
         "yul".into(),
         "stEIP3607".into(),
-        "stCreateTest".into(),
         "eip198_modexp_precompile".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
@@ -107,207 +89,18 @@ fn get_ignored_suites() -> HashSet<String> {
     ])
 }
 
-/// Receives a Bytes object with the hex representation
-/// And returns a Bytes object with the decimal representation
-/// Taking the hex numbers by pairs
-fn decode_hex(bytes_in_hex: Bytes) -> Option<Bytes> {
-    let hex_header = &bytes_in_hex[0..2];
-    if hex_header != b"0x" {
-        return None;
-    }
-    let hex_string = std::str::from_utf8(&bytes_in_hex[2..]).unwrap(); // we don't need the 0x
-    let mut opcodes = Vec::new();
-    for i in (0..hex_string.len()).step_by(2) {
-        let pair = &hex_string[i..i + 2];
-        let value = u8::from_str_radix(pair, 16).unwrap();
-        opcodes.push(value);
-    }
-    Some(Bytes::from(opcodes))
-}
-
-fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
+fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     let group_name = get_group_name_from_path(path);
-
     if get_ignored_groups().contains(&group_name) {
         return Ok(());
     }
 
     let suite_name = get_suite_name_from_path(path);
-
     if get_ignored_suites().contains(&suite_name) {
         return Ok(());
     }
-    let test_suite: TestSuite = serde_json::from_reader(contents.as_bytes())
-        .unwrap_or_else(|_| panic!("Failed to parse JSON test {}", path.display()));
 
-    for (_name, unit) in test_suite.0 {
-        // NOTE: currently we only support Cancun spec
-        let Some(tests) = unit.post.get("Cancun") else {
-            continue;
-        };
-        let to = match unit.transaction.to {
-            Some(to) => TransactTo::Call(to),
-            None => TransactTo::Create,
-        };
-
-        let sender = unit.transaction.sender.unwrap_or_default();
-
-        for test in tests {
-            let mut env = Env::default();
-            env.tx.transact_to = to.clone();
-            env.tx.gas_price = unit
-                .transaction
-                .gas_price
-                .or(unit.transaction.max_fee_per_gas)
-                .unwrap_or_default();
-            env.tx.caller = sender;
-            env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
-            env.tx.value = unit.transaction.value[test.indexes.value];
-            env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
-            env.tx
-                .blob_hashes
-                .clone_from(&unit.transaction.blob_versioned_hashes);
-            env.tx.max_fee_per_blob_gas = unit.transaction.max_fee_per_blob_gas;
-
-            env.block.number = unit.env.current_number;
-            env.block.coinbase = unit.env.current_coinbase;
-            env.block.timestamp = unit.env.current_timestamp;
-            let excess_blob_gas = unit
-                .env
-                .current_excess_blob_gas
-                .unwrap_or_default()
-                .as_u64();
-            env.block.set_blob_base_fee(excess_blob_gas);
-
-            if let Some(basefee) = unit.env.current_base_fee {
-                env.block.basefee = basefee;
-            };
-            let mut db = match to.clone() {
-                TransactTo::Call(to) => {
-                    let opcodes = decode_hex(
-                        unit.pre
-                            .get(&to)
-                            .unwrap_or(&AccountInfo::default())
-                            .code
-                            .clone(),
-                    )
-                    .unwrap();
-                    Db::new().with_contract(to, opcodes)
-                }
-                TransactTo::Create => {
-                    let opcodes =
-                        decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
-                    Db::new().with_contract(env.tx.get_address(), opcodes)
-                }
-            };
-
-            // Load pre storage into db
-            for (address, account_info) in unit.pre.iter() {
-                let opcodes = decode_hex(account_info.code.clone()).unwrap();
-                db = db.with_contract(address.to_owned(), opcodes);
-                db.set_account(
-                    address.to_owned(),
-                    account_info.nonce,
-                    account_info.balance,
-                    account_info.storage.clone(),
-                );
-            }
-
-            let mut evm = Evm::new(env, db);
-
-            let res = evm.transact();
-
-            // Tests if the error was expected by the test.
-            // TODO: if many more tests return these "named exceptions",
-            // like "TR_BLOBLIST_OVERSIZE", it could be useful to have a
-            // utils function to map them to some error types used here.
-            match (&test.expect_exception.as_deref(), &res) {
-                (
-                    Some("TR_BLOBLIST_OVERSIZE"),
-                    Err(EVMError::Transaction(InvalidTransaction::TooManyBlobs { .. })),
-                ) => return Ok(()),
-                (
-                    Some("TR_BLOBCREATE"),
-                    Err(EVMError::Transaction(InvalidTransaction::BlobCreateTransaction)),
-                ) => return Ok(()),
-                (
-                    Some("TR_BLOBVERSION_INVALID"),
-                    Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
-                ) => return Ok(()),
-                (
-                    Some("TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"),
-                    Err(EVMError::Transaction(InvalidTransaction::BlobVersionNotSupported)),
-                ) => return Ok(()),
-                (
-                    Some("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS"),
-                    Err(EVMError::Transaction(InvalidTransaction::LackOfFundForMaxFee { .. })),
-                ) => return Ok(()),
-                (
-                    Some("TransactionException.TYPE_3_TX_ZERO_BLOBS"),
-                    Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs { .. })),
-                ) => return Ok(()),
-                (
-                    Some("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"),
-                    Err(EVMError::Transaction(InvalidTransaction::BlobGasPriceGreaterThanMax {
-                        ..
-                    })),
-                ) => return Ok(()),
-                (
-                    Some("TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS"),
-                    Err(EVMError::Transaction(InvalidTransaction::GasPriceLessThanBasefee {
-                        ..
-                    })),
-                ) => return Ok(()),
-                (
-                    Some("TR_EMPTYBLOB"),
-                    Err(EVMError::Transaction(InvalidTransaction::EmptyBlobs)),
-                ) => return Ok(()),
-                (Some(_), Err(_)) => todo!(),
-                _ => {}
-            }
-
-            let res = res.unwrap();
-
-            match (&test.expect_exception, &res.result) {
-                (None, _) => {
-                    if unit.out.as_ref() != res.result.output() {
-                        return Err("Wrong output".into());
-                    }
-                }
-                (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
-                    return Ok(()); //Halt/Revert and want an error
-                }
-                _ => {
-                    return Err("Expected exception but got none".into());
-                }
-            }
-
-            // TODO: use rlp and hash to check logs
-
-            // Test the resulting storage is the same as the expected storage
-            let mut result_state = HashMap::new();
-            for address in test.post_state.keys() {
-                let account = res.state.get(address).unwrap();
-                let opcodes = decode_hex(account.info.code.clone().unwrap()).unwrap();
-                result_state.insert(
-                    address.to_owned(),
-                    AccountInfo {
-                        balance: account.info.balance,
-                        code: opcodes,
-                        nonce: account.info.nonce,
-                        storage: account
-                            .storage
-                            .clone()
-                            .into_iter()
-                            .map(|(addr, slot)| (addr, slot.present_value))
-                            .collect(),
-                    },
-                );
-            }
-            assert_eq!(test.post_state, result_state);
-        }
-    }
-    Ok(())
+    run_test(path, contents)
 }
 
-datatest_stable::harness!(run_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

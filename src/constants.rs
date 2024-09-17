@@ -148,10 +148,6 @@ pub mod gas_cost {
 }
 
 pub mod call_opcode {
-    // Return codes
-    pub const SUCCESS_RETURN_CODE: u8 = 1;
-    pub const REVERT_RETURN_CODE: u8 = 0;
-
     // Gas related constants
     pub const WARM_MEMORY_ACCESS_COST: u64 = 100;
     pub const NOT_ZERO_VALUE_COST: u64 = 9000;
@@ -161,10 +157,16 @@ pub mod call_opcode {
     pub const GAS_PER_BLOB: u64 = 1 << 17;
 }
 
+pub mod return_codes {
+    pub const REVERT_RETURN_CODE: u8 = 0;
+    pub const SUCCESS_RETURN_CODE: u8 = 1;
+    pub const HALT_RETURN_CODE: u8 = 2;
+}
+
 pub mod precompiles {
     pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
-    pub const SHA2_256_COST: u64 = 60;
+    pub const SHA2_256_STATIC_COST: u64 = 60;
     pub const SHA2_256_ADDRESS: u64 = 0x02;
     pub const RIPEMD_160_COST: u64 = 600;
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;

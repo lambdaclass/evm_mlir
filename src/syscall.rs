@@ -18,15 +18,17 @@
 use std::ffi::c_void;
 
 use crate::{
-    constants::{call_opcode, gas_cost, precompiles, CallType},
+    constants::{
+        call_opcode::{self},
+        gas_cost::{self, MAX_CODE_SIZE},
+        return_codes, CallType,
+    },
     context::Context,
     db::AccountInfo,
     env::{Env, TransactTo},
     executor::{Executor, OptLevel},
     journal::Journal,
-    precompiles::{
-        blake2f, ecadd, ecmul, ecpairing, ecrecover, identity, modexp, ripemd_160, sha2_256,
-    },
+    precompiles::*,
     primitives::{Address, Bytes, B256, U256 as EU256},
     program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
@@ -110,15 +112,52 @@ impl ExitStatusCode {
 pub struct InnerContext {
     /// The memory segment of the EVM.
     /// For extending it, see [`Self::extend_memory`]
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
     /// The result of the execution
     return_data: Option<(usize, usize)>,
     // The program bytecode
     pub program: Vec<u8>,
-    gas_remaining: Option<u64>,
+    pub gas_remaining: Option<u64>,
     gas_refund: u64,
     exit_status: Option<ExitStatusCode>,
     logs: Vec<LogData>,
+}
+
+impl InnerContext {
+    pub fn get_memory_slice(&mut self, memory_offset: usize, size: usize) -> &mut [u8] {
+        let memory_end = memory_offset + size;
+
+        &mut self.memory[memory_offset..memory_end]
+    }
+
+    pub fn resize_memory_if_necessary(&mut self, offset: usize, data_size: usize) {
+        if offset + data_size > self.memory.len() {
+            self.memory.resize(offset + data_size, 0);
+        }
+    }
+
+    pub fn set_value_to_memory(
+        &mut self,
+        memory_offset: usize,
+        value_offset: usize,
+        size: usize,
+        value: &[u8],
+    ) {
+        if value_offset >= value.len() {
+            self.get_memory_slice(memory_offset, size).fill(0);
+            return;
+        }
+
+        let value_memory_end = value.len().min(value_offset + size);
+        let value_memory_size = value_memory_end - value_offset;
+        debug_assert!(value_offset < value.len() && value_memory_end <= value.len());
+        let value = &value[value_offset..value_memory_end];
+        self.get_memory_slice(memory_offset, value_memory_size)
+            .copy_from_slice(value);
+
+        self.get_memory_slice(memory_offset + value_memory_size, size - value_memory_size)
+            .fill(0);
+    }
 }
 
 /// Information about current call frame
@@ -146,6 +185,8 @@ pub struct SyscallContext<'c> {
     pub journal: Journal<'c>,
     pub call_frame: CallFrame,
     pub inner_context: InnerContext,
+    pub halt_reason: Option<HaltReason>,
+    initial_gas: u64,
     pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
@@ -163,11 +204,13 @@ pub struct Log {
 
 /// Accessors for disponibilizing the execution results
 impl<'c> SyscallContext<'c> {
-    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame) -> Self {
+    pub fn new(env: Env, journal: Journal<'c>, call_frame: CallFrame, initial_gas: u64) -> Self {
         Self {
             env,
+            initial_gas,
             journal,
             call_frame,
+            halt_reason: None,
             inner_context: Default::default(),
             transient_storage: Default::default(),
         }
@@ -175,6 +218,9 @@ impl<'c> SyscallContext<'c> {
 
     pub fn return_values(&self) -> &[u8] {
         let (offset, size) = self.inner_context.return_data.unwrap_or((0, 0));
+        if offset + size > self.inner_context.memory.len() {
+            return &[];
+        }
         &self.inner_context.memory[offset..offset + size]
     }
 
@@ -183,7 +229,7 @@ impl<'c> SyscallContext<'c> {
             .logs
             .iter()
             .map(|logdata| Log {
-                address: self.env.tx.caller,
+                address: self.env.tx.get_address(),
                 data: logdata.clone(),
             })
             .collect()
@@ -191,7 +237,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
-        let gas_initial = self.env.tx.gas_limit;
+        let gas_initial = self.initial_gas;
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let gas_refunded = self
             .inner_context
@@ -203,6 +249,7 @@ impl<'c> SyscallContext<'c> {
             .clone()
             .unwrap_or(ExitStatusCode::Default);
         let return_values = self.return_values().to_vec();
+        let halt_reason = self.halt_reason.unwrap_or(HaltReason::OpcodeNotFound);
         let result = match exit_status {
             ExitStatusCode::Return => ExecutionResult::Success {
                 reason: SuccessReason::Return,
@@ -223,7 +270,7 @@ impl<'c> SyscallContext<'c> {
                 gas_used,
             },
             ExitStatusCode::Error | ExitStatusCode::Default => ExecutionResult::Halt {
-                reason: HaltReason::OpcodeNotFound, // TODO: check which Halt error
+                reason: halt_reason,
                 gas_used,
             },
         };
@@ -262,12 +309,14 @@ impl<'c> SyscallContext<'c> {
         offset: u32,
         size: u32,
     ) {
-        Self::copy_exact(
-            &mut self.inner_context.memory,
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset as usize, size as usize);
+
+        self.inner_context.set_value_to_memory(
+            dest_offset as usize,
+            offset as usize,
+            size as usize,
             &self.call_frame.last_call_return_data,
-            dest_offset,
-            offset,
-            size,
         );
     }
 
@@ -292,171 +341,143 @@ impl<'c> SyscallContext<'c> {
         //Copy the calldata from memory
         let off = args_offset as usize;
         let size = args_size as usize;
+
+        if off + size > self.inner_context.memory.len() {
+            eprintln!("ERROR: size + offset too big");
+            self.halt_reason = Some(HaltReason::OutOfOffset);
+            return return_codes::HALT_RETURN_CODE;
+        }
+
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
-        let (return_code, return_data) = match callee_address {
-            x if x == Address::from_low_u64_be(precompiles::ECRECOVER_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecrecover(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::IDENTITY_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                identity(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::SHA2_256_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                sha2_256(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::RIPEMD_160_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ripemd_160(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::MODEXP_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                modexp(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::ECADD_ADDRESS) => {
-                match ecadd(&calldata, gas_to_send, consumed_gas) {
-                    Ok(res) => (call_opcode::SUCCESS_RETURN_CODE, res),
-                    Err(_) => (call_opcode::REVERT_RETURN_CODE, Bytes::new()),
-                }
+        let (return_code, return_data) = if is_precompile(callee_address) {
+            match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
+                Ok(res) => (return_codes::SUCCESS_RETURN_CODE, res),
+                Err(_) => (return_codes::REVERT_RETURN_CODE, Bytes::new()),
             }
-            x if x == Address::from_low_u64_be(precompiles::ECMUL_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecmul(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::ECPAIRING_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                ecpairing(&calldata, gas_to_send, consumed_gas),
-            ),
-            x if x == Address::from_low_u64_be(precompiles::BLAKE2F_ADDRESS) => (
-                call_opcode::SUCCESS_RETURN_CODE,
-                blake2f(&calldata, gas_to_send, consumed_gas).unwrap_or_default(),
-            ),
-            _ => {
-                // Execute subcontext
-                //TODO: Add call depth check
-                //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
-                let value = value_to_transfer.to_primitive_u256();
-                let call_type = CallType::try_from(call_type)
-                    .expect("Error while parsing CallType on call syscall");
+        } else {
+            // Execute subcontext
+            //TODO: Add call depth check
+            //TODO: Check that the args offsets and sizes are correct -> This from the MLIR side
+            let value = value_to_transfer.to_primitive_u256();
+            let call_type = CallType::try_from(call_type)
+                .expect("Error while parsing CallType on call syscall");
 
-                //TODO: This should instead add the account fetch (warm or cold) cost
-                //For the moment we consider warm access
-                let callee_account = match self.journal.get_account(&callee_address) {
-                    Some(acc) => {
-                        *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                        acc
-                    }
-                    None => {
-                        *consumed_gas = 0;
-                        return call_opcode::REVERT_RETURN_CODE;
-                    }
-                };
-
-                let caller_address = self.env.tx.get_address();
-                let caller_account = self
-                    .journal
-                    .get_account(&caller_address)
-                    .unwrap_or_default();
-
-                let mut stipend = 0;
-                if !value.is_zero() {
-                    if caller_account.balance < value {
-                        //There isn't enough balance to send
-                        return call_opcode::REVERT_RETURN_CODE;
-                    }
-                    *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
-                    if callee_account.is_empty() {
-                        *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
-                    }
-                    if available_gas < *consumed_gas {
-                        return call_opcode::REVERT_RETURN_CODE; //It acctually doesn't matter what we return here
-                    }
-                    stipend = call_opcode::STIPEND_GAS_ADDITION;
-
-                    //TODO: Maybe we should increment the nonce too
-                    let caller_balance = caller_account.balance;
-                    self.journal
-                        .set_balance(&caller_address, caller_balance - value);
-
-                    let callee_balance = callee_account.balance;
-                    self.journal
-                        .set_balance(&callee_address, callee_balance + value);
+            //TODO: This should instead add the account fetch (warm or cold) cost
+            //For the moment we consider warm access
+            let callee_account = match self.journal.get_account(&callee_address) {
+                Some(acc) => {
+                    *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
+                    acc
                 }
+                None => {
+                    *consumed_gas = 0;
+                    return return_codes::REVERT_RETURN_CODE;
+                }
+            };
 
-                let remaining_gas = available_gas.saturating_sub(*consumed_gas);
-                gas_to_send = std::cmp::min(
-                    remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
-                    gas_to_send,
-                );
-                *consumed_gas += gas_to_send;
-                gas_to_send += stipend;
+            let caller_address = self.env.tx.get_address();
+            let caller_account = self
+                .journal
+                .get_account(&caller_address)
+                .unwrap_or_default();
 
-                let mut env = self.env.clone();
+            let mut stipend = 0;
+            if !value.is_zero() {
+                if caller_account.balance < value {
+                    //There isn't enough balance to send
+                    return return_codes::REVERT_RETURN_CODE;
+                }
+                *consumed_gas += call_opcode::NOT_ZERO_VALUE_COST;
+                if callee_account.is_empty() {
+                    *consumed_gas += call_opcode::EMPTY_CALLEE_COST;
+                }
+                if available_gas < *consumed_gas {
+                    self.halt_reason =
+                        Some(HaltReason::OutOfGas(crate::result::OutOfGasError::Basic));
+                    return return_codes::HALT_RETURN_CODE; //It acctually doesn't matter what we return here
+                }
+                stipend = call_opcode::STIPEND_GAS_ADDITION;
 
-                //TODO: Check if calling `get_address()` here is ok
-                let this_address = self.env.tx.get_address();
-                let (new_frame_caller, new_value, transact_to) = match call_type {
-                    CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
-                    CallType::CallCode => (this_address, value, this_address),
-                    CallType::DelegateCall => {
-                        (self.call_frame.caller, self.env.tx.value, this_address)
-                    }
-                };
+                //TODO: Maybe we should increment the nonce too
+                let caller_balance = caller_account.balance;
+                self.journal
+                    .set_balance(&caller_address, caller_balance - value);
 
-                env.tx.value = new_value;
-                env.tx.transact_to = TransactTo::Call(transact_to);
-                env.tx.gas_limit = gas_to_send;
-
-                //Copy the calldata from memory
-                let off = args_offset as usize;
-                let size = args_size as usize;
-                env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
-
-                //NOTE: We could optimize this by not making the call if the bytecode is zero.
-                //We would have to refund the stipend here
-                //TODO: Check if returning REVERT because of database fail is ok
-                let bytecode = self.journal.code_by_address(&callee_address);
-
-                let program = Program::from_bytecode(&bytecode);
-
-                let context = Context::new();
-                let module = context
-                    .compile(&program, Default::default())
-                    .expect("failed to compile program");
-
-                let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
-
-                let call_frame = CallFrame {
-                    caller: new_frame_caller,
-                    ctx_is_static: is_static,
-                    ..Default::default()
-                };
-
-                let journal = self.journal.eject_base();
-
-                let mut context = SyscallContext::new(env.clone(), journal, call_frame);
-                let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-
-                executor.execute(&mut context, env.tx.gas_limit);
-
-                let result = context.get_result().unwrap().result;
-
-                let unused_gas = gas_to_send - result.gas_used();
-                *consumed_gas -= unused_gas;
-                *consumed_gas -= result.gas_refunded();
-                let return_code = if result.is_success() {
-                    self.journal.extend_from_successful(context.journal);
-                    call_opcode::SUCCESS_RETURN_CODE
-                } else {
-                    //TODO: If we revert, should we still send the value to the called contract?
-                    self.journal.extend_from_reverted(context.journal);
-                    call_opcode::REVERT_RETURN_CODE
-                };
-                let output = result.into_output().unwrap_or_default();
-                (return_code, output)
+                let callee_balance = callee_account.balance;
+                self.journal
+                    .set_balance(&callee_address, callee_balance + value);
             }
+
+            let remaining_gas = available_gas.saturating_sub(*consumed_gas);
+            gas_to_send = std::cmp::min(
+                remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+                gas_to_send,
+            );
+            *consumed_gas += gas_to_send;
+            gas_to_send += stipend;
+
+            let mut env = self.env.clone();
+
+            //TODO: Check if calling `get_address()` here is ok
+            let this_address = self.env.tx.get_address();
+            let (new_frame_caller, new_value, transact_to) = match call_type {
+                CallType::Call | CallType::StaticCall => (this_address, value, callee_address),
+                CallType::CallCode => (this_address, value, this_address),
+                CallType::DelegateCall => (self.call_frame.caller, self.env.tx.value, this_address),
+            };
+
+            env.tx.value = new_value;
+            env.tx.transact_to = TransactTo::Call(transact_to);
+            env.tx.gas_limit = gas_to_send;
+
+            //Copy the calldata from memory
+            let off = args_offset as usize;
+            let size = args_size as usize;
+            env.tx.data = Bytes::from(self.inner_context.memory[off..off + size].to_vec());
+
+            //NOTE: We could optimize this by not making the call if the bytecode is zero.
+            //We would have to refund the stipend here
+            //TODO: Check if returning REVERT because of database fail is ok
+            let bytecode = self.journal.code_by_address(&callee_address);
+
+            let program = Program::from_bytecode(&bytecode);
+
+            let context = Context::new();
+            let module = context
+                .compile(&program, Default::default())
+                .expect("failed to compile program");
+
+            let is_static = self.call_frame.ctx_is_static || call_type == CallType::StaticCall;
+
+            let call_frame = CallFrame {
+                caller: new_frame_caller,
+                ctx_is_static: is_static,
+                ..Default::default()
+            };
+
+            let journal = self.journal.eject_base();
+
+            let mut context = SyscallContext::new(env.clone(), journal, call_frame, gas_to_send);
+            let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+
+            executor.execute(&mut context, env.tx.gas_limit);
+
+            let result = context.get_result().unwrap().result;
+
+            let unused_gas = gas_to_send - result.gas_used();
+            *consumed_gas -= unused_gas;
+            *consumed_gas -= result.gas_refunded();
+            let return_code = if result.is_success() {
+                self.journal.extend_from_successful(context.journal);
+                return_codes::SUCCESS_RETURN_CODE
+            } else {
+                //TODO: If we revert, should we still send the value to the called contract?
+                self.journal.extend_from_reverted(context.journal);
+                return_codes::REVERT_RETURN_CODE
+            };
+            let output = result.into_output().unwrap_or_default();
+            (return_code, output)
         };
 
         //TODO: This copying mechanism may be improved with a safe copy_from_slice which would
@@ -465,48 +486,19 @@ impl<'c> SyscallContext<'c> {
         self.call_frame
             .last_call_return_data
             .clone_from(&return_data.to_vec());
-        Self::copy_exact(
-            &mut self.inner_context.memory,
-            &return_data,
-            ret_offset,
-            0,
-            ret_size,
-        );
 
+        if return_code == return_codes::SUCCESS_RETURN_CODE {
+            self.inner_context
+                .resize_memory_if_necessary(ret_offset as usize, ret_size as usize);
+
+            self.inner_context.set_value_to_memory(
+                ret_offset as usize,
+                0,
+                ret_size as usize,
+                &return_data,
+            );
+        }
         return_code
-    }
-
-    fn copy_exact(
-        target: &mut [u8],
-        source: &[u8],
-        target_offset: u32,
-        source_offset: u32,
-        size: u32,
-    ) {
-        // Convert u32 to usize
-        let target_offset = target_offset as usize;
-        let source_offset = source_offset as usize;
-        let size = size as usize;
-
-        // Check if the offsets are within their respective slices
-        if size + target_offset > target.len() {
-            eprintln!("ERROR: Specified target offset and size are bigger than target len");
-            return;
-        }
-
-        if size + source_offset > source.len() {
-            eprintln!("ERROR: Specified source offset and size are bigger than source len");
-            return;
-        }
-
-        // Calculate the actual number of bytes we can copy
-        let available_target_space = target.len() - target_offset;
-        let available_source_bytes = source.len() - source_offset;
-        let bytes_to_copy = size.min(available_target_space).min(available_source_bytes);
-
-        // Perform the copy
-        target[target_offset..target_offset + bytes_to_copy]
-            .copy_from_slice(&source[source_offset..source_offset + bytes_to_copy]);
     }
 
     pub extern "C" fn store_in_selfbalance_ptr(&mut self, balance: &mut U256) {
@@ -521,6 +513,7 @@ impl<'c> SyscallContext<'c> {
     pub extern "C" fn keccak256_hasher(&mut self, offset: u32, size: u32, hash_ptr: &mut U256) {
         let offset = offset as usize;
         let size = size as usize;
+        self.inner_context.resize_memory_if_necessary(offset, size);
         let data = &self.inner_context.memory[offset..offset + size];
         let mut hasher = Keccak256::new();
         hasher.update(data);
@@ -603,23 +596,12 @@ impl<'c> SyscallContext<'c> {
         let size = size as usize;
         let dest_offset = dest_offset as usize;
 
-        // adjust the size so it does not go out of bounds
-        let size: usize = if code_offset + size > code_size {
-            code_size.saturating_sub(code_offset)
-        } else {
-            size
-        };
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset, size);
 
-        let Some(code_slice) = &self
-            .inner_context
-            .program
-            .get(code_offset..code_offset + size)
-        else {
-            eprintln!("Error on copy_code_to_memory");
-            return; // TODO: fix bug with code indexes
-        };
-        // copy the program into memory
-        self.inner_context.memory[dest_offset..dest_offset + size].copy_from_slice(code_slice);
+        let code = &self.inner_context.program.clone()[..code_size];
+        self.inner_context
+            .set_value_to_memory(dest_offset, code_offset, size, code);
     }
 
     pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
@@ -781,6 +763,8 @@ impl<'c> SyscallContext<'c> {
     fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
         let offset = offset as usize;
         let size = size as usize;
+
+        self.inner_context.resize_memory_if_necessary(offset, size);
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
 
         let log = LogData { data, topics };
@@ -867,17 +851,14 @@ impl<'c> SyscallContext<'c> {
         let address = Address::from(address_value);
         // TODO: Check if returning default bytecode on database failure is ok
         // A silenced error like this may produce unexpected code behaviour
+        // ----> If the code is not found, it should be a fatal error
         let code = self.journal.code_by_address(&address);
-        let code_size = code.len();
-        let code_to_copy_size = code_size.saturating_sub(code_offset);
-        let code_slice = &code[code_offset..code_offset + code_to_copy_size];
-        let padding_size = size - code_to_copy_size;
-        let padding_offset = dest_offset + code_to_copy_size;
-        // copy the program into memory
-        self.inner_context.memory[dest_offset..dest_offset + code_to_copy_size]
-            .copy_from_slice(code_slice);
-        // pad the left part with zero
-        self.inner_context.memory[padding_offset..padding_offset + padding_size].fill(0);
+
+        let code_offset = code_offset.min(code.len());
+        self.inner_context
+            .resize_memory_if_necessary(dest_offset, size);
+        self.inner_context
+            .set_value_to_memory(dest_offset, code_offset, size, &code);
     }
 
     pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
@@ -903,8 +884,24 @@ impl<'c> SyscallContext<'c> {
         let minimum_word_size = ((size + 31) / 32) as u64;
         let sender_address = self.env.tx.get_address();
 
+        if size > MAX_CODE_SIZE * 2 {
+            self.halt_reason = Some(HaltReason::CreateContractSizeLimit);
+            return return_codes::HALT_RETURN_CODE;
+        }
+
+        self.inner_context.resize_memory_if_necessary(offset, size);
+
         let initialization_bytecode = &self.inner_context.memory[offset..offset + size];
         let program = Program::from_bytecode(initialization_bytecode);
+
+        // if we do a create from a program, and the created program would be the same, that means a recursive create
+        // and we should directly halt to avoid an stack overflow
+        if self.inner_context.program == program.clone().to_bytecode() {
+            self.halt_reason = Some(HaltReason::OutOfGas(
+                crate::result::OutOfGasError::RecursiveCreate,
+            ));
+            return return_codes::HALT_RETURN_CODE;
+        }
 
         let sender_account = self.journal.get_account(&sender_address).unwrap();
 
@@ -917,15 +914,23 @@ impl<'c> SyscallContext<'c> {
                 ),
                 minimum_word_size * gas_cost::HASH_WORD_COST as u64,
             ),
-            _ => (
-                compute_contract_address(sender_address, sender_account.nonce),
-                0,
-            ),
+            _ => {
+                if sender_account.nonce.checked_add(1).is_none() {
+                    self.halt_reason = Some(HaltReason::NonceOverflow);
+                    return return_codes::HALT_RETURN_CODE;
+                }
+
+                (
+                    compute_contract_address(sender_address, sender_account.nonce),
+                    0,
+                )
+            }
         };
 
         // Check if there is already a contract stored in dest_address
         if self.journal.get_account(&dest_addr).is_some() {
-            return 1;
+            self.halt_reason = Some(HaltReason::CreateCollision);
+            return return_codes::HALT_RETURN_CODE;
         }
 
         // Create subcontext for the initialization code
@@ -943,9 +948,14 @@ impl<'c> SyscallContext<'c> {
 
         // NOTE: Here we are not taking into account what happens if the deployment code reverts
         let ctx_journal = self.journal.eject_base();
-        let mut context = SyscallContext::new(new_env.clone(), ctx_journal, call_frame);
+        let mut context =
+            SyscallContext::new(new_env.clone(), ctx_journal, call_frame, *remaining_gas);
+        context.journal.new_account(dest_addr, value_as_u256);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
+        context.inner_context.program = program.to_bytecode();
+        let program_len = context.inner_context.program.len() as u32;
         executor.execute(&mut context, new_env.tx.gas_limit);
+
         let result = context.get_result().unwrap().result;
         let bytecode = result.output().cloned().unwrap_or_default();
 
@@ -961,20 +971,37 @@ impl<'c> SyscallContext<'c> {
         // Check if balance is enough
         let Some(sender_balance) = sender_account.balance.checked_sub(value_as_u256) else {
             *value = U256::zero();
-            return 0;
+            self.write_result(
+                offset as u32,
+                program_len,
+                *remaining_gas,
+                return_codes::SUCCESS_RETURN_CODE,
+            );
+            return return_codes::SUCCESS_RETURN_CODE;
         };
 
         // Create new contract and update sender account
         self.journal
             .new_contract(dest_addr, bytecode, value_as_u256);
-        self.journal
-            .set_nonce(&sender_address, sender_account.nonce + 1);
+
+        let Some(new_nonce) = sender_account.nonce.checked_add(1) else {
+            self.halt_reason = Some(HaltReason::NonceOverflow);
+            return return_codes::HALT_RETURN_CODE;
+        };
+
+        self.journal.set_nonce(&sender_address, new_nonce);
         self.journal.set_balance(&sender_address, sender_balance);
 
         value.copy_from(&dest_addr);
 
         // TODO: add dest_addr as warm in the access list
-        0
+        self.write_result(
+            offset as u32,
+            program_len,
+            *remaining_gas,
+            return_codes::SUCCESS_RETURN_CODE,
+        );
+        return_codes::SUCCESS_RETURN_CODE
     }
 
     pub extern "C" fn create(
