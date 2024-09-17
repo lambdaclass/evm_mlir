@@ -10,7 +10,7 @@ use melior::{
         attribute::{DenseI32ArrayAttribute, IntegerAttribute, TypeAttribute},
         operation::OperationResult,
         r#type::IntegerType,
-        Block, Location, Region, Value, ValueLike,
+        Block, BlockRef, Location, Region, Value, ValueLike,
     },
     Context as MeliorContext,
 };
@@ -19,9 +19,15 @@ use sha3::{Digest, Keccak256};
 use crate::{
     codegen::context::OperationCtx,
     constants::{
-        gas_cost, CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
+        gas_cost::{self, TX_ACCESS_LIST_ADDRESS_COST, TX_ACCESS_LIST_STORAGE_KEY_COST},
+        precompiles::{
+            BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECPAIRING_ADDRESS, ECRECOVER_ADDRESS,
+            IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
+        },
+        CALLDATA_PTR_GLOBAL, CALLDATA_SIZE_GLOBAL, GAS_COUNTER_GLOBAL, MAX_STACK_SIZE,
         MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL, STACK_BASEPTR_GLOBAL, STACK_PTR_GLOBAL,
     },
+    env::AccessList,
     errors::CodegenError,
     primitives::{Address, H160, U256},
     syscall::{symbols::CONTEXT_IS_STATIC, ExitStatusCode},
@@ -1760,4 +1766,84 @@ pub fn compute_contract_address2(address: H160, salt: U256, initialization_code:
     hasher.update(salt_bytes);
     hasher.update(initialization_code_hash);
     Address::from_slice(&hasher.finalize()[12..])
+}
+
+pub fn access_list_cost(access_list: &AccessList) -> u64 {
+    access_list.iter().fold(0, |acc, (_, keys)| {
+        acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
+    })
+}
+
+pub fn precompiled_addresses() -> AccessList {
+    let access_list = vec![
+        (H160::from_low_u64_be(ECRECOVER_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(SHA2_256_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(RIPEMD_160_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(IDENTITY_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(MODEXP_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECADD_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECMUL_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(ECPAIRING_ADDRESS), Vec::new()),
+        (H160::from_low_u64_be(BLAKE2F_ADDRESS), Vec::new()),
+    ];
+
+    access_list
+}
+
+pub fn allocate_gas_counter_ptr<'c>(
+    context: &&'c melior::Context,
+    block: &'c BlockRef<'c, 'c>,
+    location: Location<'c>,
+) -> Result<melior::ir::Value<'c, 'c>, CodegenError> {
+    let uint64 = IntegerType::new(context, 64);
+    let uint32 = IntegerType::new(context, 32);
+
+    let ptr_type = pointer(context, 0);
+
+    let gas_counter_ptr = block
+        .append_operation(llvm_mlir::addressof(
+            context,
+            GAS_COUNTER_GLOBAL,
+            ptr_type,
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_counter = block
+        .append_operation(llvm::load(
+            context,
+            gas_counter_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+    let number_of_elements = block
+        .append_operation(arith::constant(
+            context,
+            IntegerAttribute::new(uint32.into(), 1).into(),
+            location,
+        ))
+        .result(0)?
+        .into();
+    let gas_ptr = block
+        .append_operation(llvm::alloca(
+            context,
+            number_of_elements,
+            ptr_type,
+            location,
+            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
+        ))
+        .result(0)?
+        .into();
+    block.append_operation(llvm::store(
+        context,
+        gas_counter,
+        gas_ptr,
+        location,
+        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
+    ));
+
+    Ok(gas_ptr)
 }

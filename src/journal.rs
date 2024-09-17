@@ -1,6 +1,7 @@
 use crate::{
     constants::EMPTY_CODE_HASH_STR,
     db::{AccountInfo, Bytecode, Database, Db},
+    env::AccessList,
     primitives::{Address, B256, U256},
     state::{Account, AccountStatus, EvmStorageSlot},
 };
@@ -102,12 +103,41 @@ impl<'a> Journal<'a> {
         }
     }
 
+    pub fn with_prefetch(mut self, accounts: &AccessList) -> Self {
+        self.accounts = Self::get_prefetch_accounts(accounts);
+        self
+    }
+
+    fn get_prefetch_accounts(prefetch_accounts: &AccessList) -> HashMap<Address, JournalAccount> {
+        let mut accounts = HashMap::new();
+        for (address, storage) in prefetch_accounts {
+            let account = accounts
+                .entry(*address)
+                .or_insert_with(JournalAccount::default);
+            let storage: Vec<(U256, JournalStorageSlot)> = storage
+                .iter()
+                .map(|key| (*key, JournalStorageSlot::default()))
+                .collect();
+            account.storage.extend(storage);
+        }
+        accounts
+    }
+
     /* ACCOUNT HANDLING */
 
     pub fn new_account(&mut self, address: Address, balance: U256) {
         // TODO: Check if account already exists and return error or panic
         let account = JournalAccount::new_created(balance);
         self.accounts.insert(address, account);
+    }
+
+    pub fn add_account_as_warm(&mut self, address: Address) {
+        let account = self
+            .accounts
+            .entry(address)
+            .or_insert(JournalAccount::new_created(U256::zero()));
+
+        account.status &= !AccountStatus::Cold;
     }
 
     pub fn new_contract(&mut self, address: Address, bytecode: Bytecode, balance: U256) {
@@ -152,10 +182,10 @@ impl<'a> Journal<'a> {
 
     pub fn code_by_address(&mut self, address: &Address) -> Bytecode {
         let default = Bytecode::default();
-        let Some(acc) = self._get_account(address) else {
+        let Some(acc) = self._get_account_mut(address) else {
             return default;
         };
-
+        acc.status &= !AccountStatus::Cold;
         if !acc.has_code() {
             return default;
         }
@@ -174,7 +204,7 @@ impl<'a> Journal<'a> {
     pub fn account_is_warm(&self, address: &Address) -> bool {
         self.accounts
             .get(address)
-            .map(|acc| acc.status.contains(AccountStatus::Cold))
+            .map(|acc| !acc.status.contains(AccountStatus::Cold))
             .unwrap_or(false)
     }
 

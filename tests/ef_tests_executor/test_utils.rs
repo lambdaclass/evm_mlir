@@ -1,7 +1,13 @@
 use std::{collections::HashMap, path::Path};
 
 use bytes::Bytes;
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::{AccessList, TransactTo},
+    result::ExecutionResult,
+    utils::precompiled_addresses,
+    Env, Evm,
+};
 
 use super::models::{AccountInfo, Test, TestSuite, TestUnit};
 
@@ -37,6 +43,26 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
     env.tx.value = unit.transaction.value[test.indexes.value];
     env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
+    let access_list_vector = unit
+        .transaction
+        .access_lists
+        .get(test.indexes.data)
+        .cloned()
+        .flatten()
+        .unwrap_or_default();
+    let mut access_list = AccessList::default();
+    for access_list_item in access_list_vector {
+        let storage_keys = access_list_item
+            .storage_keys
+            .iter()
+            .map(|key| ethereum_types::U256::from(key.0))
+            .collect();
+
+        access_list.push((access_list_item.address, storage_keys));
+    }
+    access_list.push((env.block.coinbase, Vec::new())); // after Shanghai, coinbase address is added to access list
+    access_list.push((env.tx.caller, Vec::new())); // after Berlin, tx.sender is added to access list
+    access_list.append(&mut precompiled_addresses()); // precompiled address are always warm
 
     env.block.number = unit.env.current_number;
     env.block.coinbase = unit.env.current_coinbase;

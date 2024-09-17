@@ -1,16 +1,17 @@
 use crate::{
     constants::{
         gas_cost::{
-            init_code_cost, MAX_CODE_SIZE, TX_ACCESS_LIST_ADDRESS_COST,
-            TX_ACCESS_LIST_STORAGE_KEY_COST, TX_BASE_COST, TX_CREATE_COST,
-            TX_DATA_COST_PER_NON_ZERO, TX_DATA_COST_PER_ZERO,
+            init_code_cost, MAX_CODE_SIZE, TX_BASE_COST, TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO,
+            TX_DATA_COST_PER_ZERO,
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
-    utils::calc_blob_gasprice,
+    utils::{access_list_cost, calc_blob_gasprice},
 };
+
+pub type AccessList = Vec<(Address, Vec<U256>)>;
 
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
@@ -85,9 +86,7 @@ impl Env {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
-        let access_list_cost = self.tx.access_list.iter().fold(0, |acc, (_, keys)| {
-            acc + TX_ACCESS_LIST_ADDRESS_COST + keys.len() as u64 * TX_ACCESS_LIST_STORAGE_KEY_COST
-        });
+        let access_list_cost = access_list_cost(&self.tx.access_list);
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }
@@ -187,7 +186,7 @@ pub struct TxEnv {
     // Added in [EIP-2930].
     //
     // [EIP-2930]: https://eips.ethereum.org/EIPS/eip-2930
-    pub access_list: Vec<(Address, Vec<U256>)>,
+    pub access_list: AccessList,
 
     // The priority fee per gas.
     //
@@ -224,7 +223,7 @@ impl Default for TxEnv {
             data: Bytes::new(),
             // chain_id: None,
             // nonce: None,
-            access_list: Vec::new(),
+            access_list: Default::default(),
             blob_hashes: Vec::new(),
             max_fee_per_blob_gas: None,
         }
