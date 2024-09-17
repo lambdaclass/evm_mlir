@@ -527,10 +527,7 @@ const POINT_EVAL_RETURN: &str =
     "000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
 const POINT_EVAL_CALLDATA_LEN: usize = 192;
 
-#[derive(Debug)]
-struct TrustedSetupError;
-
-fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, TrustedSetupError> {
+fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, PrecompileError> {
     type Kzg = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
     let mut trusted_setup_g1_point: [u8; 48] = [
@@ -556,13 +553,13 @@ fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, Trust
     ];
 
     let g1_point = BLS12381Curve::decompress_g1_point(&mut trusted_setup_g1_point)
-        .map_err(|_| TrustedSetupError)?;
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
 
     let g2_a_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_first_g2_point)
-        .map_err(|_| TrustedSetupError)?;
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
 
     let g2_b_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_second_g2_point)
-        .map_err(|_| TrustedSetupError)?;
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
 
     let main_group = vec![g1_point];
     let secondary_group = [g2_a_point, g2_b_point];
@@ -629,7 +626,7 @@ pub fn point_eval(
     let proof = BLS12381Curve::decompress_g1_point(&mut proof_array)
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let kzg = get_kzg().map_err(|_| PrecompileError::InvalidCalldata)?;
+    let kzg = get_kzg()?;
 
     if kzg.verify(&x, &y, &commitment, &proof) {
         Err(PrecompileError::PointEvalError)
