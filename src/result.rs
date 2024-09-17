@@ -386,4 +386,5 @@ pub enum PrecompileError {
     Secp256k1Error,
     InvalidEcPoint,
     PointEvalError,
+    TrustedSetupError,
 }
