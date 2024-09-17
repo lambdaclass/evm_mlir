@@ -15,7 +15,10 @@ use melior::{
 
 use super::context::OperationCtx;
 use crate::{
-    constants::{gas_cost, CallType, GAS_COUNTER_GLOBAL, MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL},
+    constants::{
+        gas_cost, return_codes::SUCCESS_RETURN_CODE, CallType, GAS_COUNTER_GLOBAL,
+        MEMORY_PTR_GLOBAL, MEMORY_SIZE_GLOBAL,
+    },
     errors::CodegenError,
     program::Operation,
     syscall::ExitStatusCode,
@@ -5381,10 +5384,10 @@ fn codegen_create<'c, 'r>(
     };
 
     // Check if the return code is error
-    let zero_constant_value = create_block
+    let success_return_code = create_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint8.into(), 0).into(),
+            IntegerAttribute::new(uint8.into(), SUCCESS_RETURN_CODE as i64).into(),
             location,
         ))
         .result(0)?
@@ -5393,7 +5396,7 @@ fn codegen_create<'c, 'r>(
         .append_operation(arith::cmpi(
             context,
             CmpiPredicate::Eq,
-            zero_constant_value,
+            success_return_code,
             result,
             location,
         ))
