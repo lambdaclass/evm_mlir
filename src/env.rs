@@ -27,9 +27,10 @@ pub struct Env {
 
 impl Env {
     pub fn consume_intrinsic_cost(&mut self) -> Result<u64, InvalidTransaction> {
-        if self.tx.gas_limit >= self.calculate_intrinsic_cost() {
-            self.tx.gas_limit -= self.calculate_intrinsic_cost();
-            Ok(self.calculate_intrinsic_cost())
+        let intrinsic_cost = self.calculate_intrinsic_cost();
+        if self.tx.gas_limit >= intrinsic_cost {
+            self.tx.gas_limit -= intrinsic_cost;
+            Ok(intrinsic_cost)
         } else {
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         }
