@@ -181,7 +181,7 @@ impl<'c> SyscallContext<'c> {
             .logs
             .iter()
             .map(|logdata| Log {
-                address: self.env.tx.caller,
+                address: self.env.tx.get_address(),
                 data: logdata.clone(),
             })
             .collect()

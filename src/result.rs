@@ -379,7 +379,7 @@ pub enum OutOfGasError {
     InvalidOperand,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PrecompileError {
     InvalidCalldata,
     NotEnoughGas,

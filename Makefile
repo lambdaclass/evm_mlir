@@ -56,10 +56,13 @@ fmt:
 	cargo fmt --all
 
 test:
-	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(ef_tests)'
+	cargo nextest run --workspace --all-features --no-capture -E 'all() - binary(time_consuming) - binary(normal)'
 
 test-eth: check-ethtests
-	cargo nextest run --workspace --all-features --no-capture -E 'binary(ef_tests)'
+	cargo nextest run --workspace --all-features --no-capture --test normal
+
+test-eth-slow: check-ethtests
+	cargo nextest run --workspace --all-features --no-capture --test time_consuming
 
 revm-comparison:
 	$(MAKE) build-revm-comparison
