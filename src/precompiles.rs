@@ -54,6 +54,15 @@ const MSIZE_START: usize = 64;
 const MSIZE_END: usize = 96;
 const MXP_PARAMS_OFFSET: usize = 96;
 
+// for ecadd
+const ECADD_PARAMS_OFFSET: usize = 128;
+const X1_END: usize = 32;
+const Y1_START: usize = 32;
+const Y1_END: usize = 64;
+const X2_START: usize = 64;
+const X2_END: usize = 96;
+const Y2_START: usize = 96;
+const Y2_END: usize = 128;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -151,7 +160,9 @@ pub fn modexp(
     let calldata = right_pad(&calldata, params_len);
 
     let b = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET..MXP_PARAMS_OFFSET + b_size]);
-    let e = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET + b_size..MXP_PARAMS_OFFSET + b_size + e_size]);
+    let e = BigUint::from_bytes_be(
+        &calldata[MXP_PARAMS_OFFSET + b_size..MXP_PARAMS_OFFSET + b_size + e_size],
+    );
     let m = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET + b_size + e_size..params_len]);
 
     // Compute gas cost
@@ -193,12 +204,12 @@ pub fn ecadd(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 128);
+    let calldata = right_pad(calldata, ECADD_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
-    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
-    let x2 = BN254FieldElement::from_bytes_be(&calldata[64..96]).unwrap();
-    let y2 = BN254FieldElement::from_bytes_be(&calldata[96..128]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..X1_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[Y1_START..Y1_END]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[X2_START..X2_END]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[Y2_START..Y2_END]).unwrap();
 
     // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
     let zero_el = BN254FieldElement::from(0);
