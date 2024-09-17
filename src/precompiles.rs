@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::{
     constants::{precompiles::*, VERSIONED_HASH_VERSION_KZG},
     primitives::U256,
@@ -533,7 +531,7 @@ const POINT_EVAL_CALLDATA_LEN: usize = 192;
 struct TrustedSetupError;
 
 fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, TrustedSetupError> {
-    type KZG = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
+    type Kzg = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
 
     let mut trusted_setup_g1_point: [u8; 48] = [
         160, 65, 60, 13, 202, 254, 198, 219, 201, 244, 125, 102, 120, 92, 241, 232, 201, 129, 4,
@@ -569,7 +567,7 @@ fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, Trust
     let main_group = vec![g1_point];
     let secondary_group = [g2_a_point, g2_b_point];
 
-    let kzg = KZG::new(StructuredReferenceString::new(
+    let kzg = Kzg::new(StructuredReferenceString::new(
         &main_group,
         &secondary_group,
     ));
@@ -609,7 +607,7 @@ pub fn point_eval(
     let mut commitment_array: [u8; 48] = [0; 48];
     commitment_array.copy_from_slice(commitment_bytes);
 
-    let mut commitment_bytes_hash: [u8; 32] = sha2::Sha256::digest(&commitment_array).into();
+    let mut commitment_bytes_hash: [u8; 32] = sha2::Sha256::digest(commitment_array).into();
     commitment_bytes_hash[0] = VERSIONED_HASH_VERSION_KZG;
 
     if commitment_bytes_hash != versioned_hash {
