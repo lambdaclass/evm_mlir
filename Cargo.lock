@@ -873,6 +873,7 @@ dependencies = [
  "ethereum-types",
  "hex",
  "hex-literal",
+ "lambdaworks-crypto",
  "lambdaworks-math",
  "llvm-sys",
  "melior",
@@ -1254,10 +1255,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambdaworks-crypto"
+version = "0.10.0"
+source = "git+https://github.com/lambdaclass/lambdaworks.git?branch=main#8133ae54c7ebf3d340076e182f5184ad7fb6e2e1"
+dependencies = [
+ "lambdaworks-math",
+ "serde",
+ "sha2",
+ "sha3",
+]
+
+[[package]]
 name = "lambdaworks-math"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1bd2632acbd9957afc5aeec07ad39f078ae38656654043bf16e046fa2730e23"
+source = "git+https://github.com/lambdaclass/lambdaworks.git?branch=main#8133ae54c7ebf3d340076e182f5184ad7fb6e2e1"
 dependencies = [
  "rayon",
  "serde",

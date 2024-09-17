@@ -10,6 +10,7 @@ pub const MEMORY_SIZE_GLOBAL: &str = "evm_mlir__memory_size";
 pub const CALLDATA_PTR_GLOBAL: &str = "evm_mlir__calldata_ptr";
 pub const CALLDATA_SIZE_GLOBAL: &str = "evm_mlir__calldata_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
+pub const TRUSTED_SETUP_PATH: &str = "official_trusted_setup.txt";
 
 // An empty bytecode has the following Keccak256 hash
 pub const EMPTY_CODE_HASH_STR: &str =
@@ -186,6 +187,8 @@ pub mod precompiles {
     pub const ECPAIRING_STATIC_COST: u64 = 45000;
     pub const ECPAIRING_PAIRING_COST: u64 = 34000;
     pub const BLAKE2F_ADDRESS: u64 = 0x09;
+    pub const POINT_EVAL_ADDRESS: u64 = 0x0a;
+    pub const POINT_EVAL_COST: u64 = 50_000;
 
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3

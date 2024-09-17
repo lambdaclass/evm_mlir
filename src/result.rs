@@ -381,10 +381,12 @@ pub enum OutOfGasError {
     RecursiveCreate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PrecompileError {
     InvalidCalldata,
     NotEnoughGas,
     Secp256k1Error,
     InvalidEcPoint,
+    PointEvalError,
+    TrustedSetupError,
 }

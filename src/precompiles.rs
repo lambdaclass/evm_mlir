@@ -1,14 +1,30 @@
-use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
+use crate::{
+    constants::{precompiles::*, VERSIONED_HASH_VERSION_KZG},
+    primitives::U256,
+    result::PrecompileError,
+};
 use bytes::Bytes;
 use ethereum_types::Address;
+use lambdaworks_crypto::commitments::{
+    kzg::{KateZaveruchaGoldberg, StructuredReferenceString},
+    traits::IsCommitmentScheme,
+};
 use lambdaworks_math::{
     cyclic_group::IsGroup,
     elliptic_curve::{
-        short_weierstrass::curves::bn_254::{
-            curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
-            field_extension::Degree12ExtensionField,
-            pairing::BN254AtePairing,
-            twist::BN254TwistCurve,
+        short_weierstrass::{
+            curves::{
+                bls12_381::{
+                    curve::BLS12381Curve, default_types::FrField, pairing::BLS12381AtePairing,
+                },
+                bn_254::{
+                    curve::{BN254Curve, BN254FieldElement, BN254TwistCurveFieldElement},
+                    field_extension::Degree12ExtensionField,
+                    pairing::BN254AtePairing,
+                    twist::BN254TwistCurve,
+                },
+            },
+            traits::Compress,
         },
         traits::{IsEllipticCurve, IsPairing},
     },
@@ -503,6 +519,122 @@ pub fn blake2f(
     Ok(Bytes::from(out))
 }
 
+// Return FIELD_ELEMENTS_PER_BLOB and BLS_MODULUS as padded 32 byte big endian values.
+// FIELD_ELEMENTS_PER_BLOB = 4096 = 0x1000;
+// BLS_MODULUS = 52435875175126190479447740508185965837690552500527637822603658699938581184513
+// = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001;
+const POINT_EVAL_RETURN: &str =
+    "000000000000000000000000000000000000000000000000000000000000100073eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001";
+const POINT_EVAL_CALLDATA_LEN: usize = 192;
+
+fn get_kzg() -> Result<KateZaveruchaGoldberg<FrField, BLS12381AtePairing>, PrecompileError> {
+    type Kzg = KateZaveruchaGoldberg<FrField, BLS12381AtePairing>;
+
+    let mut trusted_setup_g1_point: [u8; 48] = [
+        160, 65, 60, 13, 202, 254, 198, 219, 201, 244, 125, 102, 120, 92, 241, 232, 201, 129, 4,
+        79, 125, 19, 207, 227, 228, 252, 187, 113, 181, 64, 141, 253, 230, 49, 36, 147, 203, 60,
+        29, 48, 81, 108, 179, 202, 136, 192, 54, 84,
+    ];
+
+    let mut trusted_setup_first_g2_point: [u8; 96] = [
+        147, 224, 43, 96, 82, 113, 159, 96, 125, 172, 211, 160, 136, 39, 79, 101, 89, 107, 208,
+        208, 153, 32, 182, 26, 181, 218, 97, 187, 220, 127, 80, 73, 51, 76, 241, 18, 19, 148, 93,
+        87, 229, 172, 125, 5, 93, 4, 43, 126, 2, 74, 162, 178, 240, 143, 10, 145, 38, 8, 5, 39, 45,
+        197, 16, 81, 198, 228, 122, 212, 250, 64, 59, 2, 180, 81, 11, 100, 122, 227, 209, 119, 11,
+        172, 3, 38, 168, 5, 187, 239, 212, 128, 86, 200, 193, 33, 189, 184,
+    ];
+
+    let mut trusted_setup_second_g2_point: [u8; 96] = [
+        181, 191, 215, 221, 140, 222, 177, 40, 132, 59, 194, 135, 35, 10, 243, 137, 38, 24, 112,
+        117, 203, 251, 239, 168, 16, 9, 162, 206, 97, 90, 197, 61, 41, 20, 229, 135, 12, 180, 82,
+        210, 175, 170, 171, 36, 243, 73, 159, 114, 24, 92, 191, 238, 83, 73, 39, 20, 115, 68, 41,
+        183, 179, 134, 8, 226, 57, 38, 201, 17, 204, 236, 234, 201, 163, 104, 81, 71, 123, 164,
+        198, 11, 8, 112, 65, 222, 98, 16, 0, 237, 201, 142, 218, 218, 32, 193, 222, 242,
+    ];
+
+    let g1_point = BLS12381Curve::decompress_g1_point(&mut trusted_setup_g1_point)
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
+
+    let g2_a_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_first_g2_point)
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
+
+    let g2_b_point = BLS12381Curve::decompress_g2_point(&mut trusted_setup_second_g2_point)
+        .map_err(|_| PrecompileError::TrustedSetupError)?;
+
+    let main_group = vec![g1_point];
+    let secondary_group = [g2_a_point, g2_b_point];
+
+    let kzg = Kzg::new(StructuredReferenceString::new(
+        &main_group,
+        &secondary_group,
+    ));
+
+    Ok(kzg)
+}
+
+pub fn point_eval(
+    input: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    if gas_limit < POINT_EVAL_COST {
+        return Err(PrecompileError::NotEnoughGas);
+    }
+
+    if input.len() != POINT_EVAL_CALLDATA_LEN {
+        return Err(PrecompileError::InvalidCalldata);
+    }
+
+    *consumed_gas += POINT_EVAL_COST;
+
+    /*
+       The calldata is encoded as follows:
+
+       RANGE        NAME            DESCRIPTION
+       [0: 32]      versioned_hash  Reference to a blob in the execution layer.
+       [32: 64]     x               x-coordinate at which the blob is being evaluated.
+       [64: 96]     y               y-coordinate at which the blob is being evaluated.
+       [96: 144]    commitment      Commitment to the blob being evaluated
+       [144: 192]   proof           Proof associated with the commitment
+    */
+
+    let versioned_hash = &input[..32];
+
+    let commitment_bytes = &input[96..144];
+    let mut commitment_array: [u8; 48] = [0; 48];
+    commitment_array.copy_from_slice(commitment_bytes);
+
+    let mut commitment_bytes_hash: [u8; 32] = sha2::Sha256::digest(commitment_array).into();
+    commitment_bytes_hash[0] = VERSIONED_HASH_VERSION_KZG;
+
+    if commitment_bytes_hash != versioned_hash {
+        return Err(PrecompileError::PointEvalError);
+    }
+
+    let commitment = BLS12381Curve::decompress_g1_point(&mut commitment_array)
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+
+    let x = FieldElement::from_bytes_be(&input[32..64])
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+    let y = FieldElement::from_bytes_be(&input[64..96])
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+
+    let proof_bytes = &input[144..192];
+    let mut proof_array: [u8; 48] = [0; 48];
+    proof_array.copy_from_slice(proof_bytes);
+
+    let proof = BLS12381Curve::decompress_g1_point(&mut proof_array)
+        .map_err(|_| PrecompileError::InvalidCalldata)?;
+
+    let kzg = get_kzg()?;
+
+    if kzg.verify(&x, &y, &commitment, &proof) {
+        Err(PrecompileError::PointEvalError)
+    } else {
+        Ok(Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes()))
+    }
+}
+
 pub fn is_precompile(callee_address: Address) -> bool {
     let addr_as_u64 = callee_address.to_low_u64_be();
     // TODO: replace 10 with point evaluation address constant
@@ -542,6 +674,9 @@ pub fn execute_precompile(
         }
         x if x == Address::from_low_u64_be(BLAKE2F_ADDRESS) => {
             blake2f(&calldata, gas_to_send, consumed_gas)
+        }
+        x if x == Address::from_low_u64_be(POINT_EVAL_ADDRESS) => {
+            point_eval(&calldata, gas_to_send, consumed_gas)
         }
         _ => {
             unreachable!()
@@ -1286,5 +1421,63 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result, expected_result);
         assert_eq!(consumed_gas, expected_consumed_gas);
+    }
+
+    #[test]
+    fn test_point_eval_not_enough_gas() {
+        let input = Bytes::from([0u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let output = point_eval(&input, 49999, &mut consumed_gas);
+
+        assert_eq!(output, Err(PrecompileError::NotEnoughGas));
+        assert_eq!(consumed_gas, 0)
+    }
+
+    #[test]
+    fn test_point_eval_consumes_gas() {
+        let input = Bytes::from([0u8; 192].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let _ = point_eval(&input, 50001, &mut consumed_gas);
+
+        assert_eq!(consumed_gas, 50000);
+    }
+
+    #[test]
+    fn test_point_eval_short_input() {
+        let input = Bytes::from([0u8; 191].to_vec());
+
+        let mut consumed_gas = 0;
+
+        let output = point_eval(&input, 999999, &mut consumed_gas);
+
+        assert_eq!(output, Err(PrecompileError::InvalidCalldata));
+        assert_eq!(consumed_gas, 0)
+    }
+
+    #[test]
+    fn basic_test() {
+        // test data from: https://github.com/ethereum/c-kzg-4844/blob/main/tests/verify_kzg_proof/kzg-mainnet/verify_kzg_proof_case_correct_proof_31ebd010e6098750/data.yaml
+
+        let commitment = hex::decode("8f59a8d2a1a625a17f3fea0fe5eb8c896db3764f3185481bc22f91b4aaffcca25f26936857bc3a7c2539ea8ec3a952b7").unwrap();
+        let mut versioned_hash = sha2::Sha256::digest(&commitment).to_vec();
+        versioned_hash[0] = VERSIONED_HASH_VERSION_KZG;
+        let z = hex::decode("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000")
+            .unwrap();
+        let y = hex::decode("1522a4a7f34e1ea350ae07c29c96c7e79655aa926122e95fe69fcbd932ca49e9")
+            .unwrap();
+        let proof = hex::decode("a62ad71d14c5719385c0686f1871430475bf3a00f0aa3f7b8dd99a9abc2160744faf0070725e00b60ad9a026a15b1a8c").unwrap();
+
+        let input = [versioned_hash, z, y, commitment, proof].concat();
+        let mut consumed_gas: u64 = 0;
+
+        let expected_output = Bytes::copy_from_slice(POINT_EVAL_RETURN.as_bytes());
+        let gas = 50000;
+        let output = point_eval(&input.into(), gas, &mut consumed_gas).unwrap();
+        assert_eq!(consumed_gas, 50000);
+        assert_eq!(output, expected_output);
     }
 }
