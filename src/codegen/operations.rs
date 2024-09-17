@@ -5591,11 +5591,15 @@ fn codegen_tstore<'c, 'r>(
         .result(0)?
         .into();
 
-    let flag = check_stack_has_at_least(context, &start_block, 2)?;
+    // // Check there's stack overflow
+    // let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
+    
+    // check stack overflow
+    let stack_flag = check_stack_has_at_least(context, &start_block, 2)?;
     let gas_flag = consume_gas(context, &start_block, gas_cost::TSTORE)?;
 
     let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
+        .append_operation(arith::andi(gas_flag, stack_flag, location))
         .result(0)?
         .into();
 
