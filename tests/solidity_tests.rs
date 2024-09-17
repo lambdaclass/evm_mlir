@@ -55,3 +55,26 @@ fn fibonacci_contract() {
         ethereum_types::U256::from(55) // fibonacci(10)
     )
 }
+
+#[test]
+fn recursive_fibonacci_contract() {
+    let address = Address::from_low_u64_be(3000);
+    let bytes = read_compiled_file("./compiled/RecursiveFibonacci.bin").unwrap();
+
+    let db = Db::new().with_contract(address, bytes);
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.transact_to = TransactTo::Call(address);
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact().unwrap();
+    assert!(result.result.is_success());
+    let state = result.state.get(&address).unwrap();
+    assert_eq!(
+        state
+            .storage
+            .get(&ethereum_types::U256::zero())
+            .unwrap()
+            .present_value,
+        ethereum_types::U256::from(55) // fibonacci(10)
+    )
+}
