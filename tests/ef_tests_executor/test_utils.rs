@@ -51,16 +51,7 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     if let Some(basefee) = unit.env.current_base_fee {
         env.block.basefee = basefee;
     };
-    let mut db = match to.clone() {
-        TransactTo::Call(to) => {
-            let opcodes = decode_hex(unit.pre.get(&to).unwrap().code.clone()).unwrap();
-            Db::new().with_contract(to, opcodes)
-        }
-        TransactTo::Create => {
-            let opcodes = decode_hex(unit.pre.get(&env.tx.caller).unwrap().code.clone()).unwrap();
-            Db::new().with_contract(env.tx.get_address(), opcodes)
-        }
-    };
+    let mut db = Db::new();
 
     // Load pre storage into db
     for (address, account_info) in unit.pre.iter() {
