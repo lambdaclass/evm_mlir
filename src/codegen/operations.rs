@@ -5141,8 +5141,6 @@ fn codegen_extcodehash<'c, 'r>(
         .result(0)?
         .into();
 
-    // TODO: add gas consumption (once access lists are implemented)
-
     stack_push(context, &end_block, code_hash_value)?;
 
     Ok((start_block, end_block))
