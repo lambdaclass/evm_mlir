@@ -31,14 +31,11 @@ use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
 // for ecRecover
-const ECR_HASH_START: usize = 0;
 const ECR_HASH_END: usize = 32;
-const ECR_V_START: usize = 32;
 const ECR_V_POS: usize = 63;
 const ECR_V_BASE: i32 = 27;
-const ECR_SIG_START: usize = 64;
 const ECR_SIG_END: usize = 128;
-const ECR_PAD_LEN: usize = 128;
+const ECR_PARAMS_OFFSET: usize = 128;
 const ECR_PADDING_LEN: usize = 12;
 
 // for ripemd160
@@ -47,29 +44,28 @@ const RIPEMD_PADDING_LEN: usize = 12;
 
 // for modexp
 const BSIZE_END: usize = 32;
-const ESIZE_START: usize = 32;
 const ESIZE_END: usize = 64;
-const MSIZE_START: usize = 64;
 const MSIZE_END: usize = 96;
 const MXP_PARAMS_OFFSET: usize = 96;
 
 // for ecadd
 const ECADD_PARAMS_OFFSET: usize = 128;
 const ECADD_X1_END: usize = 32;
-const ECADD_Y1_START: usize = 32;
 const ECADD_Y1_END: usize = 64;
-const ECADD_X2_START: usize = 64;
 const ECADD_X2_END: usize = 96;
-const ECADD_Y2_START: usize = 96;
 const ECADD_Y2_END: usize = 128;
 
 // for ecmul
 const ECMUL_PARAMS_OFFSET: usize = 96;
 const ECMUL_X1_END: usize = 32;
-const ECMUL_Y1_START: usize = 32;
 const ECMUL_Y1_END: usize = 64;
-const ECMUL_S_START: usize = 64;
 const ECMUL_S_END: usize = 96;
+
+// for ecpairing
+const ECP_INPUT_SIZE: usize = 192;
+const ECP_FIELD_SIZE: usize = 32;
+const G1_POINT_SIZE: usize = 64;
+const G2_POINT_SIZE: usize = 128;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -80,10 +76,10 @@ pub fn ecrecover(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, ECR_PAD_LEN);
-    let hash = &calldata[ECR_HASH_START..ECR_HASH_END];
-    let v = calldata[V_POS] as i32 - V_BASE;
-    let sig = &calldata[ECR_SIG_START..ECR_SIG_END];
+    let calldata = right_pad(calldata, ECR_PARAMS_OFFSET);
+    let hash = &calldata[..ECR_HASH_END];
+    let v = calldata[ECR_V_POS] as i32 - ECR_V_BASE;
+    let sig = &calldata[(ECR_V_POS + 1)..ECR_SIG_END];
 
     let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
     let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
@@ -158,9 +154,9 @@ pub fn modexp(
     // Bigger sizes are not accepted, as memory can't index bigger values.
     let b_size = usize::try_from(U256::from_big_endian(&calldata[..BSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let e_size = usize::try_from(U256::from_big_endian(&calldata[ESIZE_START..ESIZE_END]))
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[BSIZE_END..ESIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let m_size = usize::try_from(U256::from_big_endian(&calldata[MSIZE_START..MSIZE_END]))
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[ESIZE_END..MSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     let params_len = MXP_PARAMS_OFFSET + b_size + e_size + m_size;
@@ -214,9 +210,9 @@ pub fn ecadd(
     let calldata = right_pad(calldata, ECADD_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECADD_X1_END]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y1_START..ECADD_Y1_END]).unwrap();
-    let x2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X2_START..ECADD_X2_END]).unwrap();
-    let y2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y2_START..ECADD_Y2_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X1_END..ECADD_Y1_END]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y1_END..ECADD_X2_END]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X2_END..ECADD_Y2_END]).unwrap();
 
     // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
     let zero_el = BN254FieldElement::from(0);
@@ -272,8 +268,8 @@ pub fn ecmul(
     let calldata = right_pad(calldata, ECMUL_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECMUL_X1_END]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECMUL_Y1_START..ECMUL_Y1_END]).unwrap();
-    let s = LambdaWorksU256::from_bytes_be(&calldata[ECMUL_S_START..ECMUL_S_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECMUL_X1_END..ECMUL_Y1_END]).unwrap();
+    let s = LambdaWorksU256::from_bytes_be(&calldata[ECMUL_Y1_END..ECMUL_S_END]).unwrap();
 
     // if the point is infinity it is directly returned
     let zero_el = BN254FieldElement::from(0);
@@ -305,7 +301,7 @@ pub fn ecpairing(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() % 192 != 0 {
+    if calldata.len() % ECP_INPUT_SIZE != 0 {
         return Err(PrecompileError::InvalidCalldata);
     }
     let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
@@ -313,25 +309,23 @@ pub fn ecpairing(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let rounds = calldata.len() / 192;
+    let rounds = calldata.len() / ECP_INPUT_SIZE;
     let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
     for idx in 0..rounds {
-        let start = idx * 192;
+        let start = idx * ECP_INPUT_SIZE;
 
         // Slice lengths are checked, so unwrap is safe
-        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + 32]).unwrap();
-        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + 32..start + 64]).unwrap();
-
-        // G2 point: ((x_0, x_1), (y_0, y_1))
-        // both x and y have a real and an imaginary part of 32 bytes each
+        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
+        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE*2]).unwrap();
+        
         let g2_x_bytes = [
-            &calldata[start + 96..start + 128],
-            &calldata[start + 64..start + 96],
+            &calldata[start + (G1_POINT_SIZE + ECP_FIELD_SIZE)..start + (G1_POINT_SIZE + ECP_FIELD_SIZE*2)], // calldata[start + 96..start + 128]
+            &calldata[start + G1_POINT_SIZE..start + (G1_POINT_SIZE + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + 160..start + 192],
-            &calldata[start + 128..start + 160],
+            &calldata[start + (G2_POINT_SIZE * ECP_FIELD_SIZE)..start + (G2_POINT_SIZE + ECP_FIELD_SIZE*2)], // calldata[start + 160..start + 192]
+            &calldata[start + G2_POINT_SIZE..start + (G2_POINT_SIZE * ECP_FIELD_SIZE)], // calldata[start + 128..start + 160]
         ]
         .concat();
 
