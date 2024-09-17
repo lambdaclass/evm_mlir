@@ -38,6 +38,19 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     env.tx.value = unit.transaction.value[test.indexes.value];
     env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
 
+    let mut access_list = AccessList::default();
+    for access_list_item in access_list_vector {
+        let mut storage_keys = Vec::new();
+        for storage_key in access_list_item.storage_keys {
+            let storage_key = primitives::U256::from(storage_key.as_bytes());
+            storage_keys.push(storage_key);
+        }
+        access_list.push((access_list_item.address, storage_keys));
+    }
+    access_list.push((env.block.coinbase, Vec::new())); // after Shanghai, coinbase address is added to access list
+    access_list.push((env.tx.caller, Vec::new())); // after Berlin, tx.sender is added to access list
+    access_list.append(&mut precompiled_addresses()); // precompiled address are always warm
+
     env.block.number = unit.env.current_number;
     env.block.coinbase = unit.env.current_coinbase;
     env.block.timestamp = unit.env.current_timestamp;
