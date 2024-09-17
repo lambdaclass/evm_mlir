@@ -48,9 +48,13 @@ impl<DB: Database + Default> Evm<DB> {
 
 impl Evm<Db> {
     fn validate_transaction(&mut self) -> Result<u64, EVMError> {
-        let initial_gas_consumed = self.env.consume_intrinsic_cost()?;
         let balance = self.db.get_balance(self.env.tx.caller).unwrap_or_default();
-        self.env.validate_transaction(balance)?;
+
+        let validation = self.env.validate_transaction(balance);
+
+        let initial_gas_consumed = self.env.consume_intrinsic_cost()?;
+
+        validation?;
 
         Ok(initial_gas_consumed)
     }
@@ -71,9 +75,8 @@ impl Evm<Db> {
             .compile(&program, Default::default())
             .expect("failed to compile program");
 
-        let call_frame = CallFrame::new(self.env.tx.caller);
-        let journal = Journal::new(&mut self.db);
-        let mut context = SyscallContext::new(self.env.clone(), journal, call_frame);
+        let gas_limit = self.env.tx.gas_limit;
+        let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit

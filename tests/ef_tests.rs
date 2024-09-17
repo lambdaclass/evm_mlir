@@ -30,7 +30,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
         "eip3855_push0".into(),
-        "eip4844_blobs".into(),
+        // "eip4844_blobs".into(),
         "stEIP2930".into(),
         "stSystemOperationsTest".into(),
         "stReturnDataTest".into(),
@@ -103,4 +103,8 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_ef_test,
+    "ethtests/GeneralStateTests/Pyspecs/cancun/eip4844_blobs",
+    r"^.*/*.json",
+);

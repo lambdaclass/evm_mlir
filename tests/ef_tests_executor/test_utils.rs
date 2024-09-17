@@ -1,7 +1,12 @@
 use std::{collections::HashMap, path::Path};
 
 use bytes::Bytes;
-use evm_mlir::{db::Db, env::TransactTo, result::ExecutionResult, Env, Evm};
+use evm_mlir::{
+    db::Db,
+    env::TransactTo,
+    result::{EVMError, ExecutionResult, InvalidTransaction},
+    Env, Evm,
+};
 
 use super::models::{AccountInfo, Test, TestSuite, TestUnit};
 
@@ -29,7 +34,6 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
         None => TransactTo::Create,
     };
     let sender = unit.transaction.sender.unwrap_or_default();
-    let gas_price = unit.transaction.gas_price.unwrap_or_default();
     let mut env = Env::default();
     env.tx.transact_to = to.clone();
     env.tx.gas_price = unit
