@@ -1,4 +1,12 @@
-use crate::{constants::precompiles::*, primitives::U256, result::PrecompileError};
+use crate::{
+    constants::{
+        precompiles::*,
+        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
+    },
+    primitives::U256,
+    result::PrecompileError,
+    utils::right_pad,
+};
 use bytes::Bytes;
 use ethereum_types::Address;
 use lambdaworks_math::{
@@ -25,14 +33,11 @@ pub fn ecrecover(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 128 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECRECOVER_COST {
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += ECRECOVER_COST;
 
+    let calldata = right_pad(calldata, 128);
     let hash = &calldata[0..32];
     let v = calldata[63] as i32 - 27;
     let sig = &calldata[64..128];
@@ -47,24 +52,12 @@ pub fn ecrecover(
         .recover_ecdsa(&msg, &sig)
         .map_err(|_| PrecompileError::Secp256k1Error)?;
 
+    *consumed_gas += ECRECOVER_COST;
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
     address_hash[..12].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
-}
-
-pub fn identity(
-    calldata: &Bytes,
-    gas_limit: u64,
-    consumed_gas: &mut u64,
-) -> Result<Bytes, PrecompileError> {
-    let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
-    if gas_limit < gas_cost {
-        return Err(PrecompileError::NotEnoughGas);
-    }
-    *consumed_gas += gas_cost;
-    Ok(calldata.clone())
 }
 
 pub fn sha2_256(
@@ -98,14 +91,25 @@ pub fn ripemd_160(
     Ok(Bytes::copy_from_slice(&output))
 }
 
+pub fn identity(
+    calldata: &Bytes,
+    gas_limit: u64,
+    consumed_gas: &mut u64,
+) -> Result<Bytes, PrecompileError> {
+    let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
+    if gas_limit < gas_cost {
+        return Err(PrecompileError::NotEnoughGas);
+    }
+    *consumed_gas += gas_cost;
+    Ok(calldata.clone())
+}
+
 pub fn modexp(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() < 96 {
-        return Err(PrecompileError::InvalidCalldata);
-    }
+    let calldata = right_pad(calldata, 96);
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
@@ -116,11 +120,9 @@ pub fn modexp(
     let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    // Check if calldata contains all values
     let params_len = 96 + b_size + e_size + m_size;
-    if calldata.len() < params_len {
-        return Err(PrecompileError::InvalidCalldata);
-    }
+    let calldata = right_pad(&calldata, params_len);
+
     let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
     let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
     let m = BigUint::from_bytes_be(&calldata[96 + b_size + e_size..params_len]);
@@ -160,15 +162,11 @@ pub fn ecadd(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() != 128 {
-        *consumed_gas += gas_limit;
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECADD_COST {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
+    let calldata = right_pad(calldata, 128);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
     let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
@@ -191,7 +189,6 @@ pub fn ecadd(
                 let res = [p2.x().to_bytes_be(), p2.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         (false, true) => {
@@ -200,7 +197,6 @@ pub fn ecadd(
                 let res = [p1.x().to_bytes_be(), p1.y().to_bytes_be()].concat();
                 return Ok(Bytes::from(res));
             }
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         }
         _ => {}
@@ -210,7 +206,6 @@ pub fn ecadd(
         BN254Curve::create_point_from_affine(x1, y1),
         BN254Curve::create_point_from_affine(x2, y2),
     ) else {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidEcPoint);
     };
 
@@ -225,15 +220,11 @@ pub fn ecmul(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() != 96 {
-        *consumed_gas += gas_limit;
-        return Err(PrecompileError::InvalidCalldata);
-    }
     if gas_limit < ECMUL_COST {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
+    let calldata = right_pad(calldata, 96);
     // Slice lengths are checked, so unwrap is safe
     let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
     let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
@@ -261,7 +252,6 @@ pub fn ecmul(
         return Ok(Bytes::from(res));
     }
 
-    *consumed_gas += gas_limit;
     Err(PrecompileError::InvalidEcPoint)
 }
 
@@ -271,12 +261,10 @@ pub fn ecpairing(
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
     if calldata.len() % 192 != 0 {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::InvalidCalldata);
     }
     let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
-        *consumed_gas += gas_limit;
         return Err(PrecompileError::NotEnoughGas);
     }
 
@@ -306,7 +294,6 @@ pub fn ecpairing(
         let g2_y = BN254TwistCurveFieldElement::from_bytes_be(&g2_y_bytes);
 
         let (Ok(g2_x), Ok(g2_y)) = (g2_x, g2_y) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
@@ -323,12 +310,10 @@ pub fn ecpairing(
             BN254Curve::create_point_from_affine(g1_x, g1_y),
             BN254TwistCurve::create_point_from_affine(g2_x, g2_y),
         ) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
 
         let Ok(pairing_result) = BN254AtePairing::compute_batch(&[(&p1, &p2)]) else {
-            *consumed_gas += gas_limit;
             return Err(PrecompileError::InvalidEcPoint);
         };
         mul *= pairing_result;
@@ -449,7 +434,6 @@ pub fn blake2f(
     if needed_gas > gas_limit {
         return Err(PrecompileError::NotEnoughGas);
     }
-    *consumed_gas += needed_gas;
 
     let mut h: [u64; 8] = [0_u64; 8];
     let mut m: [u64; 16] = [0_u64; 16];
@@ -497,9 +481,9 @@ pub fn blake2f(
     );
 
     blake2f_compress(rounds as _, &mut h, &m, &t, f);
+    *consumed_gas += needed_gas;
 
     let out: Vec<u8> = h.iter().flat_map(|&num| num.to_le_bytes()).collect();
-
     Ok(Bytes::from(out))
 }
 
@@ -514,8 +498,8 @@ pub fn execute_precompile(
     calldata: Bytes,
     gas_to_send: u64,
     consumed_gas: &mut u64,
-) -> Result<Bytes, PrecompileError> {
-    match callee_address {
+) -> (u8, Bytes) {
+    let result = match callee_address {
         x if x == Address::from_low_u64_be(ECRECOVER_ADDRESS) => {
             ecrecover(&calldata, gas_to_send, consumed_gas)
         }
@@ -546,17 +530,23 @@ pub fn execute_precompile(
         _ => {
             unreachable!()
         }
+    };
+    match result {
+        Ok(res) => (SUCCESS_RETURN_CODE, res),
+        Err(_) => {
+            *consumed_gas += gas_to_send;
+            (REVERT_RETURN_CODE, Bytes::new())
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::U256;
-
     use super::*;
 
     #[test]
     fn modexp_gas_cost() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
         let b_size = U256::from(1_u8);
         let e_size = U256::from(1_u8);
         let m_size = U256::from(1_u8);
@@ -570,20 +560,21 @@ mod tests {
         calldata[96] = b;
         calldata[97] = e;
         calldata[98] = m;
-
-        let expected_gas = 200;
+        let calldata = Bytes::from(calldata.to_vec());
+        let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let _ = modexp(
-            &Bytes::copy_from_slice(&calldata),
-            expected_gas,
-            &mut consumed_gas,
-        );
 
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(8_u8.to_be_bytes().to_vec()));
+        assert_eq!(consumed_gas, 200);
     }
 
     #[test]
     fn modexp_gas_cost2() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
         let b_size = U256::from(256_u16);
         let e_size = U256::from(1_u8);
         let m_size = U256::from(1_u8);
@@ -597,20 +588,36 @@ mod tests {
         calldata[351] = b;
         calldata[352] = e;
         calldata[353] = m;
-
-        let expected_gas = 682;
+        let calldata = Bytes::from(calldata.to_vec());
+        let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let _ = modexp(
-            &Bytes::copy_from_slice(&calldata),
-            expected_gas,
-            &mut consumed_gas,
-        );
 
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(4_u8.to_be_bytes().to_vec()));
+        assert_eq!(consumed_gas, 682);
+    }
+
+    #[test]
+    fn modexp_with_empty_calldata() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, 200);
     }
 
     #[test]
     fn ecadd_happy_path() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -621,7 +628,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -632,14 +638,18 @@ mod tests {
             hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, ECADD_COST);
     }
 
     #[test]
     fn ecadd_infinity_with_valid_point() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -650,7 +660,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -661,14 +670,18 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, ECADD_COST);
     }
 
     #[test]
     fn ecadd_valid_point_with_infinity() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -679,7 +692,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -690,14 +702,18 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, ECADD_COST);
     }
 
     #[test]
     fn ecadd_infinity_twice() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -708,18 +724,35 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECADD_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECADD_COST);
+    }
+
+    #[test]
+    fn ecadd_with_empty_calldata() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECADD_COST);
     }
 
     #[test]
     fn ecadd_with_invalid_first_point() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -734,13 +767,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecadd_with_invalid_second_point() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -755,35 +795,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
-    }
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
-    #[test]
-    fn ecadd_with_invalid_calldata() {
-        // calldata's len = 127
-        let calldata = Bytes::from(
-            hex::decode(
-                "\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            0000000000000000000000000000000000000000000000000000000000000002\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            00000000000000000000000000000000000000000000000000000000000002",
-            )
-            .unwrap(),
-        );
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-
-        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
-
-        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecadd_with_not_enough_gas() {
+        let callee_address = Address::from_low_u64_be(ECADD_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -794,17 +819,24 @@ mod tests {
             )
             .unwrap(),
         );
-        let gas_limit = 149;
+        let gas_limit = ECADD_COST - 1;
         let mut consumed_gas = 0;
 
         let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
-        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecmul_happy_path() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -814,7 +846,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -825,14 +856,18 @@ mod tests {
             hex::decode("15ed738c0e0a7c92e7845f96b2ae9c0a68a6a449e3538fc7ff3ebf7a5a18a2c4")
                 .unwrap();
         let expected_result = Bytes::from([expected_x, expected_y].concat());
-        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, ECMUL_COST);
     }
 
     #[test]
     fn ecmul_infinity() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -842,18 +877,20 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECMUL_COST);
     }
 
     #[test]
     fn ecmul_by_zero() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -863,18 +900,35 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = ECMUL_COST;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
-        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), Bytes::from([0u8; 64].to_vec()));
-        assert_eq!(consumed_gas, expected_gas);
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECMUL_COST);
+    }
+
+    #[test]
+    fn ecmul_with_empty_calldata() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
+        let calldata = Bytes::new();
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from([0u8; 64].to_vec()));
+        assert_eq!(consumed_gas, ECMUL_COST);
     }
 
     #[test]
     fn ecmul_invalid_point() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -888,13 +942,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecmul_invalid_point_by_zero() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -908,34 +969,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
-        assert_eq!(consumed_gas, gas_limit);
-    }
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
-    #[test]
-    fn ecmul_with_invalid_calldata() {
-        // calldata's len = 95
-        let calldata = Bytes::from(
-            hex::decode(
-                "\
-            0000000000000000000000000000000000000000000000000000000000000001\
-            0000000000000000000000000000000000000000000000000000000000000002\
-            00000000000000000000000000000000000000000000000000000000000002",
-            )
-            .unwrap(),
-        );
-        let gas_limit = 100_000_000;
-        let mut consumed_gas = 0;
-
-        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
-
-        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecmul_with_not_enough_gas() {
+        let callee_address = Address::from_low_u64_be(ECMUL_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -945,17 +992,24 @@ mod tests {
             )
             .unwrap(),
         );
-        let gas_limit = 149;
+        let gas_limit = ECMUL_COST - 1;
         let mut consumed_gas = 0;
 
         let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
-        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecpairing_happy_path() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -974,7 +1028,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 113_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -982,14 +1035,18 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap(),
         );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 113_000);
     }
 
     #[test]
     fn ecpairing_p1_is_infinity() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -1002,7 +1059,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 79_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -1010,14 +1066,18 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap(),
         );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 79_000);
     }
 
     #[test]
     fn ecpairing_p2_is_infinity() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -1030,7 +1090,6 @@ mod tests {
             )
             .unwrap(),
         );
-        let expected_gas = 79_000;
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -1038,29 +1097,38 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap(),
         );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
-        assert_eq!(consumed_gas, expected_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 79_000);
     }
 
     #[test]
     fn ecpairing_empty_calldata() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::new();
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
+
         let expected_result = Bytes::from(
             hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap(),
         );
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert_eq!(result.unwrap(), expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
         assert_eq!(consumed_gas, ECPAIRING_STATIC_COST);
     }
 
     #[test]
     fn ecpairing_invalid_point() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         // changed last byte from `fc` to `fd`
         let calldata = Bytes::from(
             hex::decode(
@@ -1084,13 +1152,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecpairing_out_of_curve() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -1107,13 +1182,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidEcPoint)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecpairing_invalid_calldata() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -1123,14 +1205,22 @@ mod tests {
         );
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
-        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
 
-        assert!(matches!(result, Err(PrecompileError::InvalidCalldata)));
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn ecpairing_with_not_enough_gas() {
+        let callee_address = Address::from_low_u64_be(ECPAIRING_ADDRESS);
         let calldata = Bytes::from(
             hex::decode(
                 "\
@@ -1154,13 +1244,20 @@ mod tests {
         let mut consumed_gas = 0;
 
         let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
-        assert!(matches!(result, Err(PrecompileError::NotEnoughGas)));
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
         assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn test_blake2_evm_codes_happy_path() {
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
         let rounds = hex::decode("0000000c").unwrap();
         let h = hex::decode("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b").unwrap();
         let m = hex::decode("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000").unwrap();
@@ -1171,120 +1268,148 @@ mod tests {
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
-        let expected_result = hex::decode(
+        let expected_result = Bytes::from(hex::decode(
         "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923"
-    ).unwrap();
-        let expected_result = Bytes::from(expected_result);
-        let expected_consumed_gas = 12; //Rounds
+        ).unwrap());
 
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, expected_consumed_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 12);
     }
 
     #[test]
     fn test_blake2_eip_example_1() {
-        let calldata = hex::decode("00000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("00000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_err());
+
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn test_blake2_eip_example_2() {
-        let calldata = hex::decode("000000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("000000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_err());
+
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn test_blake2_eip_example_3() {
-        let calldata = hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000002").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000002").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_err());
+
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
     fn test_blake2_eip_example_4() {
-        let calldata = hex::decode("0000000048c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("0000000048c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
-        let expected_result = hex::decode(
+        let expected_result = Bytes::from(hex::decode(
         "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b"
-    ).unwrap();
-        let expected_result = Bytes::from(expected_result);
+        ).unwrap());
 
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert_eq!(result, expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 0);
     }
 
     #[test]
     fn test_blake2_example_5() {
-        let calldata = hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
-        let expected_result = hex::decode(
+        let expected_result = Bytes::from(hex::decode(
         "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923"
-    ).unwrap();
-        let expected_result = Bytes::from(expected_result);
+        ).unwrap());
 
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert_eq!(result, expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 12);
     }
 
     #[test]
     fn test_blake2_example_6() {
-        let calldata = hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
-        let expected_result = hex::decode(
+        let expected_result = Bytes::from(hex::decode(
         "75ab69d3190a562c51aef8d88f1c2775876944407270c42c9844252c26d2875298743e7f6d5ea2f2d3e8d226039cd31b4e426ac4f2d3d666a610c2116fde4735"
-    ).unwrap();
-        let expected_result = Bytes::from(expected_result);
+        ).unwrap());
 
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert_eq!(result, expected_result);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 12);
     }
 
     #[test]
     fn test_blake2_example_7() {
-        let calldata = hex::decode("0000000148c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap();
-        let calldata = Bytes::from(calldata);
+        let callee_address = Address::from_low_u64_be(BLAKE2F_ADDRESS);
+        let calldata = Bytes::from(hex::decode("0000000148c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
-        let expected_result = hex::decode(
+        let expected_result = Bytes::from(hex::decode(
         "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421"
-    ).unwrap();
-        let expected_result = Bytes::from(expected_result);
-        let expected_consumed_gas = 1;
+        ).unwrap());
 
-        let result = blake2f(&calldata, gas_limit as _, &mut consumed_gas);
-        assert!(result.is_ok());
-        let result = result.unwrap();
-        assert_eq!(result, expected_result);
-        assert_eq!(consumed_gas, expected_consumed_gas);
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, expected_result);
+        assert_eq!(consumed_gas, 1);
     }
 }
