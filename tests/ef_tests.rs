@@ -28,7 +28,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
         "stEIP3651-warmcoinbase".into(),
-        "stArgsZeroOneBalance".into(),
         "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
         "eip3855_push0".into(),
