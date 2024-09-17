@@ -56,7 +56,7 @@ impl Evm<Db> {
 
     fn create_syscall_context(&mut self, initial_gas: u64) -> SyscallContext {
         let call_frame = CallFrame::new(self.env.tx.caller);
-        let journal = Journal::new(&mut self.db);
+        let journal = Journal::new(&mut self.db).with_prefetch(&self.env.tx.access_list);
         SyscallContext::new(self.env.clone(), journal, call_frame, initial_gas)
     }
 

@@ -947,7 +947,7 @@ impl<'c> OperationCtx<'c> {
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::store_in_balance_syscall(
             self.mlir_context,
             self.syscall_ctx,
@@ -961,12 +961,12 @@ impl<'c> OperationCtx<'c> {
     pub(crate) fn copy_ext_code_to_memory_syscall(
         &'c self,
         block: &'c Block,
-        address_ptr: Value,
-        offset: Value,
-        size: Value,
-        dest_offset: Value,
+        address_ptr: Value<'c, 'c>,
+        offset: Value<'c, 'c>,
+        size: Value<'c, 'c>,
+        dest_offset: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::copy_ext_code_to_memory_syscall(
             self.mlir_context,
             self.syscall_ctx,
@@ -983,6 +983,7 @@ impl<'c> OperationCtx<'c> {
         &'c self,
         block: &'c Block,
         address: Value<'c, 'c>,
+        gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value, CodegenError> {
         syscall::mlir::get_codesize_from_address_syscall(
@@ -990,6 +991,7 @@ impl<'c> OperationCtx<'c> {
             self.syscall_ctx,
             block,
             address,
+            gas,
             location,
         )
     }
@@ -1132,7 +1134,7 @@ impl<'c> OperationCtx<'c> {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
+    ) -> Result<Value, CodegenError> {
         syscall::mlir::get_code_hash_syscall(
             self.mlir_context,
             self.syscall_ctx,

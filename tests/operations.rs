@@ -33,7 +33,7 @@ fn run_program_get_result_with_gas(
     let mut env = Env::default();
     env.tx.gas_limit = initial_gas;
     let mut db = Db::default();
-    let journal = Journal::new(&mut db);
+    let journal = Journal::new(&mut db).with_prefetch(&env.tx.access_list);
     let mut context = SyscallContext::new(env, journal, Default::default(), initial_gas);
     let executor = Executor::new(&module, &context, Default::default());
 
@@ -2649,7 +2649,7 @@ fn extcodecopy_gas_check() {
     let static_gas = gas_cost::PUSHN * 4;
     let dynamic_gas = gas_cost::memory_copy_cost(size.into())
         + gas_cost::memory_expansion_cost(0, (dest_offset + size) as u32)
-        + gas_cost::EXTCODECOPY_WARM;
+        + gas_cost::EXTCODECOPY_COLD;
     let expected_gas = static_gas + dynamic_gas;
     run_program_assert_gas_exact(program, expected_gas as _);
 }

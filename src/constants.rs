@@ -46,7 +46,8 @@ pub mod gas_cost {
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
-    pub const BALANCE: i64 = 100;
+    pub const BALANCE_WARM: i64 = 100;
+    pub const BALANCE_COLD: i64 = 2600;
     pub const ORIGIN: i64 = 2;
     pub const CALLER: i64 = 2;
     pub const CALLVALUE: i64 = 2;
@@ -85,9 +86,14 @@ pub mod gas_cost {
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
     pub const BLOCKHASH: i64 = 20;
-    pub const CALL: i64 = 0;
+    pub const CALL_WARM: i64 = 100;
+    pub const CALL_COLD: i64 = 2600;
+    pub const EXTCODEHASH_WARM: i64 = 100;
+    pub const EXTCODEHASH_COLD: i64 = 2600;
     pub const EXTCODESIZE_WARM: i64 = 100;
+    pub const EXTCODESIZE_COLD: i64 = 2600;
     pub const EXTCODECOPY_WARM: i64 = 100;
+    pub const EXTCODECOPY_COLD: i64 = 2600;
     pub const RETURNDATASIZE: i64 = 2;
     pub const RETURNDATACOPY: i64 = 3;
     pub const ADDRESS: i64 = 2;

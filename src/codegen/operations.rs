@@ -23,14 +23,14 @@ use crate::{
     program::Operation,
     syscall::ExitStatusCode,
     utils::{
-        allocate_and_store_value, check_context_is_not_static, check_if_zero,
-        check_stack_has_at_least, check_stack_has_space_for, compare_values, compute_copy_cost,
-        compute_log_dynamic_gas, constant_value_from_i64, consume_gas, consume_gas_as_value,
-        context_is_static, extend_memory, get_basefee, get_blob_hash_at_index, get_block_number,
-        get_calldata_ptr, get_calldata_size, get_memory_pointer, get_nth_from_stack,
-        get_prevrandao, get_remaining_gas, get_stack_pointer, inc_stack_pointer,
-        integer_constant_from_i64, llvm_mlir, return_empty_result, return_result_from_stack,
-        stack_pop, stack_push, swap_stack_elements,
+        allocate_and_store_value, allocate_gas_counter_ptr, check_context_is_not_static,
+        check_if_zero, check_stack_has_at_least, check_stack_has_space_for, compare_values,
+        compute_copy_cost, compute_log_dynamic_gas, constant_value_from_i64, consume_gas,
+        consume_gas_as_value, context_is_static, extend_memory, get_basefee,
+        get_blob_hash_at_index, get_block_number, get_calldata_ptr, get_calldata_size,
+        get_memory_pointer, get_nth_from_stack, get_prevrandao, get_remaining_gas,
+        get_stack_pointer, inc_stack_pointer, integer_constant_from_i64, llvm_mlir,
+        return_empty_result, return_result_from_stack, stack_pop, stack_push, swap_stack_elements,
     },
 };
 
@@ -2562,18 +2562,12 @@ fn codegen_balance<'c, 'r>(
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
 
     // Check there's enough gas
-    let gas_flag = consume_gas(context, &start_block, gas_cost::BALANCE)?;
-
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
 
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -2614,10 +2608,24 @@ fn codegen_balance<'c, 'r>(
         .result(0)?
         .into();
 
-    op_ctx.store_in_balance_syscall(&ok_block, address_ptr, balance_ptr, location);
+    let gas_cost =
+        op_ctx.store_in_balance_syscall(&ok_block, address_ptr, balance_ptr, location)?;
+
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
 
     // get the value from the pointer
-    let balance = ok_block
+    let balance = end_block
         .append_operation(llvm::load(
             context,
             balance_ptr,
@@ -2628,9 +2636,9 @@ fn codegen_balance<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, balance)?;
+    stack_push(context, &end_block, balance)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_byte<'c, 'r>(
@@ -4183,19 +4191,14 @@ fn codegen_extcodesize<'c, 'r>(
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
     let uint256 = IntegerType::new(context, 256).into();
-    let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    // TODO: handle cold and warm accesses for dynamic gas computation
-    let gas_flag = consume_gas(context, &start_block, gas_cost::EXTCODESIZE_WARM)?;
+    let uint64 = IntegerType::new(context, 64);
 
-    let condition = start_block
-        .append_operation(arith::andi(gas_flag, flag, location))
-        .result(0)?
-        .into();
+    let flag = check_stack_has_at_least(context, &start_block, 1)?;
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        condition,
+        flag,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -4206,15 +4209,43 @@ fn codegen_extcodesize<'c, 'r>(
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    let codesize = op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, location)?;
-    let codesize = ok_block
+    let gas_ptr = allocate_gas_counter_ptr(context, &ok_block, location)?;
+
+    let codesize =
+        op_ctx.get_codesize_from_address_syscall(&ok_block, address_ptr, gas_ptr, location)?;
+
+    let gas_cost = ok_block
+        .append_operation(llvm::load(
+            context,
+            gas_ptr,
+            uint64.into(),
+            location,
+            LoadStoreOptions::default(),
+        ))
+        .result(0)?
+        .into();
+
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let codesize = end_block
         .append_operation(arith::extui(codesize, uint256, location))
         .result(0)?
         .into();
 
-    stack_push(context, &ok_block, codesize)?;
+    stack_push(context, &end_block, codesize)?;
 
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_chaind<'c, 'r>(
@@ -4800,8 +4831,6 @@ fn codegen_extcodecopy<'c, 'r>(
         .result(0)?
         .into();
 
-    // TODO: compute address access cost (cold and warm accesses)
-
     // consume 3 * (size + 31) / 32 gas
     let dynamic_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
     let flag = consume_gas_as_value(context, &ok_block, dynamic_gas_cost)?;
@@ -4820,26 +4849,40 @@ fn codegen_extcodecopy<'c, 'r>(
 
     let end_block = region.append_block(Block::new(&[]));
 
+    // we need to extend memory, but the gas is consumed after
     extend_memory(
         op_ctx,
         &memory_extension_block,
         &end_block,
         region,
         required_size,
-        gas_cost::EXTCODECOPY_WARM,
+        0,
     )?;
 
     let address_ptr = allocate_and_store_value(op_ctx, &end_block, address, location)?;
-    op_ctx.copy_ext_code_to_memory_syscall(
+    let gas_cost = op_ctx.copy_ext_code_to_memory_syscall(
         &end_block,
         address_ptr,
         offset,
         size,
         dest_offset,
         location,
-    );
+    )?;
 
-    Ok((start_block, end_block))
+    let gas_flag = consume_gas_as_value(context, &end_block, gas_cost)?;
+
+    let final_block = region.append_block(Block::new(&[]));
+    end_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &final_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    Ok((start_block, final_block))
 }
 
 fn codegen_prevrandao<'c, 'r>(
@@ -4953,6 +4996,7 @@ fn codegen_call<'c, 'r>(
             constant_value_from_i64(context, &stack_ok_block, 0)?
         }
     };
+
     let args_offset = stack_pop(context, &stack_ok_block)?;
     let args_size = stack_pop(context, &stack_ok_block)?;
     let ret_offset = stack_pop(context, &stack_ok_block)?;
@@ -5022,14 +5066,8 @@ fn codegen_call<'c, 'r>(
         .append_operation(arith::maxui(req_arg_mem_size, req_ret_mem_size, location))
         .result(0)?
         .into();
-    extend_memory(
-        op_ctx,
-        &ok_block,
-        &mem_ext_block,
-        region,
-        req_mem_size,
-        gas_cost::CALL,
-    )?;
+    // 0 cost, because we no longer consume gas here, we consume it with the call_syscall
+    extend_memory(op_ctx, &ok_block, &mem_ext_block, region, req_mem_size, 0)?;
 
     // Invoke call syscall
     let finish_block = region.append_block(Block::new(&[]));
@@ -5078,9 +5116,21 @@ fn codegen_extcodehash<'c, 'r>(
     let address = stack_pop(context, &ok_block)?;
     let address_ptr = allocate_and_store_value(op_ctx, &ok_block, address, location)?;
 
-    op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location);
+    let gas_cost = op_ctx.get_code_hash_syscall(&ok_block, address_ptr, location)?;
+    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
 
-    let code_hash_value = ok_block
+    let end_block = region.append_block(Block::new(&[]));
+    ok_block.append_operation(cf::cond_br(
+        context,
+        gas_flag,
+        &end_block,
+        &op_ctx.revert_block,
+        &[],
+        &[],
+        location,
+    ));
+
+    let code_hash_value = end_block
         .append_operation(llvm::load(
             context,
             address_ptr,
@@ -5091,11 +5141,9 @@ fn codegen_extcodehash<'c, 'r>(
         .result(0)?
         .into();
 
-    // TODO: add gas consumption (once access lists are implemented)
+    stack_push(context, &end_block, code_hash_value)?;
 
-    stack_push(context, &ok_block, code_hash_value)?;
-
-    Ok((start_block, ok_block))
+    Ok((start_block, end_block))
 }
 
 fn codegen_returndatasize<'c, 'r>(
@@ -5260,7 +5308,6 @@ fn codegen_create<'c, 'r>(
     let uint32 = IntegerType::new(context, 32);
     let uint64 = IntegerType::new(context, 64);
     let uint256 = IntegerType::new(context, 256);
-    let ptr_type = pointer(context, 0);
 
     // Check there's enough elements in stack
     let stack_size = if is_create2 { 4 } else { 3 };
@@ -5314,51 +5361,7 @@ fn codegen_create<'c, 'r>(
 
     let value_ptr = allocate_and_store_value(op_ctx, &create_block, value, location)?;
 
-    // Load the gas counter and copy the value into a new pointer
-    let gas_counter_ptr = create_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            GAS_COUNTER_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_counter = create_block
-        .append_operation(llvm::load(
-            context,
-            gas_counter_ptr,
-            uint64.into(),
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-    let number_of_elements = create_block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint32.into(), 1).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-    let gas_ptr = create_block
-        .append_operation(llvm::alloca(
-            context,
-            number_of_elements,
-            ptr_type,
-            location,
-            AllocaOptions::new().elem_type(TypeAttribute::new(uint64.into()).into()),
-        ))
-        .result(0)?
-        .into();
-    create_block.append_operation(llvm::store(
-        context,
-        gas_counter,
-        gas_ptr,
-        location,
-        LoadStoreOptions::default().align(IntegerAttribute::new(uint64.into(), 1).into()),
-    ));
+    let gas_ptr = allocate_gas_counter_ptr(context, &create_block, location)?;
 
     let result = if is_create2 {
         let salt = stack_pop(context, &create_block)?;
