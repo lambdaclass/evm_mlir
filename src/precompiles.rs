@@ -46,7 +46,6 @@ const RIPEMD_OUTPUT_LEN: usize = 32;
 const RIPEMD_PADDING_LEN: usize = 12;
 
 // for modexp
-const BSIZE_START: usize = 0;
 const BSIZE_END: usize = 32;
 const ESIZE_START: usize = 32;
 const ESIZE_END: usize = 64;
@@ -56,13 +55,21 @@ const MXP_PARAMS_OFFSET: usize = 96;
 
 // for ecadd
 const ECADD_PARAMS_OFFSET: usize = 128;
-const X1_END: usize = 32;
-const Y1_START: usize = 32;
-const Y1_END: usize = 64;
-const X2_START: usize = 64;
-const X2_END: usize = 96;
-const Y2_START: usize = 96;
-const Y2_END: usize = 128;
+const ECADD_X1_END: usize = 32;
+const ECADD_Y1_START: usize = 32;
+const ECADD_Y1_END: usize = 64;
+const ECADD_X2_START: usize = 64;
+const ECADD_X2_END: usize = 96;
+const ECADD_Y2_START: usize = 96;
+const ECADD_Y2_END: usize = 128;
+
+// for ecmul
+const ECMUL_PARAMS_OFFSET: usize = 96;
+const ECMUL_X1_END: usize = 32;
+const ECMUL_Y1_START: usize = 32;
+const ECMUL_Y1_END: usize = 64;
+const ECMUL_S_START: usize = 64;
+const ECMUL_S_END: usize = 96;
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -149,7 +156,7 @@ pub fn modexp(
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let b_size = usize::try_from(U256::from_big_endian(&calldata[BSIZE_START..BSIZE_END]))
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[..BSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
     let e_size = usize::try_from(U256::from_big_endian(&calldata[ESIZE_START..ESIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
@@ -206,10 +213,10 @@ pub fn ecadd(
 
     let calldata = right_pad(calldata, ECADD_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
-    let x1 = BN254FieldElement::from_bytes_be(&calldata[..X1_END]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[Y1_START..Y1_END]).unwrap();
-    let x2 = BN254FieldElement::from_bytes_be(&calldata[X2_START..X2_END]).unwrap();
-    let y2 = BN254FieldElement::from_bytes_be(&calldata[Y2_START..Y2_END]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECADD_X1_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y1_START..ECADD_Y1_END]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X2_START..ECADD_X2_END]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y2_START..ECADD_Y2_END]).unwrap();
 
     // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
     let zero_el = BN254FieldElement::from(0);
@@ -262,11 +269,11 @@ pub fn ecmul(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 96);
+    let calldata = right_pad(calldata, ECMUL_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
-    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
-    let s = LambdaWorksU256::from_bytes_be(&calldata[64..96]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECMUL_X1_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECMUL_Y1_START..ECMUL_Y1_END]).unwrap();
+    let s = LambdaWorksU256::from_bytes_be(&calldata[ECMUL_S_START..ECMUL_S_END]).unwrap();
 
     // if the point is infinity it is directly returned
     let zero_el = BN254FieldElement::from(0);
