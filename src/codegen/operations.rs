@@ -5590,14 +5590,19 @@ fn codegen_tstore<'c, 'r>(
         ))
         .result(0)?
         .into();
-
-    // // Check there's stack overflow
-    // let stack_flag = check_stack_has_space_for(context, &start_block, 1)?;
     
-    // check stack overflow
+    // check stack overflow and consume gas
     let stack_flag = check_stack_has_at_least(context, &start_block, 2)?;
     let gas_flag = consume_gas(context, &start_block, gas_cost::TSTORE)?;
 
+    // let gas_stack_flag = start_block
+    //     .append_operation(arith::andi(gas_flag, stack_flag, location))
+    //     .result(0)?
+    //     .into();
+
+    // //Check current context is not static
+    // let context_flag = check_context_is_not_static(op_ctx, &start_block)?;
+    
     let condition = start_block
         .append_operation(arith::andi(gas_flag, stack_flag, location))
         .result(0)?
