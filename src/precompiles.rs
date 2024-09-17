@@ -45,6 +45,15 @@ const ECR_PADDING_LEN: usize = 12;
 const RIPEMD_OUTPUT_LEN: usize = 32;
 const RIPEMD_PADDING_LEN: usize = 12;
 
+// for modexp
+const BSIZE_START: usize = 0;
+const BSIZE_END: usize = 32;
+const ESIZE_START: usize = 32;
+const ESIZE_END: usize = 64;
+const MSIZE_START: usize = 64;
+const MSIZE_END: usize = 96;
+const MXP_PARAMS_OFFSET: usize = 96;
+
 
 pub fn ecrecover(
     calldata: &Bytes,
@@ -127,23 +136,23 @@ pub fn modexp(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    let calldata = right_pad(calldata, 96);
+    let calldata = right_pad(calldata, MXP_PARAMS_OFFSET);
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[BSIZE_START..BSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[ESIZE_START..ESIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[MSIZE_START..MSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let params_len = 96 + b_size + e_size + m_size;
+    let params_len = MXP_PARAMS_OFFSET + b_size + e_size + m_size;
     let calldata = right_pad(&calldata, params_len);
 
-    let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
-    let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
-    let m = BigUint::from_bytes_be(&calldata[96 + b_size + e_size..params_len]);
+    let b = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET..MXP_PARAMS_OFFSET + b_size]);
+    let e = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET + b_size..MXP_PARAMS_OFFSET + b_size + e_size]);
+    let m = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET + b_size + e_size..params_len]);
 
     // Compute gas cost
     let max_length = b_size.max(m_size);
