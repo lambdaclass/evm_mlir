@@ -67,6 +67,14 @@ const ECP_FIELD_SIZE: usize = 32;
 const G1_POINT_SIZE: usize = 64;
 const G2_POINT_SIZE: usize = 128;
 
+// for blakef2
+const BF2_ROUND_END: usize = 4;
+const BF2_BLOCK_FLAG: usize = 212;
+const BF2_VEC_ELEM_SIZE: usize = 8;
+const BF2_STATEVEC_INIT: usize = 4;
+const BF2_MSGVEC_INIT: usize = 68;
+const BF2_OFFSET_COUNT_INIT: usize = 196;
+
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
@@ -317,7 +325,7 @@ pub fn ecpairing(
         // Slice lengths are checked, so unwrap is safe
         let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
         let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE*2]).unwrap();
-        
+
         let g2_x_bytes = [
             &calldata[start + (G1_POINT_SIZE + ECP_FIELD_SIZE)..start + (G1_POINT_SIZE + ECP_FIELD_SIZE*2)], // calldata[start + 96..start + 128]
             &calldata[start + G1_POINT_SIZE..start + (G1_POINT_SIZE + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
@@ -464,7 +472,7 @@ pub fn blake2f(
     }
 
     let rounds = u32::from_be_bytes(
-        calldata[0..4]
+        calldata[..BF2_ROUND_END]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
@@ -478,7 +486,7 @@ pub fn blake2f(
     let mut m: [u64; 16] = [0_u64; 16];
     let mut t: [u64; 2] = [0_u64; 2];
     let f = u8::from_be_bytes(
-        calldata[212..213]
+        calldata[BF2_BLOCK_FLAG..(BF2_BLOCK_FLAG + 1)]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
@@ -491,30 +499,30 @@ pub fn blake2f(
     // NOTE: We may optimize this by unwraping both for loops
 
     for (i, h) in h.iter_mut().enumerate() {
-        let start = 4 + i * 8;
+        let start = BF2_STATEVEC_INIT + i * BF2_VEC_ELEM_SIZE;
         *h = u64::from_le_bytes(
-            calldata[start..start + 8]
+            calldata[start..start + BF2_VEC_ELEM_SIZE]
                 .try_into()
                 .map_err(|_| PrecompileError::InvalidCalldata)?,
         );
     }
 
     for (i, m) in m.iter_mut().enumerate() {
-        let start = 68 + i * 8;
+        let start = BF2_MSGVEC_INIT + i * BF2_VEC_ELEM_SIZE;
         *m = u64::from_le_bytes(
-            calldata[start..start + 8]
+            calldata[start..start + BF2_VEC_ELEM_SIZE]
                 .try_into()
                 .map_err(|_| PrecompileError::InvalidCalldata)?,
         );
     }
 
     t[0] = u64::from_le_bytes(
-        calldata[196..204]
+        calldata[BF2_OFFSET_COUNT_INIT..BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
     t[1] = u64::from_le_bytes(
-        calldata[204..212]
+        calldata[BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE*2..BF2_BLOCK_FLAG]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
