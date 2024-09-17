@@ -34,12 +34,11 @@ fn main() {
         .expect("failed to compile program");
 
     let env = Env::default();
+    let initial_gas = env.tx.gas_limit;
     let mut db = Db::default();
     let journal = Journal::new(&mut db);
-    let mut context = SyscallContext::new(env, journal, Default::default());
+    let mut context = SyscallContext::new(env, journal, Default::default(), initial_gas);
     let executor = Executor::new(&module, &context, opt_level);
-
-    let initial_gas = 1000;
 
     let result = executor.execute(&mut context, initial_gas);
     println!("Execution result: {result}");

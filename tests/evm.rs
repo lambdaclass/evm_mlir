@@ -3,7 +3,12 @@ use sha3::{Digest, Keccak256};
 use std::{collections::HashMap, str::FromStr};
 
 use evm_mlir::{
-    constants::{call_opcode, gas_cost, EMPTY_CODE_HASH_STR},
+    constants::{
+        call_opcode,
+        gas_cost::{self, TX_BASE_COST},
+        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
+        EMPTY_CODE_HASH_STR,
+    },
     db::{Bytecode, Database, Db},
     env::TransactTo,
     primitives::{Address, Bytes, B256, U256 as EU256},
@@ -112,9 +117,9 @@ fn run_program_assert_gas_and_refund(
     used_gas: u64,
     refunded_gas: u64,
 ) {
+    let used_gas = used_gas + env.calculate_intrinsic_cost();
     env.tx.gas_limit = needed_gas + gas_cost::TX_BASE_COST;
     let mut evm = Evm::new(env, db);
-
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
     assert_eq!(result.gas_used(), used_gas);
@@ -1469,7 +1474,7 @@ fn sstore_gas_cost_on_cold_non_zero_value_to_zero() {
 
     let used_gas = 5_000 + 2 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 4_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
+    let refunded_gas = 4_800;
 
     let key = 80_u8;
     let program = vec![
@@ -1519,7 +1524,7 @@ fn sstore_gas_cost_restore_warm_from_zero() {
 
     let used_gas = 5_100 + 4 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = 2_800.min(used_gas / GAS_REFUND_DENOMINATOR as i64);
+    let refunded_gas = 2_800;
 
     let key = 80_u8;
     let program = vec![
@@ -1980,7 +1985,7 @@ fn call_simple_callee_call(#[case] call_type: Operation) {
     let res_bytes: &[u8] = result.output().unwrap();
 
     let expected_contract_data_result = a + b;
-    let expected_contract_status_result = 1_u8.into();
+    let expected_contract_status_result = SUCCESS_RETURN_CODE.into();
 
     let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
     let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..]);
@@ -2075,7 +2080,7 @@ fn call_addition_with_value_transfer(#[case] call_type: Operation) {
     let expected_contract_data_result = a + b;
     let expected_caller_balance_result = (caller_balance - value).into();
     let expected_callee_balance_result = (callee_balance + value).into();
-    let expected_contract_status_result = 1_u8.into();
+    let expected_contract_status_result = SUCCESS_RETURN_CODE.into();
 
     let contract_data_result = BigUint::from_bytes_be(&res_bytes[..32]);
     let contract_status_result = BigUint::from_bytes_be(&res_bytes[32..]);
@@ -2155,7 +2160,7 @@ fn call_without_enough_balance(#[case] call_type: Operation) {
     let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
-    let expected_contract_call_result = 0_u8.into(); //Call failed
+    let expected_contract_call_result = REVERT_RETURN_CODE.into(); //Call failed
     let expected_caller_balance_result = caller_balance.into();
     let expected_callee_balance_result = callee_balance.into();
 
@@ -3435,7 +3440,7 @@ fn staticcall_state_modifying_revert_with_callee_ops(callee_ops: Vec<Operation>)
     let mut db = db.with_contract(caller_address, bytecode);
     db.set_account(caller_address, 0, caller_balance.into(), Default::default());
 
-    let expected_result = 0_u8.into();
+    let expected_result = REVERT_RETURN_CODE.into();
 
     run_program_assert_num_result(env, db, expected_result);
 }
@@ -3805,7 +3810,7 @@ fn selfdestruct_on_newly_created_account() {
     let result = evm.transact_commit().unwrap();
     assert!(result.is_success());
     let call_return_code = BigUint::from_bytes_be(result.output().unwrap());
-    let expected_return_code = 1_u8.into();
+    let expected_return_code = SUCCESS_RETURN_CODE.into();
     assert_eq!(call_return_code, expected_return_code);
 
     let expected_caller_balance = (caller_init_balance - transfer_value).into();
@@ -3942,19 +3947,31 @@ fn refunded_gas_cant_be_more_than_a_fifth_of_used_gas() {
     let new_value: u8 = 0;
     let original_value = 10;
 
-    let used_gas = 5_000 + 2 * gas_cost::PUSHN;
+    let used_gas = 20_000 + 8 * gas_cost::PUSHN;
     let needed_gas = used_gas + gas_cost::SSTORE_MIN_REMAINING_GAS;
-    let refunded_gas = used_gas / GAS_REFUND_DENOMINATOR as i64;
-    let key = 80_u8;
+    let refunded_gas = (used_gas + TX_BASE_COST as i64) / GAS_REFUND_DENOMINATOR as i64;
+    let key = 80_usize;
     let program = vec![
         Operation::Push((1_u8, BigUint::from(new_value))),
         Operation::Push((1_u8, BigUint::from(key))),
+        Operation::Sstore,
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key + 50))),
+        Operation::Sstore,
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key + 100))),
+        Operation::Sstore,
+        Operation::Push((1_u8, BigUint::from(new_value))),
+        Operation::Push((1_u8, BigUint::from(key + 150))),
         Operation::Sstore,
     ];
 
     let (env, mut db) = default_env_and_db_setup(program);
     let callee = env.tx.get_address();
     db.write_storage(callee, EU256::from(key), EU256::from(original_value));
+    db.write_storage(callee, EU256::from(key + 50), EU256::from(original_value));
+    db.write_storage(callee, EU256::from(key + 100), EU256::from(original_value));
+    db.write_storage(callee, EU256::from(key + 150), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
 }
@@ -3986,4 +4003,90 @@ fn refund_limit_value() {
     db.write_storage(callee, EU256::from(key), EU256::from(original_value));
 
     run_program_assert_gas_and_refund(env, db, needed_gas as _, used_gas as _, refunded_gas as _);
+}
+
+#[test]
+fn recursive_create() {
+    let value: u64 = 100000;
+    let sender_balance = EU256::from(20000000);
+    let sender_addr = Address::from_low_u64_be(5000);
+    let to_addr = Address::from_low_u64_be(3000);
+
+    let operations = vec![
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Push0,
+        Operation::Codecopy,
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Push0,
+        Operation::Create,
+        Operation::Stop,
+    ];
+
+    let mut env = Env::default();
+    env.tx.value = EU256::from(value);
+    env.tx.caller = sender_addr;
+    env.tx.transact_to = TransactTo::Call(to_addr);
+    env.tx.gas_limit = 1_000_000;
+    let program = Program::from(operations);
+
+    let mut db = Db::new().with_contract(to_addr, Bytecode::from(program.to_bytecode()));
+    db.set_account(sender_addr, 0, sender_balance, Default::default());
+    db.set_account(to_addr, 0, EU256::from(100000000), Default::default());
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_halt());
+}
+
+#[test]
+fn transact_to_create() {
+    let value: u8 = 10;
+    let sender_nonce = 1;
+    let sender_balance = EU256::from(25);
+    let sender_addr = Address::from_low_u64_be(40);
+
+    // Code that returns the value 0xffffffff
+    let initialization_code = hex::decode("63FFFFFFFF6000526004601CF3").unwrap();
+
+    let mut db = Db::new();
+    db.set_account(
+        sender_addr,
+        sender_nonce,
+        sender_balance,
+        Default::default(),
+    );
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+    env.tx.value = EU256::from(value);
+    env.tx.transact_to = TransactTo::Create;
+    env.tx.caller = sender_addr;
+    env.tx.data = Bytes::from(initialization_code.clone());
+
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+    assert!(result.is_success());
+
+    // Check the returned value is equals to the initialization code
+    let returned_code = result.output().unwrap().to_vec();
+    assert_eq!(returned_code, initialization_code);
+
+    // Check that the sender account is updated
+    let sender_account = evm.db.basic(sender_addr).unwrap().unwrap();
+    assert_eq!(sender_account.nonce, sender_nonce + 1);
+    assert_eq!(sender_account.balance, sender_balance - value);
+}
+
+#[test]
+fn halting_consume_all_gas() {
+    let operations = vec![Operation::BlockHash];
+    let (mut env, db) = default_env_and_db_setup(operations);
+    env.tx.gas_limit = 1_000_000;
+    let mut evm = Evm::new(env, db);
+    let result = evm.transact_commit().unwrap();
+
+    assert!(result.is_halt());
+    assert_eq!(result.gas_used(), 1_000_000);
 }
