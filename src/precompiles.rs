@@ -323,16 +323,22 @@ pub fn ecpairing(
         let start = idx * ECP_INPUT_SIZE;
 
         // Slice lengths are checked, so unwrap is safe
-        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
-        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE*2]).unwrap();
+        let g1_x =
+            BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
+        let g1_y = BN254FieldElement::from_bytes_be(
+            &calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE * 2],
+        )
+        .unwrap();
 
         let g2_x_bytes = [
-            &calldata[start + (G1_POINT_SIZE + ECP_FIELD_SIZE)..start + (G1_POINT_SIZE + ECP_FIELD_SIZE*2)], // calldata[start + 96..start + 128]
+            &calldata[start + (G1_POINT_SIZE + ECP_FIELD_SIZE)
+                ..start + (G1_POINT_SIZE + ECP_FIELD_SIZE * 2)], // calldata[start + 96..start + 128]
             &calldata[start + G1_POINT_SIZE..start + (G1_POINT_SIZE + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + (G2_POINT_SIZE * ECP_FIELD_SIZE)..start + (G2_POINT_SIZE + ECP_FIELD_SIZE*2)], // calldata[start + 160..start + 192]
+            &calldata[start + (G2_POINT_SIZE * ECP_FIELD_SIZE)
+                ..start + (G2_POINT_SIZE + ECP_FIELD_SIZE * 2)], // calldata[start + 160..start + 192]
             &calldata[start + G2_POINT_SIZE..start + (G2_POINT_SIZE * ECP_FIELD_SIZE)], // calldata[start + 128..start + 160]
         ]
         .concat();
@@ -522,7 +528,7 @@ pub fn blake2f(
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
     t[1] = u64::from_le_bytes(
-        calldata[BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE*2..BF2_BLOCK_FLAG]
+        calldata[BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE * 2..BF2_BLOCK_FLAG]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
