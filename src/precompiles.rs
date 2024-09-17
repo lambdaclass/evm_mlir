@@ -766,6 +766,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -790,6 +794,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -813,6 +821,10 @@ mod tests {
         );
         let gas_limit = ECADD_COST - 1;
         let mut consumed_gas = 0;
+
+        let result = ecadd(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -929,6 +941,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -952,6 +968,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -974,6 +994,10 @@ mod tests {
         );
         let gas_limit = ECMUL_COST - 1;
         let mut consumed_gas = 0;
+
+        let result = ecmul(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -1127,6 +1151,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -1153,6 +1181,10 @@ mod tests {
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidEcPoint);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -1173,6 +1205,10 @@ mod tests {
         );
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -1206,6 +1242,10 @@ mod tests {
         // needs 113_000
         let gas_limit = 100_000;
         let mut consumed_gas = 0;
+
+        let result = ecpairing(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::NotEnoughGas);
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
@@ -1247,6 +1287,10 @@ mod tests {
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -1262,6 +1306,10 @@ mod tests {
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
 
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
+
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
 
@@ -1276,6 +1324,10 @@ mod tests {
         let calldata = Bytes::from(hex::decode("0000000c48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000002").unwrap());
         let gas_limit = 1000;
         let mut consumed_gas: u64 = 0;
+
+        let result = blake2f(&calldata, gas_limit, &mut consumed_gas);
+        // just to check error type, no gas consumption made
+        assert_eq!(result.unwrap_err(), PrecompileError::InvalidCalldata);
 
         let (return_code, return_data) =
             execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
