@@ -30,51 +30,6 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-// for ecRecover
-const ECR_HASH_END: usize = 32;
-const ECR_V_POS: usize = 63;
-const ECR_V_BASE: i32 = 27;
-const ECR_SIG_END: usize = 128;
-const ECR_PARAMS_OFFSET: usize = 128;
-const ECR_PADDING_LEN: usize = 12;
-
-// for ripemd160
-const RIPEMD_OUTPUT_LEN: usize = 32;
-const RIPEMD_PADDING_LEN: usize = 12;
-
-// for modexp
-const BSIZE_END: usize = 32;
-const ESIZE_END: usize = 64;
-const MSIZE_END: usize = 96;
-const MXP_PARAMS_OFFSET: usize = 96;
-
-// for ecadd
-const ECADD_PARAMS_OFFSET: usize = 128;
-const ECADD_X1_END: usize = 32;
-const ECADD_Y1_END: usize = 64;
-const ECADD_X2_END: usize = 96;
-const ECADD_Y2_END: usize = 128;
-
-// for ecmul
-const ECMUL_PARAMS_OFFSET: usize = 96;
-const ECMUL_X1_END: usize = 32;
-const ECMUL_Y1_END: usize = 64;
-const ECMUL_S_END: usize = 96;
-
-// for ecpairing
-const ECP_INPUT_SIZE: usize = 192;
-const ECP_FIELD_SIZE: usize = 32;
-const G1_POINT_SIZE: usize = 64;
-const G2_POINT_SIZE: usize = 128;
-
-// for blakef2
-const BF2_ROUND_END: usize = 4;
-const BF2_BLOCK_FLAG: usize = 212;
-const BF2_VEC_ELEM_SIZE: usize = 8;
-const BF2_STATEVEC_INIT: usize = 4;
-const BF2_MSGVEC_INIT: usize = 68;
-const BF2_OFFSET_COUNT_INIT: usize = 196;
-
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
