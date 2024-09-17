@@ -6,10 +6,7 @@ use evm_mlir::{
     constants::{
         call_opcode,
         gas_cost::{self, exp_dynamic_cost, TX_BASE_COST},
-        precompiles::{
-            BLAKE2F_ADDRESS, ECADD_ADDRESS, ECMUL_ADDRESS, ECPAIRING_ADDRESS, ECRECOVER_ADDRESS,
-            IDENTITY_ADDRESS, MODEXP_ADDRESS, RIPEMD_160_ADDRESS, SHA2_256_ADDRESS,
-        },
+        precompiles::BLAKE2F_ADDRESS,
         return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
         EMPTY_CODE_HASH_STR,
     },
