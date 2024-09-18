@@ -172,7 +172,7 @@ pub fn modexp(
     Ok(Bytes::copy_from_slice(output))
 }
 
-/// Point addition on the elliptic curve 'alt_bn128'.
+/// Point addition on the elliptic curve 'alt_bn128' (also referred as 'bn254').
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecadd(
     calldata: &Bytes,
@@ -232,7 +232,7 @@ pub fn ecadd(
     Ok(Bytes::from(res))
 }
 
-/// Scalar multiplication on the elliptic curve 'alt_bn128'.
+/// Scalar multiplication on the elliptic curve 'alt_bn128' (also referred as 'bn254').
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecmul(
     calldata: &Bytes,
@@ -274,7 +274,7 @@ pub fn ecmul(
     Err(PrecompileError::InvalidEcPoint)
 }
 
-/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
+/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve 'alt_bn128' (also referred as 'bn254').
 /// More info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
 /// - Loops over the calldata in chunks of 192 bytes. K times, where K = len / 192.
 /// - Two groups G_1 and G_2, which sum up to 192 bytes.
