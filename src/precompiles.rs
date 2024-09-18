@@ -37,10 +37,10 @@ pub fn ecrecover(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 128);
-    let hash = &calldata[0..32];
-    let v = calldata[63] as i32 - 27;
-    let sig = &calldata[64..128];
+    let calldata = right_pad(calldata, ECR_PARAMS_OFFSET);
+    let hash = &calldata[..ECR_HASH_END];
+    let v = calldata[ECR_V_POS] as i32 - ECR_V_BASE;
+    let sig = &calldata[(ECR_V_POS + 1)..ECR_SIG_END];
 
     let msg = Message::from_digest_slice(hash).map_err(|_| PrecompileError::Secp256k1Error)?;
     let id = ecdsa::RecoveryId::from_i32(v).map_err(|_| PrecompileError::Secp256k1Error)?;
@@ -56,7 +56,7 @@ pub fn ecrecover(
     let mut hasher = Keccak256::new();
     hasher.update(&public_address.serialize_uncompressed()[1..]);
     let mut address_hash = hasher.finalize();
-    address_hash[..12].fill(0);
+    address_hash[..ECR_PADDING_LEN].fill(0);
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
@@ -86,8 +86,8 @@ pub fn ripemd_160(
     *consumed_gas += gas_cost;
     let mut hasher = ripemd::Ripemd160::new();
     hasher.update(calldata);
-    let mut output = [0u8; 32];
-    hasher.finalize_into((&mut output[12..]).into());
+    let mut output = [0u8; RIPEMD_OUTPUT_LEN];
+    hasher.finalize_into((&mut output[RIPEMD_PADDING_LEN..]).into());
     Ok(Bytes::copy_from_slice(&output))
 }
 
@@ -109,23 +109,25 @@ pub fn modexp(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    let calldata = right_pad(calldata, 96);
+    let calldata = right_pad(calldata, MXP_PARAMS_OFFSET);
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+    let b_size = usize::try_from(U256::from_big_endian(&calldata[..BSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+    let e_size = usize::try_from(U256::from_big_endian(&calldata[BSIZE_END..ESIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+    let m_size = usize::try_from(U256::from_big_endian(&calldata[ESIZE_END..MSIZE_END]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
-    let params_len = 96 + b_size + e_size + m_size;
+    let params_len = MXP_PARAMS_OFFSET + b_size + e_size + m_size;
     let calldata = right_pad(&calldata, params_len);
 
-    let b = BigUint::from_bytes_be(&calldata[96..96 + b_size]);
-    let e = BigUint::from_bytes_be(&calldata[96 + b_size..96 + b_size + e_size]);
-    let m = BigUint::from_bytes_be(&calldata[96 + b_size + e_size..params_len]);
+    let b = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET..MXP_PARAMS_OFFSET + b_size]);
+    let e = BigUint::from_bytes_be(
+        &calldata[MXP_PARAMS_OFFSET + b_size..MXP_PARAMS_OFFSET + b_size + e_size],
+    );
+    let m = BigUint::from_bytes_be(&calldata[MXP_PARAMS_OFFSET + b_size + e_size..params_len]);
 
     // Compute gas cost
     let max_length = b_size.max(m_size);
@@ -166,12 +168,12 @@ pub fn ecadd(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 128);
+    let calldata = right_pad(calldata, ECADD_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
-    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
-    let x2 = BN254FieldElement::from_bytes_be(&calldata[64..96]).unwrap();
-    let y2 = BN254FieldElement::from_bytes_be(&calldata[96..128]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECADD_X1_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X1_END..ECADD_Y1_END]).unwrap();
+    let x2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_Y1_END..ECADD_X2_END]).unwrap();
+    let y2 = BN254FieldElement::from_bytes_be(&calldata[ECADD_X2_END..ECADD_Y2_END]).unwrap();
 
     // (0,0) represents infinity, in that case the other point (if valid) should be directly returned
     let zero_el = BN254FieldElement::from(0);
@@ -224,11 +226,11 @@ pub fn ecmul(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let calldata = right_pad(calldata, 96);
+    let calldata = right_pad(calldata, ECMUL_PARAMS_OFFSET);
     // Slice lengths are checked, so unwrap is safe
-    let x1 = BN254FieldElement::from_bytes_be(&calldata[..32]).unwrap();
-    let y1 = BN254FieldElement::from_bytes_be(&calldata[32..64]).unwrap();
-    let s = LambdaWorksU256::from_bytes_be(&calldata[64..96]).unwrap();
+    let x1 = BN254FieldElement::from_bytes_be(&calldata[..ECMUL_X1_END]).unwrap();
+    let y1 = BN254FieldElement::from_bytes_be(&calldata[ECMUL_X1_END..ECMUL_Y1_END]).unwrap();
+    let s = LambdaWorksU256::from_bytes_be(&calldata[ECMUL_Y1_END..ECMUL_S_END]).unwrap();
 
     // if the point is infinity it is directly returned
     let zero_el = BN254FieldElement::from(0);
@@ -260,7 +262,7 @@ pub fn ecpairing(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    if calldata.len() % 192 != 0 {
+    if calldata.len() % ECP_INPUT_SIZE != 0 {
         return Err(PrecompileError::InvalidCalldata);
     }
     let gas_cost = ECPAIRING_STATIC_COST + ecpairing_dynamic_cost(calldata.len() as u64);
@@ -268,25 +270,29 @@ pub fn ecpairing(
         return Err(PrecompileError::NotEnoughGas);
     }
 
-    let rounds = calldata.len() / 192;
+    let rounds = calldata.len() / ECP_INPUT_SIZE;
     let mut mul: FieldElement<Degree12ExtensionField> = QuadraticExtensionFieldElement::one();
     for idx in 0..rounds {
-        let start = idx * 192;
+        let start = idx * ECP_INPUT_SIZE;
 
         // Slice lengths are checked, so unwrap is safe
-        let g1_x = BN254FieldElement::from_bytes_be(&calldata[start..start + 32]).unwrap();
-        let g1_y = BN254FieldElement::from_bytes_be(&calldata[start + 32..start + 64]).unwrap();
+        let g1_x =
+            BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
+        let g1_y = BN254FieldElement::from_bytes_be(
+            &calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE * 2],
+        )
+        .unwrap();
 
-        // G2 point: ((x_0, x_1), (y_0, y_1))
-        // both x and y have a real and an imaginary part of 32 bytes each
         let g2_x_bytes = [
-            &calldata[start + 96..start + 128],
-            &calldata[start + 64..start + 96],
+            &calldata[start + (G1_POINT_SIZE + ECP_FIELD_SIZE)
+                ..start + (G1_POINT_SIZE + ECP_FIELD_SIZE * 2)], // calldata[start + 96..start + 128]
+            &calldata[start + G1_POINT_SIZE..start + (G1_POINT_SIZE + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + 160..start + 192],
-            &calldata[start + 128..start + 160],
+            &calldata[start + (G2_POINT_SIZE + ECP_FIELD_SIZE)
+                ..start + (G2_POINT_SIZE + ECP_FIELD_SIZE * 2)], // calldata[start + 160..start + 192]
+            &calldata[start + G2_POINT_SIZE..start + (G2_POINT_SIZE + ECP_FIELD_SIZE)], // calldata[start + 128..start + 160]
         ]
         .concat();
 
@@ -425,7 +431,7 @@ pub fn blake2f(
     }
 
     let rounds = u32::from_be_bytes(
-        calldata[0..4]
+        calldata[..BF2_ROUND_END]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
@@ -439,7 +445,7 @@ pub fn blake2f(
     let mut m: [u64; 16] = [0_u64; 16];
     let mut t: [u64; 2] = [0_u64; 2];
     let f = u8::from_be_bytes(
-        calldata[212..213]
+        calldata[BF2_BLOCK_FLAG..(BF2_BLOCK_FLAG + 1)]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
@@ -452,30 +458,30 @@ pub fn blake2f(
     // NOTE: We may optimize this by unwraping both for loops
 
     for (i, h) in h.iter_mut().enumerate() {
-        let start = 4 + i * 8;
+        let start = BF2_STATEVEC_INIT + i * BF2_VEC_ELEM_SIZE;
         *h = u64::from_le_bytes(
-            calldata[start..start + 8]
+            calldata[start..start + BF2_VEC_ELEM_SIZE]
                 .try_into()
                 .map_err(|_| PrecompileError::InvalidCalldata)?,
         );
     }
 
     for (i, m) in m.iter_mut().enumerate() {
-        let start = 68 + i * 8;
+        let start = BF2_MSGVEC_INIT + i * BF2_VEC_ELEM_SIZE;
         *m = u64::from_le_bytes(
-            calldata[start..start + 8]
+            calldata[start..start + BF2_VEC_ELEM_SIZE]
                 .try_into()
                 .map_err(|_| PrecompileError::InvalidCalldata)?,
         );
     }
 
     t[0] = u64::from_le_bytes(
-        calldata[196..204]
+        calldata[BF2_OFFSET_COUNT_INIT..BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
     t[1] = u64::from_le_bytes(
-        calldata[204..212]
+        calldata[BF2_OFFSET_COUNT_INIT + BF2_VEC_ELEM_SIZE..BF2_BLOCK_FLAG]
             .try_into()
             .map_err(|_| PrecompileError::InvalidCalldata)?,
     );
