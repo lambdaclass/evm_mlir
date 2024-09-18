@@ -175,7 +175,7 @@ pub mod precompiles {
     pub const SHA2_256_ADDRESS: u64 = 0x02;
     pub const RIPEMD_160_COST: u64 = 600;
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;
-    pub const IDENTITY_COST: u64 = 15;
+    pub const IDENTITY_STATIC_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
     pub const MODEXP_ADDRESS: u64 = 0x05;
     pub const ECADD_ADDRESS: u64 = 0x06;

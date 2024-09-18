@@ -96,7 +96,7 @@ pub fn identity(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
-    let gas_cost = IDENTITY_COST + identity_dynamic_cost(calldata.len() as u64);
+    let gas_cost = IDENTITY_STATIC_COST + identity_dynamic_cost(calldata.len() as u64);
     if gas_limit < gas_cost {
         return Err(PrecompileError::NotEnoughGas);
     }
