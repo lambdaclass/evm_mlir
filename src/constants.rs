@@ -189,6 +189,10 @@ pub mod precompiles {
         rounds as u64
     }
 
+    pub const fn ecpairing_g2_point_start(pos: usize) -> usize {
+        pos + ECP_FIELD_SIZE
+    }
+
     // ecRecover,
     // ECDSA public key recovery function.
     // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
