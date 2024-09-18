@@ -1,7 +1,7 @@
 use crate::{
     constants::{
-        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
         precompiles::*,
+        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
     },
     primitives::U256,
     result::PrecompileError,
