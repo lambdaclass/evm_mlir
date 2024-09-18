@@ -229,7 +229,7 @@ pub mod precompiles {
     // modexp,
     // Arbitrary-precision exponentiation under modulo.
     // more info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
-    // - [0; 32] byte size of B 
+    // - [0; 32] byte size of B
     // - [32; 64] byte size of E
     // - [64; 96] byte size of M
     // - then MXP_PARAMS_OFFSET used to get values of B, E and M
@@ -240,13 +240,13 @@ pub mod precompiles {
     pub const MXP_PARAMS_OFFSET: usize = 96;
     pub const MODEXP_ADDRESS: u64 = 0x05;
 
-    // ecadd, 	
+    // ecadd,
     // Point addition on the elliptic curve 'alt_bn128'.
     // more info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
-    // - [0; 32] x1 
-    // - [32; 64] y1 
-    // - [64; 96] x2 
-    // - [96; 128] y2 
+    // - [0; 32] x1
+    // - [32; 64] y1
+    // - [64; 96] x2
+    // - [96; 128] y2
     pub const ECADD_PARAMS_OFFSET: usize = 128;
     pub const ECADD_X1_END: usize = 32;
     pub const ECADD_Y1_END: usize = 64;
@@ -258,8 +258,8 @@ pub mod precompiles {
     // ecmul,
     // Scalar multiplication on the elliptic curve 'alt_bn128'.
     // more info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
-    // [0; 32] x1	
-    // [32; 64] y1	
+    // [0; 32] x1
+    // [32; 64] y1
     // [64; 96]	s => Scalar to use for the multiplication
     pub const ECMUL_PARAMS_OFFSET: usize = 96;
     pub const ECMUL_X1_END: usize = 32;
