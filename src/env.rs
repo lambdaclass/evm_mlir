@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::{
     constants::{
         gas_cost::{
@@ -6,6 +8,7 @@ use crate::{
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
+    db::DbAccount,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
     utils::{access_list_cost, calc_blob_gasprice},
@@ -16,6 +19,7 @@ pub type AccessList = Vec<(Address, Vec<U256>)>;
 //This Env struct contains configuration information about the EVM, the block containing the transaction, and the transaction itself.
 //Structs inspired by the REVM primitives
 //-> https://github.com/bluealloy/revm/blob/main/crates/primitives/src/env.rs
+// moved to: https://github.com/bluealloy/revm/blob/be1d324298b6a1e20f8b17aff34f95206304117b/crates/wiring/src/default.rs#L31
 #[derive(Clone, Debug, Default)]
 pub struct Env {
     /// Configuration of the EVM itself.
@@ -37,9 +41,24 @@ impl Env {
         }
     }
 
-    /// Reference: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
-    pub fn validate_transaction(&mut self) -> Result<(), InvalidTransaction> {
+    /// Checks if the transaction is valid.
+    ///
+    /// See the [execution spec] for reference.
+    ///
+    /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
+    pub fn validate_transaction(&self, account: &DbAccount) -> Result<(), InvalidTransaction> {
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
+
+        // if nonce is None, nonce check skipped
+        if let Some(tx) = self.tx.nonce {
+            let state = account.nonce;
+
+            match tx.cmp(&state) {
+                Ordering::Greater => return Err(InvalidTransaction::NonceTooHigh { tx, state }),
+                Ordering::Less => return Err(InvalidTransaction::NonceTooLow { tx, state }),
+                Ordering::Equal => {}
+            }
+        }
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
@@ -170,9 +189,8 @@ pub struct TxEnv {
     // The data of the transaction.
     pub data: Bytes,
     // The nonce of the transaction.
-    //
+    pub nonce: Option<u64>,
     // Caution: If set to `None`, then nonce validation against the account's nonce is skipped: [InvalidTransaction::NonceTooHigh] and [InvalidTransaction::NonceTooLow]
-    // pub nonce: Option<u64>,
 
     // The chain ID of the transaction. If set to `None`, no checks are performed.
     //
@@ -222,7 +240,7 @@ impl Default for TxEnv {
             value: U256::zero(),
             data: Bytes::new(),
             // chain_id: None,
-            // nonce: None,
+            nonce: None,
             access_list: Default::default(),
             blob_hashes: Vec::new(),
             max_fee_per_blob_gas: None,
@@ -245,5 +263,62 @@ impl TxEnv {
             TransactTo::Call(addr) => addr,
             TransactTo::Create => self.caller,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::db::Db;
+
+    use super::*;
+
+    #[test]
+    /// Tx invalid if tx nonce > caller nonce.
+    fn validation_nonce_too_high() {
+        let tx_env = TxEnv {
+            nonce: Some(42),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.set_account(Address::default(), 41, U256::MAX, HashMap::default());
+
+        let tx_result = env.validate_transaction(db.get_account(Address::default()).unwrap());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::NonceTooHigh { tx: 42, state: 41 })
+        )
+    }
+
+    #[test]
+    /// Tx invalid if tx nonce < caller nonce.
+    fn validation_nonce_too_low() {
+        let tx_env = TxEnv {
+            nonce: Some(40),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.set_account(Address::default(), 41, U256::MAX, HashMap::default());
+
+        let tx_result = env.validate_transaction(db.get_account(Address::default()).unwrap());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::NonceTooLow { tx: 40, state: 41 })
+        )
     }
 }

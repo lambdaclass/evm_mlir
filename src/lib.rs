@@ -48,10 +48,15 @@ impl<DB: Database + Default> Evm<DB> {
 
 impl Evm<Db> {
     fn validate_transaction(&mut self) -> Result<u64, EVMError> {
-        let initial_gas_consumed = self.env.consume_intrinsic_cost()?;
-        self.env.validate_transaction()?;
+        // load caller account
+        if let Some(caller) = self.db.get_account(self.env.tx.caller) {
+            self.env.validate_transaction(caller)?;
+            let initial_gas_consumed = self.env.consume_intrinsic_cost()?;
 
-        Ok(initial_gas_consumed)
+            Ok(initial_gas_consumed)
+        } else {
+            Err(EVMError::Database(DatabaseError))
+        }
     }
 
     fn create_syscall_context(&mut self, initial_gas: u64) -> SyscallContext {
