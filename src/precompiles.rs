@@ -306,15 +306,15 @@ pub fn ecpairing(
         .unwrap();
 
         let g2_x_bytes = [
-            &calldata[start + ecpairing_g2_point1_start(G1_POINT_SIZE)
-                ..start + ecpairing_g2_point1_end(G1_POINT_SIZE)], // calldata[start + 96..start + 128]
-            &calldata[start + G1_POINT_SIZE..start + ecpairing_g2_point1_start(G1_POINT_SIZE)], // calldata[start + 64..start + 96]
+            &calldata[start + ecpairing_g2_point1_start(G1_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G1_POINT_POS)], // calldata[start + 96..start + 128]
+            &calldata[start + G1_POINT_POS..start + ecpairing_g2_point1_start(G1_POINT_POS)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + ecpairing_g2_point1_start(G2_POINT_SIZE)
-                ..start + ecpairing_g2_point1_end(G2_POINT_SIZE)], // calldata[start + 160..start + 192]
-            &calldata[start + G2_POINT_SIZE..start + ecpairing_g2_point1_start(G2_POINT_SIZE)], // calldata[start + 128..start + 160]
+            &calldata[start + ecpairing_g2_point1_start(G2_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G2_POINT_POS)], // calldata[start + 160..start + 192]
+            &calldata[start + G2_POINT_POS..start + ecpairing_g2_point1_start(G2_POINT_POS)], // calldata[start + 128..start + 160]
         ]
         .concat();
 
