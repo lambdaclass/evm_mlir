@@ -44,6 +44,10 @@ impl Db {
         Self::default()
     }
 
+    pub fn get_account(&self, address: Address) -> Option<&DbAccount> {
+        self.accounts.get(&address)
+    }
+
     pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
         self.block_hashes.insert(number, hash);
     }
