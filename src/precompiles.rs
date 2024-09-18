@@ -489,8 +489,8 @@ pub fn blake2f(
 
 pub fn is_precompile(callee_address: Address) -> bool {
     let addr_as_u64 = callee_address.to_low_u64_be();
-    // TODO: replace 10 with point evaluation address constant
-    callee_address[0..12] == [0u8; 12] && (ECRECOVER_ADDRESS..=10).contains(&addr_as_u64)
+    // TODO: replace 10 with point evaluation address constant and include it in the range (..=10)
+    callee_address[0..12] == [0u8; 12] && (ECRECOVER_ADDRESS..10).contains(&addr_as_u64)
 }
 
 pub fn execute_precompile(
