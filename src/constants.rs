@@ -278,7 +278,7 @@ pub mod precompiles {
     pub const BF2_STATEVEC_INIT: usize = 4;
     /// (68; 196) contains the Message block vector, which contains 16 BF2_VEC_ELEM_SIZE.
     pub const BF2_MSGVEC_INIT: usize = 68;
-    /// (196; 212) contains the	Offset counters vector, which contains 2 BF2_VEC_ELEM_SIZE.
+    /// (196; 212) contains the Offset counters vector, which contains 2 BF2_VEC_ELEM_SIZE.
     pub const BF2_OFFSET_COUNT_INIT: usize = 196;
     pub const BLAKE2F_ADDRESS: u64 = 0x09;
 }

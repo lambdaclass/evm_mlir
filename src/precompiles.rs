@@ -28,7 +28,6 @@ use num_bigint::BigUint;
 use secp256k1::{ecdsa, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-
 /// ECDSA public key recovery function.
 /// More info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
 pub fn ecrecover(
@@ -63,7 +62,6 @@ pub fn ecrecover(
     Ok(Bytes::copy_from_slice(&address_hash))
 }
 
-
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
 pub fn sha2_256(
@@ -82,7 +80,7 @@ pub fn sha2_256(
 
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
-/// 
+///
 /// # Returns
 /// - a 20-byte hash right aligned to 32 bytes
 pub fn ripemd_160(
@@ -101,7 +99,6 @@ pub fn ripemd_160(
     hasher.finalize_into((&mut output[RIPEMD_PADDING_LEN..]).into());
     Ok(Bytes::copy_from_slice(&output))
 }
-
 
 /// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
 /// More info in https://github.com/ethereum/yellowpaper.
@@ -175,7 +172,6 @@ pub fn modexp(
     Ok(Bytes::copy_from_slice(output))
 }
 
-
 /// Point addition on the elliptic curve 'alt_bn128'.
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecadd(
@@ -236,7 +232,6 @@ pub fn ecadd(
     Ok(Bytes::from(res))
 }
 
-
 /// Scalar multiplication on the elliptic curve 'alt_bn128'.
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecmul(
@@ -278,7 +273,6 @@ pub fn ecmul(
 
     Err(PrecompileError::InvalidEcPoint)
 }
-
 
 /// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
 /// More info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
@@ -440,7 +434,6 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 }
 
 const CALLDATA_LEN: usize = 213;
-
 
 /// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
 /// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
