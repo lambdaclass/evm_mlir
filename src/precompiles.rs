@@ -113,11 +113,11 @@ pub fn modexp(
 
     // Cast sizes as usize and check for overflow.
     // Bigger sizes are not accepted, as memory can't index bigger values.
-    let b_size = usize::try_from(U256::from_big_endian(&calldata[0..32]))
+    let b_size = usize::try_from(U256::from_little_endian(&calldata[0..32]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let e_size = usize::try_from(U256::from_big_endian(&calldata[32..64]))
+    let e_size = usize::try_from(U256::from_little_endian(&calldata[32..64]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
-    let m_size = usize::try_from(U256::from_big_endian(&calldata[64..96]))
+    let m_size = usize::try_from(U256::from_little_endian(&calldata[64..96]))
         .map_err(|_| PrecompileError::InvalidCalldata)?;
 
     let params_len = 96 + b_size + e_size + m_size;
@@ -553,9 +553,9 @@ mod tests {
         let e = 9_u8;
         let m = 10_u8;
         let mut calldata = [0_u8; 99];
-        b_size.to_big_endian(&mut calldata[..32]);
-        e_size.to_big_endian(&mut calldata[32..64]);
-        m_size.to_big_endian(&mut calldata[64..96]);
+        b_size.to_little_endian(&mut calldata[..32]);
+        e_size.to_little_endian(&mut calldata[32..64]);
+        m_size.to_little_endian(&mut calldata[64..96]);
         calldata[96] = b;
         calldata[97] = e;
         calldata[98] = m;
@@ -581,9 +581,9 @@ mod tests {
         let e = 6_u8;
         let m = 10_u8;
         let mut calldata = [0_u8; 354];
-        b_size.to_big_endian(&mut calldata[..32]);
-        e_size.to_big_endian(&mut calldata[32..64]);
-        m_size.to_big_endian(&mut calldata[64..96]);
+        b_size.to_little_endian(&mut calldata[..32]);
+        e_size.to_little_endian(&mut calldata[32..64]);
+        m_size.to_little_endian(&mut calldata[64..96]);
         calldata[351] = b;
         calldata[352] = e;
         calldata[353] = m;
