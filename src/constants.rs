@@ -46,7 +46,8 @@ pub mod gas_cost {
     pub const BYTE: i64 = 3;
     pub const SHL: i64 = 3;
     pub const SAR: i64 = 3;
-    pub const BALANCE: i64 = 100;
+    pub const BALANCE_WARM: i64 = 100;
+    pub const BALANCE_COLD: i64 = 2600;
     pub const ORIGIN: i64 = 2;
     pub const CALLER: i64 = 2;
     pub const CALLVALUE: i64 = 2;
@@ -85,9 +86,14 @@ pub mod gas_cost {
     pub const CODECOPY: i64 = 3;
     pub const LOG: i64 = 375;
     pub const BLOCKHASH: i64 = 20;
-    pub const CALL: i64 = 0;
+    pub const CALL_WARM: i64 = 100;
+    pub const CALL_COLD: i64 = 2600;
+    pub const EXTCODEHASH_WARM: i64 = 100;
+    pub const EXTCODEHASH_COLD: i64 = 2600;
     pub const EXTCODESIZE_WARM: i64 = 100;
+    pub const EXTCODESIZE_COLD: i64 = 2600;
     pub const EXTCODECOPY_WARM: i64 = 100;
+    pub const EXTCODECOPY_COLD: i64 = 2600;
     pub const RETURNDATASIZE: i64 = 2;
     pub const RETURNDATACOPY: i64 = 3;
     pub const ADDRESS: i64 = 2;
@@ -200,6 +206,51 @@ pub mod precompiles {
     pub fn blake2_gas_cost(rounds: u32) -> u64 {
         rounds as u64
     }
+
+    // for ecRecover
+    pub const ECR_HASH_END: usize = 32;
+    pub const ECR_V_POS: usize = 63;
+    pub const ECR_V_BASE: i32 = 27;
+    pub const ECR_SIG_END: usize = 128;
+    pub const ECR_PARAMS_OFFSET: usize = 128;
+    pub const ECR_PADDING_LEN: usize = 12;
+
+    // for ripemd160
+    pub const RIPEMD_OUTPUT_LEN: usize = 32;
+    pub const RIPEMD_PADDING_LEN: usize = 12;
+
+    // for modexp
+    pub const BSIZE_END: usize = 32;
+    pub const ESIZE_END: usize = 64;
+    pub const MSIZE_END: usize = 96;
+    pub const MXP_PARAMS_OFFSET: usize = 96;
+
+    // for ecadd
+    pub const ECADD_PARAMS_OFFSET: usize = 128;
+    pub const ECADD_X1_END: usize = 32;
+    pub const ECADD_Y1_END: usize = 64;
+    pub const ECADD_X2_END: usize = 96;
+    pub const ECADD_Y2_END: usize = 128;
+
+    // for ecmul
+    pub const ECMUL_PARAMS_OFFSET: usize = 96;
+    pub const ECMUL_X1_END: usize = 32;
+    pub const ECMUL_Y1_END: usize = 64;
+    pub const ECMUL_S_END: usize = 96;
+
+    // for ecpairing
+    pub const ECP_INPUT_SIZE: usize = 192;
+    pub const ECP_FIELD_SIZE: usize = 32;
+    pub const G1_POINT_SIZE: usize = 64;
+    pub const G2_POINT_SIZE: usize = 128;
+
+    // for blakef2
+    pub const BF2_ROUND_END: usize = 4;
+    pub const BF2_BLOCK_FLAG: usize = 212;
+    pub const BF2_VEC_ELEM_SIZE: usize = 8;
+    pub const BF2_STATEVEC_INIT: usize = 4;
+    pub const BF2_MSGVEC_INIT: usize = 68;
+    pub const BF2_OFFSET_COUNT_INIT: usize = 196;
 }
 
 #[derive(PartialEq, Debug)]

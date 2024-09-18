@@ -238,6 +238,7 @@ impl<'c> SyscallContext<'c> {
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
         let gas_remaining = self.inner_context.gas_remaining.unwrap_or(0);
         let gas_initial = self.initial_gas;
+        // TODO: Probably here we need to add the access_list_cost to gas_used, but we need a refactor of most tests
         let gas_used = gas_initial.saturating_sub(gas_remaining);
         let gas_refunded = self
             .inner_context
@@ -350,11 +351,10 @@ impl<'c> SyscallContext<'c> {
 
         let calldata = Bytes::copy_from_slice(&self.inner_context.memory[off..off + size]);
 
+        *consumed_gas = gas_cost::CALL_WARM as u64;
+
         let (return_code, return_data) = if is_precompile(callee_address) {
-            match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
-                Ok(res) => (return_codes::SUCCESS_RETURN_CODE, res),
-                Err(_) => (return_codes::REVERT_RETURN_CODE, Bytes::new()),
-            }
+            execute_precompile(callee_address, calldata, gas_to_send, consumed_gas)
         } else {
             // Execute subcontext
             //TODO: Add call depth check
@@ -363,12 +363,18 @@ impl<'c> SyscallContext<'c> {
             let call_type = CallType::try_from(call_type)
                 .expect("Error while parsing CallType on call syscall");
 
-            //TODO: This should instead add the account fetch (warm or cold) cost
-            //For the moment we consider warm access
             let callee_account = match self.journal.get_account(&callee_address) {
-                Some(acc) => {
-                    *consumed_gas = call_opcode::WARM_MEMORY_ACCESS_COST;
-                    acc
+                Some(account) => {
+                    let is_cold = !self.journal.account_is_warm(&callee_address);
+
+                    if is_cold {
+                        *consumed_gas = gas_cost::CALL_COLD as u64;
+                        self.journal.add_account_as_warm(callee_address);
+                    } else {
+                        *consumed_gas = gas_cost::CALL_WARM as u64;
+                    }
+
+                    account
                 }
                 None => {
                     *consumed_gas = 0;
@@ -609,7 +615,6 @@ impl<'c> SyscallContext<'c> {
 
         let key = stg_key.to_primitive_u256();
         let is_cold = !self.journal.key_is_warm(&address, &key);
-
         // Read value from journaled_storage. If there isn't one, then read from db
         let result = self
             .journal
@@ -771,9 +776,18 @@ impl<'c> SyscallContext<'c> {
         self.inner_context.logs.push(log);
     }
 
-    pub extern "C" fn get_codesize_from_address(&mut self, address: &U256) -> u64 {
+    pub extern "C" fn get_codesize_from_address(&mut self, address: &U256, gas: &mut u64) -> u64 {
         //TODO: Here we are returning 0 if a Database error occurs. Check this
-        self.journal.code_by_address(&Address::from(address)).len() as _
+        let is_cold = !self.journal.account_is_warm(&Address::from(address));
+        let codesize = self.journal.code_by_address(&Address::from(address)).len();
+        if is_cold {
+            self.journal.add_account_as_warm(Address::from(address));
+            *gas = gas_cost::EXTCODESIZE_COLD as u64;
+        } else {
+            *gas = gas_cost::EXTCODESIZE_WARM as u64;
+        }
+
+        codesize as u64
     }
 
     pub extern "C" fn get_address_ptr(&mut self) -> *const u8 {
@@ -800,7 +814,9 @@ impl<'c> SyscallContext<'c> {
         basefee.lo = self.env.block.basefee.low_u128();
     }
 
-    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) {
+    pub extern "C" fn store_in_balance(&mut self, address: &U256, balance: &mut U256) -> i64 {
+        let mut gas_cost = gas_cost::BALANCE_COLD;
+
         // addresses longer than 20 bytes should be invalid
         if (address.hi >> 32) != 0 {
             balance.hi = 0;
@@ -812,6 +828,7 @@ impl<'c> SyscallContext<'c> {
             let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
 
             let address = Address::from_slice(&address_slice);
+            let is_cold = !self.journal.account_is_warm(&address);
 
             match self.journal.get_account(&address) {
                 Some(a) => {
@@ -823,7 +840,14 @@ impl<'c> SyscallContext<'c> {
                     balance.lo = 0;
                 }
             };
+            if is_cold {
+                self.journal.add_account_as_warm(address);
+                gas_cost = gas_cost::BALANCE_COLD
+            } else {
+                gas_cost = gas_cost::BALANCE_WARM
+            };
         }
+        gas_cost
     }
 
     pub extern "C" fn get_blob_hash_at_index(&mut self, index: &U256, blobhash: &mut U256) {
@@ -844,7 +868,7 @@ impl<'c> SyscallContext<'c> {
         code_offset: u32,
         size: u32,
         dest_offset: u32,
-    ) {
+    ) -> u64 {
         let size = size as usize;
         let code_offset = code_offset as usize;
         let dest_offset = dest_offset as usize;
@@ -859,15 +883,38 @@ impl<'c> SyscallContext<'c> {
             .resize_memory_if_necessary(dest_offset, size);
         self.inner_context
             .set_value_to_memory(dest_offset, code_offset, size, &code);
+
+        let is_cold = !self.journal.account_is_warm(&address);
+        if is_cold {
+            self.journal.add_account_as_warm(Address::from(address));
+            gas_cost::EXTCODECOPY_COLD as u64
+        } else {
+            gas_cost::EXTCODECOPY_WARM as u64
+        }
     }
 
-    pub extern "C" fn get_code_hash(&mut self, address: &mut U256) {
+    pub extern "C" fn get_code_hash(&mut self, address: &mut U256) -> u64 {
+        let is_cold = self
+            .journal
+            .account_is_warm(&Address::from(address as &U256));
+
+        let gas_cost = if is_cold {
+            gas_cost::EXTCODEHASH_COLD
+        } else {
+            gas_cost::EXTCODEHASH_WARM
+        };
+
         let hash = match self.journal.get_account(&Address::from(address as &U256)) {
             Some(account_info) => account_info.code_hash,
-            _ => B256::zero(),
+            _ => {
+                self.journal
+                    .add_account_as_warm(Address::from(address as &U256));
+                B256::zero()
+            }
         };
 
         *address = U256::from_fixed_be_bytes(hash.to_fixed_bytes());
+        gas_cost as u64
     }
 
     fn create_aux(
@@ -932,6 +979,7 @@ impl<'c> SyscallContext<'c> {
             self.halt_reason = Some(HaltReason::CreateCollision);
             return return_codes::HALT_RETURN_CODE;
         }
+        self.journal.add_account_as_warm(dest_addr);
 
         // Create subcontext for the initialization code
         // TODO: Add call depth check
@@ -1258,8 +1306,8 @@ impl<'c> SyscallContext<'c> {
             );
             engine.register_symbol(
                 symbols::GET_CODESIZE_FROM_ADDRESS,
-                SyscallContext::get_codesize_from_address as *const fn(*mut c_void, *mut U256)
-                    as *mut (),
+                SyscallContext::get_codesize_from_address
+                    as *const fn(*mut c_void, *mut U256, *mut u64) as *mut (),
             );
             engine.register_symbol(
                 symbols::GET_COINBASE_PTR,
@@ -1319,7 +1367,7 @@ impl<'c> SyscallContext<'c> {
             engine.register_symbol(
                 symbols::COPY_EXT_CODE_TO_MEMORY,
                 SyscallContext::copy_ext_code_to_memory
-                    as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32)
+                    as *const extern "C" fn(*mut c_void, *mut U256, u32, u32, u32) -> u64
                     as *mut (),
             );
             engine.register_symbol(
@@ -1329,7 +1377,8 @@ impl<'c> SyscallContext<'c> {
 
             engine.register_symbol(
                 symbols::GET_CODE_HASH,
-                SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) as *mut (),
+                SyscallContext::get_code_hash as *const fn(*mut c_void, *mut U256) -> u64
+                    as *mut (),
             );
 
             engine.register_symbol(
@@ -1483,7 +1532,6 @@ pub(crate) mod mlir {
             attributes,
             location,
         ));
-
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::STORE_IN_GASPRICE_PTR),
@@ -1658,7 +1706,9 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CODESIZE_FROM_ADDRESS),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
+            TypeAttribute::new(
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
+            ),
             Region::new(),
             attributes,
             location,
@@ -1723,7 +1773,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::STORE_IN_BALANCE),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -1734,8 +1784,12 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::COPY_EXT_CODE_TO_MEMORY),
             TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, uint32, uint32, uint32], &[])
-                    .into(),
+                FunctionType::new(
+                    context,
+                    &[ptr_type, ptr_type, uint32, uint32, uint32],
+                    &[uint64],
+                )
+                .into(),
             ),
             Region::new(),
             attributes,
@@ -1765,7 +1819,7 @@ pub(crate) mod mlir {
         module.body().append_operation(func::func(
             context,
             StringAttribute::new(context, symbols::GET_CODE_HASH),
-            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[]).into()),
+            TypeAttribute::new(FunctionType::new(context, &[ptr_type, ptr_type], &[uint64]).into()),
             Region::new(),
             attributes,
             location,
@@ -2435,7 +2489,6 @@ pub(crate) mod mlir {
         Ok(result.into())
     }
 
-    #[allow(unused)]
     pub(crate) fn store_in_balance_syscall<'c>(
         mlir_ctx: &'c MeliorContext,
         syscall_ctx: Value<'c, 'c>,
@@ -2443,15 +2496,19 @@ pub(crate) mod mlir {
         address: Value<'c, 'c>,
         balance: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        let ptr_type = pointer(mlir_ctx, 0);
-        let value = block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
-            &[syscall_ctx, address, balance],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::STORE_IN_BALANCE),
+                &[syscall_ctx, address, balance],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Receives an account address and copies the corresponding bytecode
@@ -2466,14 +2523,19 @@ pub(crate) mod mlir {
         size: Value<'c, 'c>,
         dest_offset: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_EXT_CODE_TO_MEMORY),
-            &[syscall_ctx, address_ptr, offset, size, dest_offset],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::COPY_EXT_CODE_TO_MEMORY),
+                &[syscall_ctx, address_ptr, offset, size, dest_offset],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     pub(crate) fn get_prevrandao_syscall<'c>(
@@ -2497,6 +2559,7 @@ pub(crate) mod mlir {
         syscall_ctx: Value<'c, 'c>,
         block: &'c Block,
         address: Value<'c, 'c>,
+        gas: Value<'c, 'c>,
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint64 = IntegerType::new(mlir_ctx, 64).into();
@@ -2504,7 +2567,7 @@ pub(crate) mod mlir {
             .append_operation(func::call(
                 mlir_ctx,
                 FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODESIZE_FROM_ADDRESS),
-                &[syscall_ctx, address],
+                &[syscall_ctx, address, gas],
                 &[uint64],
                 location,
             ))
@@ -2551,14 +2614,19 @@ pub(crate) mod mlir {
         block: &'c Block,
         address: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODE_HASH),
-            &[syscall_ctx, address],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64).into();
+
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::GET_CODE_HASH),
+                &[syscall_ctx, address],
+                &[uint64],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     #[allow(clippy::too_many_arguments)]
