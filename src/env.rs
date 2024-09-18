@@ -60,9 +60,13 @@ impl Env {
             }
         }
 
+        // if it's a create tx, check max code size
+        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
+
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
+
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
