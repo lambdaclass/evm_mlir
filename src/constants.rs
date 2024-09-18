@@ -197,6 +197,10 @@ pub mod precompiles {
         pos + ECP_FIELD_SIZE * 2
     }
 
+    pub const fn double_field_size() -> usize {
+        ECP_FIELD_SIZE * 2
+    }
+
     // ecRecover,
     // ECDSA public key recovery function.
     // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.

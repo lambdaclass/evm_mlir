@@ -279,7 +279,7 @@ pub fn ecpairing(
         let g1_x =
             BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
         let g1_y = BN254FieldElement::from_bytes_be(
-            &calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE * 2],
+            &calldata[start + ECP_FIELD_SIZE..start + double_field_size()],
         )
         .unwrap();
 
