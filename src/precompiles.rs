@@ -5,7 +5,7 @@ use crate::{
     },
     primitives::U256,
     result::PrecompileError,
-    utils::right_pad,
+    utils::{left_pad, right_pad},
 };
 use bytes::Bytes;
 use ethereum_types::Address;
@@ -152,9 +152,8 @@ pub fn modexp(
     } else {
         b.modpow(&e, &m)
     };
-
-    let output = &result.to_bytes_be()[..m_size];
-    Ok(Bytes::copy_from_slice(output))
+    let result = left_pad(&Bytes::from(result.to_bytes_be()), m_size);
+    Ok(result.slice(..m_size))
 }
 
 pub fn ecadd(
