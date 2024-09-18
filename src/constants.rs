@@ -266,7 +266,11 @@ pub mod precompiles {
     pub const ECMUL_S_END: usize = 96;
 
     // ecpairing,
-    // info in https://www.evm.codes/precompiled.
+    // Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
+    // info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
+    // - Two groups G_1 and G_2, which sum up to 192 bytes.
+    // - The pairing will find k pairs of points, k = (len / 192).
+    // - With each field size being 32 bytes
     pub const ECP_INPUT_SIZE: usize = 192;
     pub const ECP_FIELD_SIZE: usize = 32;
     pub const G1_POINT_SIZE: usize = 64;
