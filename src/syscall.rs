@@ -354,10 +354,7 @@ impl<'c> SyscallContext<'c> {
         *consumed_gas = gas_cost::CALL_WARM as u64;
 
         let (return_code, return_data) = if is_precompile(callee_address) {
-            match execute_precompile(callee_address, calldata, gas_to_send, consumed_gas) {
-                Ok(res) => (return_codes::SUCCESS_RETURN_CODE, res),
-                Err(_) => (return_codes::REVERT_RETURN_CODE, Bytes::new()),
-            }
+            execute_precompile(callee_address, calldata, gas_to_send, consumed_gas)
         } else {
             // Execute subcontext
             //TODO: Add call depth check

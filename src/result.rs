@@ -381,7 +381,7 @@ pub enum OutOfGasError {
     RecursiveCreate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PrecompileError {
     InvalidCalldata,
     NotEnoughGas,
