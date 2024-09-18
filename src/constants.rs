@@ -208,7 +208,7 @@ pub mod precompiles {
     }
 
     // ecRecover,
-    // ECDSA public key recovery function
+    // ECDSA public key recovery function.
     // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
     // - [0; 32] hash => Keccack-256 hash of the transaction
     // - v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28
@@ -222,14 +222,14 @@ pub mod precompiles {
     pub const ECR_PADDING_LEN: usize = 12;
 
     // ripemd160,
-    // Hashing function
+    // Hashing function.
     // info in https://www.evm.codes/precompiled.
     // - the result is a 20-byte hash right aligned to 32 bytes
     pub const RIPEMD_OUTPUT_LEN: usize = 32;
     pub const RIPEMD_PADDING_LEN: usize = 12;
 
     // modexp,
-    // Arbitrary-precision exponentiation under modulo
+    // Arbitrary-precision exponentiation under modulo.
     // info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
     // - [0; 32] byte size of B 
     // - [32; 64] byte size of E
@@ -242,7 +242,7 @@ pub mod precompiles {
     pub const MXP_PARAMS_OFFSET: usize = 96;
 
     // ecadd, 	
-    // Point addition on the elliptic curve 'alt_bn128'
+    // Point addition on the elliptic curve 'alt_bn128'.
     // info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
     // - [0; 32] x1 
     // - [32; 64] y1 
@@ -255,7 +255,7 @@ pub mod precompiles {
     pub const ECADD_Y2_END: usize = 128;
 
     // ecmul,
-    // Scalar multiplication on the elliptic curve 'alt_bn128'
+    // Scalar multiplication on the elliptic curve 'alt_bn128'.
     // info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
     // [0; 32] x1	
     // [32; 64] y1	
@@ -276,8 +276,14 @@ pub mod precompiles {
     pub const G1_POINT_SIZE: usize = 64;
     pub const G2_POINT_SIZE: usize = 128;
 
-    // blakef2,
-    // info in https://www.evm.codes/precompiled.
+    // blake2f,
+    // Compression function F used in the BLAKE2 cryptographic hashing algorithm.
+    // info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
+    // - [0; 4] Rounds
+    // - [4; 68] State vector, contains 8 8-byte words (BF2_VEC_ELEM_SIZE)
+    // - [68; 196] Message block vector, contains 16 BF2_VEC_ELEM_SIZE
+    // - [196; 212]	Offset counters, contains 2 BF2_VEC_ELEM_SIZE
+    // - [212; 213]	Block flag
     pub const BF2_ROUND_END: usize = 4;
     pub const BF2_BLOCK_FLAG: usize = 212;
     pub const BF2_VEC_ELEM_SIZE: usize = 8;
