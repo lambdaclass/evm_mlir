@@ -189,8 +189,12 @@ pub mod precompiles {
         rounds as u64
     }
 
-    pub const fn ecpairing_g2_point_start(pos: usize) -> usize {
+    pub const fn ecpairing_g2_point1_start(pos: usize) -> usize {
         pos + ECP_FIELD_SIZE
+    }
+
+    pub const fn ecpairing_g2_point1_end(pos: usize) -> usize {
+        pos + ECP_FIELD_SIZE * 2
     }
 
     // ecRecover,
