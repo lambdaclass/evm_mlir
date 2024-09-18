@@ -201,112 +201,96 @@ pub mod precompiles {
         ECP_FIELD_SIZE * 2
     }
 
-    // ecRecover,
-    // ECDSA public key recovery function.
-    // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
-    // - [0; 32] hash => Keccack-256 hash of the transaction
-    // - v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28
-    // - [64; 128] sig, containing r and s.
-    // - padding len is 12, as the return value is a publicAddress => the recovered 20-byte address right aligned to 32 bytes
+    // ecRecover
+    /// (0; 32) => Keccack-256 hash of the transaction.
     pub const ECR_HASH_END: usize = 32;
+    /// The position of V in the signature.
     pub const ECR_V_POS: usize = 63;
+    /// v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28.
     pub const ECR_V_BASE: i32 = 27;
+    /// (64; 128) => signature, containing r and s.
     pub const ECR_SIG_END: usize = 128;
     pub const ECR_PARAMS_OFFSET: usize = 128;
+    /// The padding len is 12, as the return value is a publicAddress => the recovered 20-byte address right aligned to 32 bytes.
     pub const ECR_PADDING_LEN: usize = 12;
     pub const ECRECOVER_COST: u64 = 3000;
     pub const ECRECOVER_ADDRESS: u64 = 0x01;
 
-    // sha256,
-    // Hashing function.
-    // more info in https://github.com/ethereum/yellowpaper.
+    // sha256
     pub const SHA2_256_STATIC_COST: u64 = 60;
     pub const SHA2_256_ADDRESS: u64 = 0x02;
 
-    // ripemd160,
-    // Hashing function.
-    // more info in https://github.com/ethereum/yellowpaper.
-    // - the result is a 20-byte hash right aligned to 32 bytes
+    // ripemd160
     pub const RIPEMD_OUTPUT_LEN: usize = 32;
+    /// Used to aligned to 32 bytes a 20-byte hash.
     pub const RIPEMD_PADDING_LEN: usize = 12;
     pub const RIPEMD_160_COST: u64 = 600;
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;
 
-    // identity,
-    // The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
-    // more info in https://github.com/ethereum/yellowpaper.
+    // identity
     pub const IDENTITY_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
 
-    // modexp,
-    // Arbitrary-precision exponentiation under modulo.
-    // more info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
-    // - [0; 32] byte size of B
-    // - [32; 64] byte size of E
-    // - [64; 96] byte size of M
-    // - then MXP_PARAMS_OFFSET used to get values of B, E and M
-    // - B => base, E => exponent, M => modulo
+    // modexp
+    /// (0; 32) contains byte size of B.
     pub const BSIZE_END: usize = 32;
+    /// (32; 64) contains byte size of E.
     pub const ESIZE_END: usize = 64;
+    /// (64; 96) contains byte size of M.
     pub const MSIZE_END: usize = 96;
+    /// Used to get values of B, E and M.
     pub const MXP_PARAMS_OFFSET: usize = 96;
     pub const MODEXP_ADDRESS: u64 = 0x05;
 
-    // ecadd,
-    // Point addition on the elliptic curve 'alt_bn128'.
-    // more info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
-    // - [0; 32] x1
-    // - [32; 64] y1
-    // - [64; 96] x2
-    // - [96; 128] y2
+    // ecadd
     pub const ECADD_PARAMS_OFFSET: usize = 128;
+    /// (0; 32) contains x1.
     pub const ECADD_X1_END: usize = 32;
+    /// (32; 64) contains y1.
     pub const ECADD_Y1_END: usize = 64;
+    /// (64; 96) contains x2.
     pub const ECADD_X2_END: usize = 96;
+    /// (96; 128) contains y2.
     pub const ECADD_Y2_END: usize = 128;
     pub const ECADD_ADDRESS: u64 = 0x06;
     pub const ECADD_COST: u64 = 150;
 
-    // ecmul,
-    // Scalar multiplication on the elliptic curve 'alt_bn128'.
-    // more info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
-    // [0; 32] x1
-    // [32; 64] y1
-    // [64; 96]	s => Scalar to use for the multiplication
+    // ecmul
     pub const ECMUL_PARAMS_OFFSET: usize = 96;
+    /// (0; 32) contains x1.
     pub const ECMUL_X1_END: usize = 32;
+    /// (32; 64) contains y1.
     pub const ECMUL_Y1_END: usize = 64;
+    /// (64; 96) contains s => Scalar to use for the multiplication.
     pub const ECMUL_S_END: usize = 96;
     pub const ECMUL_ADDRESS: u64 = 0x07;
     pub const ECMUL_COST: u64 = 6000;
 
-    // ecpairing,
-    // Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
-    // more info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
-    // - Two groups G_1 and G_2, which sum up to 192 bytes.
-    // - The pairing will find k pairs of points, k = (len / 192).
-    // - With each field size being 32 bytes
+    // ecpairing
+    /// Ecpairing loops over the calldata in chunks of 192 bytes.
     pub const ECP_INPUT_SIZE: usize = 192;
+    /// Each field is of size 32 bytes.
     pub const ECP_FIELD_SIZE: usize = 32;
-    pub const G1_POINT_SIZE: usize = 64;
-    pub const G2_POINT_SIZE: usize = 128;
+    /// The position of point G1.
+    pub const G1_POINT_POS: usize = 64;
+    /// The position of point G2.
+    pub const G2_POINT_POS: usize = 128;
     pub const ECPAIRING_ADDRESS: u64 = 0x08;
     pub const ECPAIRING_STATIC_COST: u64 = 45000;
     pub const ECPAIRING_PAIRING_COST: u64 = 34000;
 
-    // blake2f,
-    // Compression function F used in the BLAKE2 cryptographic hashing algorithm.
-    // more info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
-    // - [0; 4] Rounds
-    // - [4; 68] State vector, contains 8 8-byte words (BF2_VEC_ELEM_SIZE)
-    // - [68; 196] Message block vector, contains 16 BF2_VEC_ELEM_SIZE
-    // - [196; 212]	Offset counters, contains 2 BF2_VEC_ELEM_SIZE
-    // - [212; 213]	Block flag
+    // blake2f
+    /// (0; 4) contains the rounds.
     pub const BF2_ROUND_END: usize = 4;
+    /// (212; 213) postion of the block flag.
     pub const BF2_BLOCK_FLAG: usize = 212;
+    /// Each element of the vectors is of size 8 bytes.
     pub const BF2_VEC_ELEM_SIZE: usize = 8;
+    /// (4; 68) contains the State vector, which contins 8 elements of size BF2_VEC_ELEM_SIZE.
     pub const BF2_STATEVEC_INIT: usize = 4;
+    /// (68; 196) contains the Message block vector, which contains 16 BF2_VEC_ELEM_SIZE.
     pub const BF2_MSGVEC_INIT: usize = 68;
+    /// (196; 212) contains the Offset counters vector, which contains 2 BF2_VEC_ELEM_SIZE.
     pub const BF2_OFFSET_COUNT_INIT: usize = 196;
     pub const BLAKE2F_ADDRESS: u64 = 0x09;
 }
