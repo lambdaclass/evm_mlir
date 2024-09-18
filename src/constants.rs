@@ -207,7 +207,12 @@ pub mod precompiles {
         rounds as u64
     }
 
-    // for ecRecover
+    // for ecRecover,
+    // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
+    // - [0; 32] hash => Keccack-256 hash of the transaction
+    // - v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28
+    // - [64; 128] sig, containing r and s.
+    // - padding len is 12, as the return value is a publicAddress => the recovered 20-byte address right aligned to 32 bytes
     pub const ECR_HASH_END: usize = 32;
     pub const ECR_V_POS: usize = 63;
     pub const ECR_V_BASE: i32 = 27;
