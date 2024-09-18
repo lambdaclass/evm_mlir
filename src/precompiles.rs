@@ -1,6 +1,6 @@
 use crate::{
     constants::{
-        call_opcode::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
+        return_codes::{REVERT_RETURN_CODE, SUCCESS_RETURN_CODE},
         precompiles::*,
     },
     primitives::U256,
