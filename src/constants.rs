@@ -207,7 +207,7 @@ pub mod precompiles {
         rounds as u64
     }
 
-    // for ecRecover,
+    // ecRecover,
     // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
     // - [0; 32] hash => Keccack-256 hash of the transaction
     // - v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28
@@ -220,11 +220,18 @@ pub mod precompiles {
     pub const ECR_PARAMS_OFFSET: usize = 128;
     pub const ECR_PADDING_LEN: usize = 12;
 
-    // for ripemd160
+    // ripemd160,
+    // info in https://www.evm.codes/precompiled.
+    // - the result is a 20-byte hash right aligned to 32 bytes
     pub const RIPEMD_OUTPUT_LEN: usize = 32;
     pub const RIPEMD_PADDING_LEN: usize = 12;
 
     // for modexp
+    // info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
+    // - [0; 32] byte size of B 
+    // - [32; 64] byte size of E
+    // - [64; 96] byte size of M
+    // - then MXP_PARAMS_OFFSET used to get values of B, E and M
     pub const BSIZE_END: usize = 32;
     pub const ESIZE_END: usize = 64;
     pub const MSIZE_END: usize = 96;
