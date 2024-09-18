@@ -208,6 +208,7 @@ pub mod precompiles {
     }
 
     // ecRecover,
+    // ECDSA public key recovery function
     // info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
     // - [0; 32] hash => Keccack-256 hash of the transaction
     // - v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28
@@ -221,42 +222,58 @@ pub mod precompiles {
     pub const ECR_PADDING_LEN: usize = 12;
 
     // ripemd160,
+    // Hashing function
     // info in https://www.evm.codes/precompiled.
     // - the result is a 20-byte hash right aligned to 32 bytes
     pub const RIPEMD_OUTPUT_LEN: usize = 32;
     pub const RIPEMD_PADDING_LEN: usize = 12;
 
-    // for modexp
+    // modexp,
+    // Arbitrary-precision exponentiation under modulo
     // info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
     // - [0; 32] byte size of B 
     // - [32; 64] byte size of E
     // - [64; 96] byte size of M
     // - then MXP_PARAMS_OFFSET used to get values of B, E and M
+    // - B => base, E => exponent, M => modulo
     pub const BSIZE_END: usize = 32;
     pub const ESIZE_END: usize = 64;
     pub const MSIZE_END: usize = 96;
     pub const MXP_PARAMS_OFFSET: usize = 96;
 
-    // for ecadd
+    // ecadd, 	
+    // Point addition on the elliptic curve 'alt_bn128'
+    // info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
+    // - [0; 32] x1 
+    // - [32; 64] y1 
+    // - [64; 96] x2 
+    // - [96; 128] y2 
     pub const ECADD_PARAMS_OFFSET: usize = 128;
     pub const ECADD_X1_END: usize = 32;
     pub const ECADD_Y1_END: usize = 64;
     pub const ECADD_X2_END: usize = 96;
     pub const ECADD_Y2_END: usize = 128;
 
-    // for ecmul
+    // ecmul,
+    // Scalar multiplication on the elliptic curve 'alt_bn128'
+    // info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
+    // [0; 32] x1	
+    // [32; 64] y1	
+    // [64; 96]	s => Scalar to use for the multiplication
     pub const ECMUL_PARAMS_OFFSET: usize = 96;
     pub const ECMUL_X1_END: usize = 32;
     pub const ECMUL_Y1_END: usize = 64;
     pub const ECMUL_S_END: usize = 96;
 
-    // for ecpairing
+    // ecpairing,
+    // info in https://www.evm.codes/precompiled.
     pub const ECP_INPUT_SIZE: usize = 192;
     pub const ECP_FIELD_SIZE: usize = 32;
     pub const G1_POINT_SIZE: usize = 64;
     pub const G2_POINT_SIZE: usize = 128;
 
-    // for blakef2
+    // blakef2,
+    // info in https://www.evm.codes/precompiled.
     pub const BF2_ROUND_END: usize = 4;
     pub const BF2_BLOCK_FLAG: usize = 212;
     pub const BF2_VEC_ELEM_SIZE: usize = 8;
