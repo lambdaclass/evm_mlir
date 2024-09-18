@@ -194,7 +194,7 @@ pub mod precompiles {
     }
 
     pub const fn ecpairing_g2_point1_end(pos: usize) -> usize {
-        pos + ECP_FIELD_SIZE * 2
+        pos + double_field_size()
     }
 
     pub const fn double_field_size() -> usize {
