@@ -4,7 +4,7 @@ use bytes::Bytes;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
-    result::{EVMError, ExecutionResult, ResultAndState},
+    result::{EVMError, ResultAndState},
     utils::precompiled_addresses,
     Env, Evm,
 };
