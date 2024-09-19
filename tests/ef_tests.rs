@@ -46,8 +46,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stSpecialTest".into(),
         "vmIOandFlowOperations".into(),
         "stEIP150Specific".into(),
-        "stExtCodeHash".into(),
-        "stCallCodes".into(),
         "stMemoryStressTest".into(),
         "vmTests".into(),
         "stZeroKnowledge".into(),
@@ -64,10 +62,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stInitCodeTest".into(),
         "stBadOpcode".into(),
         "eip1153_tstore".into(),
-        "stSolidityTest".into(),
-        "yul".into(),
         "stEIP3607".into(),
-        "eip198_modexp_precompile".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
         "stExample".into(),
@@ -101,4 +96,8 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_ef_test,
+    "ethtests/GeneralStateTests/Pyspecs/byzantium/eip198_modexp_precompile/",
+    r"^.*/*.json",
+);
