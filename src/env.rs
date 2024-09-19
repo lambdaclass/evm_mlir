@@ -47,6 +47,15 @@ impl Env {
     ///
     /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&self, account: &DbAccount) -> Result<(), InvalidTransaction> {
+        // if initial tx gas cost (intrinsic cost) is greater that tx limit
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L372
+        // https://github.com/bluealloy/revm/blob/66adad00d8b89f1ab4057297b95b975564575fd4/crates/interpreter/src/gas/calc.rs#L362
+        let intrinsic_cost = self.calculate_intrinsic_cost();
+
+        if intrinsic_cost > self.tx.gas_limit {
+            return Err(InvalidTransaction::CallGasCostMoreThanGasLimit);
+        }
+
         // if nonce is None, nonce check skipped
         // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L419
         if let Some(tx) = self.tx.nonce {
@@ -360,6 +369,27 @@ mod tests {
         assert_eq!(
             tx_result,
             Err(InvalidTransaction::CallerGasLimitMoreThanBlock)
+        )
+    }
+
+    #[test]
+    /// Tx invalid if gas limit < intrinsic cost
+    fn tx_gas_limit_lower_than_intrinsic_cost() {
+        let tx_env = TxEnv {
+            gas_limit: 1,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&DbAccount::empty());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         )
     }
 
