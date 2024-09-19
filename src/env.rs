@@ -111,11 +111,14 @@ impl Env {
                 TX_DATA_COST_PER_NON_ZERO
             }
         });
+
         let create_cost = match self.tx.transact_to {
             TransactTo::Call(_) => 0,
             TransactTo::Create => TX_CREATE_COST + init_code_cost(self.tx.data.len()),
         };
+
         let access_list_cost = access_list_cost(&self.tx.access_list);
+
         TX_BASE_COST + data_cost + create_cost + access_list_cost
     }
 }
@@ -280,6 +283,8 @@ impl TxEnv {
 mod tests {
     use std::collections::HashMap;
 
+    use ethereum_types::H160;
+
     use crate::db::Db;
 
     use super::*;
@@ -335,12 +340,12 @@ mod tests {
     #[test]
     fn tx_gas_limit_higher_than_block_gas_limit() {
         let tx_env = TxEnv {
-            gas_limit: 999,
+            gas_limit: TX_BASE_COST + 999,
             ..Default::default()
         };
 
         let block_env = BlockEnv {
-            gas_limit: U256::from(998),
+            gas_limit: U256::from(TX_BASE_COST + 998),
             ..Default::default()
         };
 
@@ -355,6 +360,170 @@ mod tests {
         assert_eq!(
             tx_result,
             Err(InvalidTransaction::CallerGasLimitMoreThanBlock)
+        )
+    }
+
+    #[test]
+    /// Call tx with no data, no access list, should cost `TX_BASE_COST`
+    fn intrinsic_cost_base() {
+        let env = Env::default();
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+        assert_eq!(intrinsic_cost, TX_BASE_COST)
+    }
+
+    #[test]
+    /// Call tx with some data zero, no access list, should cost
+    /// `TX_BASE_COST` + `TX_DATA_COST_PER_ZERO` * len(data)
+    fn intrinsic_cost_data_zero() {
+        let data = Bytes::from(vec![0, 0, 0, 0]);
+
+        let tx_env = TxEnv {
+            data: data.clone(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+
+        assert_eq!(
+            intrinsic_cost,
+            TX_BASE_COST + TX_DATA_COST_PER_ZERO * data.len() as u64
+        )
+    }
+
+    #[test]
+    /// Call tx with some data non zero, no access list, should cost
+    /// `TX_BASE_COST` + `TX_DATA_COST_PER_NON_ZERO` * len(data)
+    fn intrinsic_cost_data_non_zero() {
+        let data = Bytes::from(vec![1, 2, 3, 4]);
+
+        let tx_env = TxEnv {
+            data: data.clone(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+
+        assert_eq!(
+            intrinsic_cost,
+            TX_BASE_COST + TX_DATA_COST_PER_NON_ZERO * data.len() as u64
+        )
+    }
+
+    #[test]
+    /// Call tx with some data zero and non zero, no access list, should cost
+    /// `TX_BASE_COST`
+    /// + `TX_DATA_COST_PER_ZERO` * len(data_zero)
+    /// + `TX_DATA_COST_PER_NON_ZERO` * len(data_non_zero)
+    fn intrinsic_cost_data_zero_non_zero() {
+        let data_zero = vec![0, 0];
+        let data_non_zero = vec![1, 3];
+        let data = Bytes::from([data_zero.clone(), data_non_zero.clone()].concat());
+
+        let tx_env = TxEnv {
+            data: data.clone(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+
+        assert_eq!(
+            intrinsic_cost,
+            TX_BASE_COST
+                + TX_DATA_COST_PER_NON_ZERO * data_non_zero.len() as u64
+                + TX_DATA_COST_PER_ZERO * data_zero.len() as u64
+        )
+    }
+
+    #[test]
+    /// Call tx with no data, access list, should cost
+    /// `TX_BASE_COST`
+    /// + access_list_cost(access_list)
+    fn intrinsic_cost_access_list() {
+        let access_list: AccessList = vec![
+            (
+                H160::from_low_u64_be(40),
+                vec![U256::from(1), U256::from(2)],
+            ),
+            (
+                H160::from_low_u64_be(60),
+                vec![U256::from(2), U256::from(3)],
+            ),
+        ];
+
+        let tx_env = TxEnv {
+            access_list: access_list.clone(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+
+        assert_eq!(
+            intrinsic_cost,
+            TX_BASE_COST + access_list_cost(&access_list)
+        )
+    }
+
+    #[test]
+    /// Call tx with some data, access list, should cost
+    /// `TX_BASE_COST`
+    /// + `TX_DATA_COST_PER_ZERO` * len(data_zero)
+    /// + `TX_DATA_COST_PER_NON_ZERO` * len(data_non_zero)
+    /// + access_list_cost(access_list)
+    fn intrinsic_cost_data_access_list() {
+        let data_zero = vec![0, 0];
+        let data_non_zero = vec![1, 3];
+        let data = Bytes::from([data_zero.clone(), data_non_zero.clone()].concat());
+
+        let access_list: AccessList = vec![
+            (
+                H160::from_low_u64_be(40),
+                vec![U256::from(1), U256::from(2)],
+            ),
+            (
+                H160::from_low_u64_be(60),
+                vec![U256::from(2), U256::from(3)],
+            ),
+        ];
+
+        let tx_env = TxEnv {
+            data: data.clone(),
+            access_list: access_list.clone(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            ..Default::default()
+        };
+
+        let intrinsic_cost = env.calculate_intrinsic_cost();
+
+        assert_eq!(
+            intrinsic_cost,
+            TX_BASE_COST
+                + TX_DATA_COST_PER_NON_ZERO * data_non_zero.len() as u64
+                + TX_DATA_COST_PER_ZERO * data_zero.len() as u64
+                + access_list_cost(&access_list)
         )
     }
 }
