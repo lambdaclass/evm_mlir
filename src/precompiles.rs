@@ -633,7 +633,7 @@ mod tests {
     #[test]
     fn modexp_bigger_msize_than_necessary() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
-        let calldata = calldata_for_modexp(256, 1, 32, 8, 6, 10);
+        let calldata = calldata_for_modexp(1, 1, 32, 8, 6, 10);
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
