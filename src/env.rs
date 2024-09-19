@@ -47,8 +47,6 @@ impl Env {
     ///
     /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&self, account: &DbAccount) -> Result<(), InvalidTransaction> {
-        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
-
         // if nonce is None, nonce check skipped
         if let Some(tx) = self.tx.nonce {
             let state = account.nonce;
