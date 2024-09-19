@@ -112,7 +112,7 @@ fn verify_result(
             Ok(())
         }
         (Some(_), Err(_)) => {
-            Ok(()) //Halt/Revert and want an error
+            Ok(()) //Got error and expeted one
         }
         _ => Err("Expected exception but got none".into()),
     }
