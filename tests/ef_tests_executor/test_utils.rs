@@ -122,10 +122,7 @@ fn verify_result(
                 _ => Err(format!("Expected error: {}, but got success", err)),
             }
         }
-        (None, Err(err)) => Err(format!(
-            "Expected success, but got error: {}",
-            err.to_string()
-        )),
+        (None, Err(err)) => Err(format!("Expected success, but got error: {}", err)),
     }
 }
 
