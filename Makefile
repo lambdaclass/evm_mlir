@@ -111,4 +111,4 @@ install-solc:
 	brew install solidity
 
 compile-solidity:
-	solc --bin sources/fibonacci.sol -o ./compiled; solc --bin sources/factorial.sol -o ./compiled; solc --bin sources/recursive_fib.sol -o ./compiled
+	solc --bin sources/fibonacci.sol -o ./programs; solc --bin sources/factorial.sol -o ./programs; solc --bin sources/recursive_fib.sol -o ./programs

@@ -14,7 +14,7 @@ fn read_compiled_file(file_path: &str) -> Result<Bytes, std::io::Error> {
 #[test]
 fn factorial_contract() {
     let address = Address::from_low_u64_be(3000);
-    let bytes = read_compiled_file("./compiled/Factorial.bin").unwrap();
+    let bytes = read_compiled_file("./programs/Factorial.bin").unwrap();
     let db = Db::new().with_contract(address, bytes);
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
@@ -36,7 +36,7 @@ fn factorial_contract() {
 #[test]
 fn fibonacci_contract() {
     let address = Address::from_low_u64_be(3000);
-    let bytes = read_compiled_file("./compiled/Fibonacci.bin").unwrap();
+    let bytes = read_compiled_file("./programs/Fibonacci.bin").unwrap();
 
     let db = Db::new().with_contract(address, bytes);
     let mut env = Env::default();
@@ -59,7 +59,7 @@ fn fibonacci_contract() {
 #[test]
 fn recursive_fibonacci_contract() {
     let address = Address::from_low_u64_be(3000);
-    let bytes = read_compiled_file("./compiled/RecursiveFibonacci.bin").unwrap();
+    let bytes = read_compiled_file("./programs/RecursiveFibonacci.bin").unwrap();
 
     let db = Db::new().with_contract(address, bytes);
     let mut env = Env::default();
