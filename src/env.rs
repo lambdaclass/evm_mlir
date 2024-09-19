@@ -8,7 +8,7 @@ use crate::{
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
-    db::DbAccount,
+    db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
     utils::{access_list_cost, calc_blob_gasprice},
@@ -46,7 +46,7 @@ impl Env {
     /// See the [execution spec] for reference.
     ///
     /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
-    pub fn validate_transaction(&self, account: &DbAccount) -> Result<(), InvalidTransaction> {
+    pub fn validate_transaction(&self, account: &AccountInfo) -> Result<(), InvalidTransaction> {
         // if initial tx gas cost (intrinsic cost) is greater that tx limit
         // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L372
         // https://github.com/bluealloy/revm/blob/66adad00d8b89f1ab4057297b95b975564575fd4/crates/interpreter/src/gas/calc.rs#L362
@@ -294,7 +294,7 @@ mod tests {
 
     use ethereum_types::H160;
 
-    use crate::db::Db;
+    use crate::db::{Db, DbAccount};
 
     use super::*;
 
@@ -314,7 +314,8 @@ mod tests {
         let mut db = Db::default();
         db.set_account(Address::default(), 41, U256::MAX, HashMap::default());
 
-        let tx_result = env.validate_transaction(db.get_account(Address::default()).unwrap());
+        let tx_result =
+            env.validate_transaction(&db.get_account(Address::default()).unwrap().clone().into());
 
         assert_eq!(
             tx_result,
@@ -338,7 +339,8 @@ mod tests {
         let mut db = Db::default();
         db.set_account(Address::default(), 41, U256::MAX, HashMap::default());
 
-        let tx_result = env.validate_transaction(db.get_account(Address::default()).unwrap());
+        let tx_result =
+            env.validate_transaction(&db.get_account(Address::default()).unwrap().clone().into());
 
         assert_eq!(
             tx_result,
@@ -364,7 +366,7 @@ mod tests {
             ..Default::default()
         };
 
-        let tx_result = env.validate_transaction(&DbAccount::empty());
+        let tx_result = env.validate_transaction(&DbAccount::empty().into());
 
         assert_eq!(
             tx_result,
@@ -385,7 +387,7 @@ mod tests {
             ..Default::default()
         };
 
-        let tx_result = env.validate_transaction(&DbAccount::empty());
+        let tx_result = env.validate_transaction(&DbAccount::empty().into());
 
         assert_eq!(
             tx_result,
