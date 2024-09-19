@@ -111,7 +111,12 @@ impl Env {
         Ok(())
     }
 
-    ///  Calculates the gas that is charged before execution is started.
+    /// Calculates the gas that is charged before execution is started.
+    ///
+    /// See the [revm implementation], or the [execution spec implementation] for reference.
+    ///
+    /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L812
+    /// [revm implementation]: https://github.com/bluealloy/revm/blob/66adad00d8b89f1ab4057297b95b975564575fd4/crates/interpreter/src/gas/calc.rs#L362
     pub fn calculate_intrinsic_cost(&self) -> u64 {
         let data_cost = self.tx.data.iter().fold(0, |acc, byte| {
             acc + if *byte == 0 {
