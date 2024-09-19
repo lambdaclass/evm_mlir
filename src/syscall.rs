@@ -1262,7 +1262,6 @@ impl<'c> SyscallContext<'c> {
                 .gas_refund
                 .saturating_sub(gas_refund.unsigned_abs());
         };
-        println!("gas_cost: {gas_cost}");
 
         gas_cost
     }
@@ -2035,7 +2034,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::TRANSIENT_STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -2312,17 +2311,14 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) -> Result<Value<'c, 'c>, CodegenError> {
-        let uint64 = IntegerType::new(mlir_ctx, 64);
-        let result = block.append_operation(func::call(
+    ) {
+        block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_READ),
             &[syscall_ctx, key, value],
-            &[uint64.into()],
+            &[],
             location,
-        ))
-        .result(0)?;
-        Ok(result.into())
+        ));
     }
 
     pub(crate) fn transient_storage_write_syscall<'c>(
@@ -2334,7 +2330,8 @@ pub(crate) mod mlir {
         location: Location<'c>,
     ) -> Result<Value<'c, 'c>, CodegenError> {
         let uint64 = IntegerType::new(mlir_ctx, 64);
-        let value = block.append_operation(func::call(
+        let value = block
+            .append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_WRITE),
             &[syscall_ctx, key, value],

@@ -5601,6 +5601,103 @@ fn codegen_selfdestruct<'c, 'r>(
 //     Ok((start_block, end_block))
 // }
 
+// fn codegen_tload<'c, 'r>(
+//     op_ctx: &mut OperationCtx<'c>,
+//     region: &'r Region<'c>,
+// ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
+//     let start_block = region.append_block(Block::new(&[]));
+//     let context = &op_ctx.mlir_context;
+//     let location = Location::unknown(context);
+//     let uint256 = IntegerType::new(context, 256);
+//     let ptr_type = pointer(context, 0);
+//     let pointer_size = start_block
+//         .append_operation(arith::constant(
+//             context,
+//             IntegerAttribute::new(uint256.into(), 1_i64).into(),
+//             location,
+//         ))
+//         .result(0)?
+//         .into();
+
+//     let flag = check_stack_has_at_least(context, &start_block, 1)?;
+//     // let gas_flag = consume_gas(context, &start_block, gas_cost::TLOAD)?;
+
+//     // let condition = start_block
+//     //     .append_operation(arith::andi(gas_flag, flag, location))
+//     //     .result(0)?
+//     //     .into();
+//     let ok_block = region.append_block(Block::new(&[]));
+
+//     start_block.append_operation(cf::cond_br(
+//         context,
+//         flag,
+//         &ok_block,
+//         &op_ctx.revert_block,
+//         &[],
+//         &[],
+//         location,
+//     ));
+
+//     // let ok_block = region.append_block(Block::new(&[]));
+
+//     // start_block.append_operation(cf::cond_br(
+//     //     context,
+//     //     condition,
+//     //     &ok_block,
+//     //     &op_ctx.revert_block,
+//     //     &[],
+//     //     &[],
+//     //     location,
+//     // ));
+
+//     let key = stack_pop(context, &ok_block)?;
+
+//     // Allocate a pointer for the key
+//     let key_ptr = allocate_and_store_value(op_ctx, &ok_block, key, location)?;
+
+//     // Allocate a pointer for the value
+//     let read_value_ptr = ok_block
+//         .append_operation(llvm::alloca(
+//             context,
+//             pointer_size,
+//             ptr_type,
+//             location,
+//             AllocaOptions::new().elem_type(Some(TypeAttribute::new(uint256.into()))),
+//         ))
+//         .result(0)?
+//         .into();
+
+//     let gas_cost = op_ctx.transient_storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location)?;
+//     let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
+
+//     let end_block = region.append_block(Block::new(&[]));
+//     ok_block.append_operation(cf::cond_br(
+//         context,
+//         gas_flag,
+//         &end_block,
+//         &op_ctx.revert_block,
+//         &[],
+//         &[],
+//         location,
+//     ));
+
+//     // Load the value pointer
+//     let read_value = end_block
+//         .append_operation(llvm::load(
+//             context,
+//             read_value_ptr,
+//             IntegerType::new(context, 256).into(),
+//             location,
+//             LoadStoreOptions::default(),
+//         ))
+//         .result(0)?
+//         .into();
+
+//     stack_push(context, &end_block, read_value)?;
+
+//     Ok((start_block, end_block))
+// }
+
 fn codegen_tload<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
@@ -5620,17 +5717,18 @@ fn codegen_tload<'c, 'r>(
         .into();
 
     let flag = check_stack_has_at_least(context, &start_block, 1)?;
-    // let gas_flag = consume_gas(context, &start_block, gas_cost::TLOAD)?;
+    let gas_flag = consume_gas(context, &start_block, gas_cost::TLOAD)?;
 
-    // let condition = start_block
-    //     .append_operation(arith::andi(gas_flag, flag, location))
-    //     .result(0)?
-    //     .into();
+    let condition = start_block
+        .append_operation(arith::andi(gas_flag, flag, location))
+        .result(0)?
+        .into();
+
     let ok_block = region.append_block(Block::new(&[]));
 
     start_block.append_operation(cf::cond_br(
         context,
-        flag,
+        condition,
         &ok_block,
         &op_ctx.revert_block,
         &[],
@@ -5638,23 +5736,10 @@ fn codegen_tload<'c, 'r>(
         location,
     ));
 
-    // let ok_block = region.append_block(Block::new(&[]));
-
-    // start_block.append_operation(cf::cond_br(
-    //     context,
-    //     condition,
-    //     &ok_block,
-    //     &op_ctx.revert_block,
-    //     &[],
-    //     &[],
-    //     location,
-    // ));
-
     let key = stack_pop(context, &ok_block)?;
 
     // Allocate a pointer for the key
     let key_ptr = allocate_and_store_value(op_ctx, &ok_block, key, location)?;
-
     // Allocate a pointer for the value
     let read_value_ptr = ok_block
         .append_operation(llvm::alloca(
@@ -5667,22 +5752,10 @@ fn codegen_tload<'c, 'r>(
         .result(0)?
         .into();
 
-    let gas_cost = op_ctx.transient_storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location)?;
-    let gas_flag = consume_gas_as_value(context, &ok_block, gas_cost)?;
-
-    let end_block = region.append_block(Block::new(&[]));
-    ok_block.append_operation(cf::cond_br(
-        context,
-        gas_flag,
-        &end_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
+    op_ctx.transient_storage_read_syscall(&ok_block, key_ptr, read_value_ptr, location);
 
     // Load the value pointer
-    let read_value = end_block
+    let read_value = ok_block
         .append_operation(llvm::load(
             context,
             read_value_ptr,
@@ -5693,9 +5766,9 @@ fn codegen_tload<'c, 'r>(
         .result(0)?
         .into();
 
-    stack_push(context, &end_block, read_value)?;
+    stack_push(context, &ok_block, read_value)?;
 
-    Ok((start_block, end_block))
+    Ok((start_block, ok_block))
 }
 
 // fn codegen_sstore<'c, 'r>(
