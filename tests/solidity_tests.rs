@@ -11,14 +11,19 @@ fn read_compiled_file(file_path: &str) -> Result<Bytes, std::io::Error> {
     Ok(Bytes::from(hex::decode(buffer).unwrap()))
 }
 
-#[test]
-fn factorial_contract() {
-    let address = Address::from_low_u64_be(3000);
-    let bytes = read_compiled_file("./programs/Factorial.bin").unwrap();
-    let db = Db::new().with_contract(address, bytes);
+fn default_env_and_db_setup_from_bytecode(bytecode: Bytes, address: Address) -> (Env, Db) {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_contract(address, bytecode);
+    (env, db)
+}
+
+#[test]
+fn factorial_contract() {
+    let address = Address::from_low_u64_be(40);
+    let bytes = read_compiled_file("./programs/Factorial.bin").unwrap();
+    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
@@ -35,13 +40,9 @@ fn factorial_contract() {
 
 #[test]
 fn fibonacci_contract() {
-    let address = Address::from_low_u64_be(3000);
+    let address = Address::from_low_u64_be(40);
     let bytes = read_compiled_file("./programs/Fibonacci.bin").unwrap();
-
-    let db = Db::new().with_contract(address, bytes);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(address);
+    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
@@ -58,13 +59,9 @@ fn fibonacci_contract() {
 
 #[test]
 fn recursive_fibonacci_contract() {
-    let address = Address::from_low_u64_be(3000);
+    let address = Address::from_low_u64_be(40);
     let bytes = read_compiled_file("./programs/RecursiveFibonacci.bin").unwrap();
-
-    let db = Db::new().with_contract(address, bytes);
-    let mut env = Env::default();
-    env.tx.gas_limit = 999_999;
-    env.tx.transact_to = TransactTo::Call(address);
+    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
     let mut evm = Evm::new(env, db);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
