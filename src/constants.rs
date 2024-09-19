@@ -169,24 +169,6 @@ pub mod return_codes {
 }
 
 pub mod precompiles {
-    pub const ECRECOVER_COST: u64 = 3000;
-    pub const ECRECOVER_ADDRESS: u64 = 0x01;
-    pub const SHA2_256_STATIC_COST: u64 = 60;
-    pub const SHA2_256_ADDRESS: u64 = 0x02;
-    pub const RIPEMD_160_COST: u64 = 600;
-    pub const RIPEMD_160_ADDRESS: u64 = 0x03;
-    pub const IDENTITY_COST: u64 = 15;
-    pub const IDENTITY_ADDRESS: u64 = 0x04;
-    pub const MODEXP_ADDRESS: u64 = 0x05;
-    pub const ECADD_ADDRESS: u64 = 0x06;
-    pub const ECADD_COST: u64 = 150;
-    pub const ECMUL_ADDRESS: u64 = 0x07;
-    pub const ECMUL_COST: u64 = 6000;
-    pub const ECPAIRING_ADDRESS: u64 = 0x08;
-    pub const ECPAIRING_STATIC_COST: u64 = 45000;
-    pub const ECPAIRING_PAIRING_COST: u64 = 34000;
-    pub const BLAKE2F_ADDRESS: u64 = 0x09;
-
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
     }
@@ -207,50 +189,98 @@ pub mod precompiles {
         rounds as u64
     }
 
-    // for ecRecover
+    // ecRecover
+    /// (0; 32) => Keccack-256 hash of the transaction.
     pub const ECR_HASH_END: usize = 32;
+    /// The position of V in the signature.
     pub const ECR_V_POS: usize = 63;
+    /// v ∈ {27, 28} => Recovery identifier, expected to be either 27 or 28.
     pub const ECR_V_BASE: i32 = 27;
+    /// (64; 128) => signature, containing r and s.
     pub const ECR_SIG_END: usize = 128;
     pub const ECR_PARAMS_OFFSET: usize = 128;
+    /// The padding len is 12, as the return value is a publicAddress => the recovered 20-byte address right aligned to 32 bytes.
     pub const ECR_PADDING_LEN: usize = 12;
+    pub const ECRECOVER_COST: u64 = 3000;
+    pub const ECRECOVER_ADDRESS: u64 = 0x01;
 
-    // for ripemd160
+    // sha256
+    pub const SHA2_256_STATIC_COST: u64 = 60;
+    pub const SHA2_256_ADDRESS: u64 = 0x02;
+
+    // ripemd160
     pub const RIPEMD_OUTPUT_LEN: usize = 32;
+    /// Used to aligned to 32 bytes a 20-byte hash.
     pub const RIPEMD_PADDING_LEN: usize = 12;
+    pub const RIPEMD_160_COST: u64 = 600;
+    pub const RIPEMD_160_ADDRESS: u64 = 0x03;
 
-    // for modexp
+    // identity
+    pub const IDENTITY_COST: u64 = 15;
+    pub const IDENTITY_ADDRESS: u64 = 0x04;
+
+    // modexp
+    /// (0; 32) contains byte size of B.
     pub const BSIZE_END: usize = 32;
+    /// (32; 64) contains byte size of E.
     pub const ESIZE_END: usize = 64;
+    /// (64; 96) contains byte size of M.
     pub const MSIZE_END: usize = 96;
+    /// Used to get values of B, E and M.
     pub const MXP_PARAMS_OFFSET: usize = 96;
+    pub const MODEXP_ADDRESS: u64 = 0x05;
 
-    // for ecadd
+    // ecadd
     pub const ECADD_PARAMS_OFFSET: usize = 128;
+    /// (0; 32) contains x1.
     pub const ECADD_X1_END: usize = 32;
+    /// (32; 64) contains y1.
     pub const ECADD_Y1_END: usize = 64;
+    /// (64; 96) contains x2.
     pub const ECADD_X2_END: usize = 96;
+    /// (96; 128) contains y2.
     pub const ECADD_Y2_END: usize = 128;
+    pub const ECADD_ADDRESS: u64 = 0x06;
+    pub const ECADD_COST: u64 = 150;
 
-    // for ecmul
+    // ecmul
     pub const ECMUL_PARAMS_OFFSET: usize = 96;
+    /// (0; 32) contains x1.
     pub const ECMUL_X1_END: usize = 32;
+    /// (32; 64) contains y1.
     pub const ECMUL_Y1_END: usize = 64;
+    /// (64; 96) contains s => Scalar to use for the multiplication.
     pub const ECMUL_S_END: usize = 96;
+    pub const ECMUL_ADDRESS: u64 = 0x07;
+    pub const ECMUL_COST: u64 = 6000;
 
-    // for ecpairing
+    // ecpairing
+    /// Ecpairing loops over the calldata in chunks of 192 bytes.
     pub const ECP_INPUT_SIZE: usize = 192;
+    /// Each field is of size 32 bytes.
     pub const ECP_FIELD_SIZE: usize = 32;
-    pub const G1_POINT_SIZE: usize = 64;
-    pub const G2_POINT_SIZE: usize = 128;
+    /// The position of point G1.
+    pub const G1_POINT_POS: usize = 64;
+    /// The position of point G2.
+    pub const G2_POINT_POS: usize = 128;
+    pub const ECPAIRING_ADDRESS: u64 = 0x08;
+    pub const ECPAIRING_STATIC_COST: u64 = 45000;
+    pub const ECPAIRING_PAIRING_COST: u64 = 34000;
 
-    // for blakef2
+    // blake2f
+    /// (0; 4) contains the rounds.
     pub const BF2_ROUND_END: usize = 4;
+    /// (212; 213) postion of the block flag.
     pub const BF2_BLOCK_FLAG: usize = 212;
+    /// Each element of the vectors is of size 8 bytes.
     pub const BF2_VEC_ELEM_SIZE: usize = 8;
+    /// (4; 68) contains the State vector, which contins 8 elements of size BF2_VEC_ELEM_SIZE.
     pub const BF2_STATEVEC_INIT: usize = 4;
+    /// (68; 196) contains the Message block vector, which contains 16 BF2_VEC_ELEM_SIZE.
     pub const BF2_MSGVEC_INIT: usize = 68;
+    /// (196; 212) contains the Offset counters vector, which contains 2 BF2_VEC_ELEM_SIZE.
     pub const BF2_OFFSET_COUNT_INIT: usize = 196;
+    pub const BLAKE2F_ADDRESS: u64 = 0x09;
 }
 
 #[derive(PartialEq, Debug)]
