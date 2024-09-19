@@ -82,6 +82,13 @@ impl Env {
             return Err(InvalidTransaction::CallerGasLimitMoreThanBlock);
         }
 
+        // transactions from callers with deployed code should be rejected
+        // this is formalized on EIP-3607: https://eips.ethereum.org/EIPS/eip-3607
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L423
+        if account.has_code() {
+            return Err(InvalidTransaction::RejectCallerWithCode);
+        }
+
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
@@ -299,7 +306,7 @@ mod tests {
 
     use ethereum_types::H160;
 
-    use crate::db::{Db, DbAccount};
+    use crate::db::{Bytecode, Db, DbAccount};
 
     use super::*;
 
@@ -398,6 +405,36 @@ mod tests {
             tx_result,
             Err(InvalidTransaction::CallGasCostMoreThanGasLimit)
         )
+    }
+
+    #[test]
+    /// Tx invalid if caller has deployed code
+    fn tx_caller_with_code() {
+        let caller_addr = H160::from_low_u64_be(40);
+
+        let tx_env = TxEnv {
+            caller: caller_addr,
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.insert_contract(caller_addr, Bytecode::from("whatever"), U256::MAX);
+
+        let tx_result =
+            env.validate_transaction(&db.get_account(caller_addr).unwrap().clone().into());
+
+        assert_eq!(tx_result, Err(InvalidTransaction::RejectCallerWithCode))
     }
 
     #[test]
