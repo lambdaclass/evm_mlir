@@ -86,15 +86,6 @@ fn get_ignored_suites() -> HashSet<String> {
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
         "blake2B".into(),            // OK but takes like 40 min
-        // "delegatecall09Undefined".into(), // OK
-        // "identity_to_bigger".into(), // OK
-        // "identity_to_smaller".into(), // OK
-        // "idPrecomps".into(), // OK
-        // //"modexp".into(),   // OK
-        // "modexpTests".into(), // OK
-        // "precompsEIP2929".into(), // OK
-        "precompsEIP2929Cancun".into(), // OK but takes like 4 min
-        // "sec80".into(),   // OK
     ])
 }
 
