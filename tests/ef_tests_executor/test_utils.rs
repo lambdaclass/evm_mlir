@@ -168,13 +168,9 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             let res = evm.transact();
             verify_result(test, unit.out.as_ref(), &res)?;
             // TODO: use rlp and hash to check logs
-            match res {
-                Ok(res) => {
-                    verify_storage(&test.post_state, res.state);
-                }
-                Err(_) => {
-                    return Ok(()); // if it was an unexpected error, we verified it with verify_result
-                }
+
+            if let Ok(res) = res {
+                verify_storage(&test.post_state, res.state);
             }
         }
     }
