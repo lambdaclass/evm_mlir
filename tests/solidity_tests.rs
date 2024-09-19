@@ -2,7 +2,7 @@ use std::io::Read;
 
 use bytes::Bytes;
 use ethereum_types::Address;
-use evm_mlir::{db::Db, env::TransactTo, Env, Evm};
+use evm_mlir::{db::Db, env::TransactTo, state::Account, Env, Evm};
 
 fn read_compiled_file(file_path: &str) -> Result<Bytes, std::io::Error> {
     let mut file = std::fs::File::open(file_path)?;
@@ -11,20 +11,19 @@ fn read_compiled_file(file_path: &str) -> Result<Bytes, std::io::Error> {
     Ok(Bytes::from(hex::decode(buffer).unwrap()))
 }
 
-fn default_env_and_db_setup_from_bytecode(bytecode: Bytes, address: Address) -> (Env, Db) {
+fn default_evm_with_bytecode(bytecode: Bytes, address: Address) -> Evm<Db> {
     let mut env = Env::default();
     env.tx.gas_limit = 999_999;
     env.tx.transact_to = TransactTo::Call(address);
     let db = Db::new().with_contract(address, bytecode);
-    (env, db)
+    Evm::new(env, db)
 }
 
 #[test]
 fn factorial_contract() {
     let address = Address::from_low_u64_be(40);
     let bytes = read_compiled_file("./programs/Factorial.bin").unwrap();
-    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
-    let mut evm = Evm::new(env, db);
+    let mut evm = default_evm_with_bytecode(bytes, address);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
     let state = result.state.get(&address).unwrap();
@@ -42,8 +41,7 @@ fn factorial_contract() {
 fn fibonacci_contract() {
     let address = Address::from_low_u64_be(40);
     let bytes = read_compiled_file("./programs/Fibonacci.bin").unwrap();
-    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
-    let mut evm = Evm::new(env, db);
+    let mut evm = default_evm_with_bytecode(bytes, address);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
     let state = result.state.get(&address).unwrap();
@@ -61,8 +59,7 @@ fn fibonacci_contract() {
 fn recursive_fibonacci_contract() {
     let address = Address::from_low_u64_be(40);
     let bytes = read_compiled_file("./programs/RecursiveFibonacci.bin").unwrap();
-    let (env, db) = default_env_and_db_setup_from_bytecode(bytes, address);
-    let mut evm = Evm::new(env, db);
+    let mut evm = default_evm_with_bytecode(bytes, address);
     let result = evm.transact().unwrap();
     assert!(result.result.is_success());
     let state = result.state.get(&address).unwrap();
