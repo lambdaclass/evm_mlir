@@ -171,6 +171,7 @@ pub fn modexp(
     let mut bytes = result.to_bytes_be();
     if bytes.len() < m_size {
         bytes.resize(m_size, 0);
+        bytes.reverse();
     }
 
     let output = &bytes[..m_size];
@@ -633,6 +634,36 @@ mod tests {
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::from(4_u8.to_be_bytes().to_vec()));
         assert_eq!(consumed_gas, 682);
+    }
+
+    #[test]
+    fn modexp_bigger_msize_than_necessary() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let b_size = U256::from(256_u16);
+        let e_size = U256::from(1_u8);
+        let m_size = U256::from(32_u8);
+        let b = 8_u8;
+        let e = 6_u8;
+        let m = 10_u8;
+        let mut calldata = [0_u8; 354];
+        b_size.to_big_endian(&mut calldata[..32]);
+        e_size.to_big_endian(&mut calldata[32..64]);
+        m_size.to_big_endian(&mut calldata[64..96]);
+        calldata[351] = b;
+        calldata[352] = e;
+        calldata[353] = m;
+        let calldata = Bytes::from(calldata.to_vec());
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        let mut expected_return_data = 4_u8.to_be_bytes().to_vec();
+        expected_return_data.resize(32, 0);
+        expected_return_data.reverse();
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(expected_return_data));
     }
 
     #[test]
