@@ -1854,7 +1854,7 @@ pub fn left_pad(calldata: &Bytes, target_len: usize) -> Bytes {
     if calldata.len() < target_len {
         padded_calldata[target_len - calldata.len()..].copy_from_slice(calldata);
     } else {
-        return calldata.clone()
+        return calldata.clone();
     }
     padded_calldata.into()
 }
