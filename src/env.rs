@@ -67,6 +67,11 @@ impl Env {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
 
+        // if the tx gas limit is greater than the available gas in the block
+        if U256::from(self.tx.gas_limit) > self.block.gas_limit {
+            return Err(InvalidTransaction::CallerGasLimitMoreThanBlock);
+        }
+
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
@@ -141,7 +146,7 @@ pub struct BlockEnv {
     /// The timestamp of the block in seconds since the UNIX epoch.
     pub timestamp: U256,
     // The gas limit of the block.
-    //pub gas_limit: U256,
+    pub gas_limit: U256,
     //
     // The base fee per gas, added in the London upgrade with [EIP-1559].
     //
@@ -323,6 +328,32 @@ mod tests {
         assert_eq!(
             tx_result,
             Err(InvalidTransaction::NonceTooLow { tx: 40, state: 41 })
+        )
+    }
+
+    #[test]
+    fn tx_gas_limit_higher_than_block_gas_limit() {
+        let tx_env = TxEnv {
+            gas_limit: 999,
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::from(998),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&DbAccount::empty());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::CallerGasLimitMoreThanBlock)
         )
     }
 }
