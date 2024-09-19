@@ -10,8 +10,6 @@ pub const MEMORY_SIZE_GLOBAL: &str = "evm_mlir__memory_size";
 pub const CALLDATA_PTR_GLOBAL: &str = "evm_mlir__calldata_ptr";
 pub const CALLDATA_SIZE_GLOBAL: &str = "evm_mlir__calldata_size";
 pub const MAIN_ENTRYPOINT: &str = "main";
-pub const TRUSTED_SETUP_PATH: &str = "official_trusted_setup.txt";
-
 // An empty bytecode has the following Keccak256 hash
 pub const EMPTY_CODE_HASH_STR: &str =
     "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
