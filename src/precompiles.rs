@@ -168,7 +168,12 @@ pub fn modexp(
         b.modpow(&e, &m)
     };
 
-    let output = &result.to_bytes_be()[..m_size];
+    let mut bytes = result.to_bytes_be();
+    if bytes.len() < m_size {
+        bytes.resize(m_size, 0);
+    }
+
+    let output = &bytes[..m_size];
     Ok(Bytes::copy_from_slice(output))
 }
 
