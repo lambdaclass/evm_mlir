@@ -102,8 +102,4 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(
-    run_ef_test,
-    "ethtests/GeneralStateTests/Pyspecs/shanghai/eip3860_initcode/",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
