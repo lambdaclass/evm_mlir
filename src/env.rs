@@ -89,6 +89,16 @@ impl Env {
             return Err(InvalidTransaction::RejectCallerWithCode);
         }
 
+        // if it's a fee market tx (eip-1559)
+        if let Some(max_priority_fee_per_gas) = self.tx.gas_priority_fee {
+            // the max tip fee i'm willing to pay can't exceed the
+            // max total fee i'm willing to pay
+            // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L386
+            if self.tx.gas_price < max_priority_fee_per_gas {
+                return Err(InvalidTransaction::PriorityFeeGreaterThanMaxFee);
+            }
+        }
+
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
@@ -215,6 +225,7 @@ pub struct TxEnv {
     /// The gas limit of the transaction.
     pub gas_limit: u64,
     /// The gas price of the transaction.
+    /// aka `max_fee_per_gas`
     pub gas_price: U256,
     /// The destination of the transaction.
     pub transact_to: TransactTo,
@@ -240,12 +251,13 @@ pub struct TxEnv {
     // [EIP-2930]: https://eips.ethereum.org/EIPS/eip-2930
     pub access_list: AccessList,
 
-    // The priority fee per gas.
-    //
-    // Incorporated as part of the London upgrade via [EIP-1559].
-    //
-    // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
-    // pub gas_priority_fee: Option<U256>,
+    /// The priority fee per gas.
+    ///
+    /// Incorporated as part of the London upgrade via [EIP-1559].
+    ///
+    /// [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
+    /// aka `max_priority_fee_per_gas` or _miner tip_
+    pub gas_priority_fee: Option<U256>,
 
     // The list of blob versioned hashes. Per EIP there should be at least
     // one blob present if [`Self::max_fee_per_blob_gas`] is `Some`.
@@ -269,7 +281,7 @@ impl Default for TxEnv {
             // TODO: we are using signed comparison for the gas counter
             gas_limit: i64::MAX as _,
             gas_price: U256::zero(),
-            // gas_priority_fee: None,
+            gas_priority_fee: None,
             transact_to: TransactTo::Call(Address::zero()),
             value: U256::zero(),
             data: Bytes::new(),
@@ -435,6 +447,33 @@ mod tests {
             env.validate_transaction(&db.get_account(caller_addr).unwrap().clone().into());
 
         assert_eq!(tx_result, Err(InvalidTransaction::RejectCallerWithCode))
+    }
+
+    #[test]
+    fn tx_max_priority_fee_greater_than_max_fee() {
+        let tx_env = TxEnv {
+            gas_priority_fee: Some(U256::from(101)),
+            gas_price: U256::from(100),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::PriorityFeeGreaterThanMaxFee)
+        )
     }
 
     #[test]
