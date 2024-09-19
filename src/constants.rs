@@ -122,9 +122,8 @@ pub mod gas_cost {
     pub const MAX_CODE_SIZE: usize = 0x6000;
 
     pub fn init_code_cost(init_code_length: u64) -> u64 {
-        let init_word_cost = INIT_WORD_COST as u64;
         let number_of_words = init_code_length.saturating_add(31) / 32;
-        init_word_cost * number_of_words
+        INIT_WORD_COST as u64 * number_of_words
     }
 
     pub fn memory_expansion_cost(last_size: u32, new_size: u32) -> i64 {
