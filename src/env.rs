@@ -7,7 +7,11 @@ use crate::{
             TX_DATA_COST_PER_ZERO,
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
-    }, journal::{Journal, JournalStorageSlot}, primitives::{Address, Bytes, B256, U256}, result::InvalidTransaction, utils::{access_list_cost, calc_blob_gasprice}
+    },
+    journal::JournalStorageSlot,
+    primitives::{Address, Bytes, B256, U256},
+    result::InvalidTransaction,
+    utils::{access_list_cost, calc_blob_gasprice},
 };
 
 pub type AccessList = Vec<(Address, Vec<U256>)>;
@@ -209,10 +213,9 @@ pub struct TxEnv {
     pub max_fee_per_blob_gas: Option<U256>,
 
     // The storage of a transaction
+    //
     // Incorporated in [EIP-1153]: https://eips.ethereum.org/EIPS/eip-1153
-    // pub transient_storage: HashMap<(Address, U256), U256>,
     pub transient_storage: HashMap<U256, JournalStorageSlot>, // (key, (current, original))
-    
 }
 
 impl Default for TxEnv {
@@ -253,35 +256,13 @@ impl TxEnv {
         }
     }
 
-    // pub fn read_storage(&mut self, address: &Address, key: &U256) -> Option<JournalStorageSlot> {
-    //     //TODO: If AccountStatus::Created, then we don't need to fetch DB
-    //     let acc = self._get_account(address)?;
-    //     let slot = acc
-    //         .storage
-    //         .get(key)
-    //         .cloned()
-    //         .unwrap_or(self._fetch_storage_from_db(address, key));
-    //     let acc = self._get_account_mut(address).unwrap();
-    //     acc.storage.insert(*key, slot.clone()); // Now this key is warm
-    //     Some(slot)
-    // }
     pub fn read_tx_storage(&self, key: &U256) -> JournalStorageSlot {
-        self.transient_storage.get(key).cloned().unwrap_or(JournalStorageSlot::default())
+        self.transient_storage
+            .get(key)
+            .cloned()
+            .unwrap_or(JournalStorageSlot::default())
     }
 
-    // pub fn write_storage(&mut self, address: &Address, key: U256, value: U256) {
-    //     let acc = self._get_account(address).unwrap(); //TODO handle error here
-    //     let mut slot = acc
-    //         .storage
-    //         .get(&key)
-    //         .cloned()
-    //         .unwrap_or(self._fetch_storage_from_db(address, &key));
-
-    //     slot.present_value = value;
-    //     let acc = self._get_account_mut(address).unwrap();
-    //     acc.storage.insert(key, slot.clone());
-    //     acc.status |= AccountStatus::Touched;
-    // }
     pub fn write_tx_storage(&mut self, key: U256, value: U256) {
         let mut slot = self.read_tx_storage(&key);
         slot.present_value = value;
