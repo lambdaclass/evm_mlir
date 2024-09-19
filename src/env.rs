@@ -99,6 +99,13 @@ impl Env {
             }
         }
 
+        // the max fee i'm willing to pay for the tx can't be
+        // less than the block's base fee
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L388
+        if self.tx.gas_price < self.block.basefee {
+            return Err(InvalidTransaction::GasPriceLessThanBasefee);
+        }
+
         if let Some(max) = self.tx.max_fee_per_blob_gas {
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
@@ -182,10 +189,11 @@ pub struct BlockEnv {
     pub timestamp: U256,
     // The gas limit of the block.
     pub gas_limit: U256,
-    //
-    // The base fee per gas, added in the London upgrade with [EIP-1559].
-    //
-    // [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
+    ///
+    /// The base fee per gas, added in the London upgrade with [EIP-1559].
+    ///
+    /// [EIP-1559]: https://eips.ethereum.org/EIPS/eip-1559
+    /// aka `base_fee_per_gas`
     pub basefee: U256,
     // The difficulty of the block.
     //
@@ -474,6 +482,30 @@ mod tests {
             tx_result,
             Err(InvalidTransaction::PriorityFeeGreaterThanMaxFee)
         )
+    }
+
+    #[test]
+    fn tx_max_fee_per_gas_lower_than_base_fee() {
+        let tx_env = TxEnv {
+            gas_price: 100.into(),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            basefee: 101.into(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(tx_result, Err(InvalidTransaction::GasPriceLessThanBasefee))
     }
 
     #[test]
