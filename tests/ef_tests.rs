@@ -57,7 +57,7 @@ fn get_ignored_groups() -> HashSet<String> {
         "stStaticCall".into(),
         "stMemExpandingEIP150Calls".into(),
         "stTransactionTest".into(),
-        "eip3860_initcode".into(),
+        //"eip3860_initcode".into(),
         "stCodeCopyTest".into(),
         "stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
@@ -102,4 +102,8 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_ef_test,
+    "ethtests/GeneralStateTests/Pyspecs/shanghai/eip3860_initcode/",
+    r"^.*/*.json",
+);

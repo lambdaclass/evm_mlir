@@ -4,7 +4,7 @@ use bytes::Bytes;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
-    result::ExecutionResult,
+    result::{EVMError, ExecutionResult, ResultAndState},
     utils::precompiled_addresses,
     Env, Evm,
 };
@@ -97,12 +97,13 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
 fn verify_result(
     test: &Test,
     expected_result: Option<&Bytes>,
-    execution_result: &ExecutionResult,
+    execution_result: &Result<ResultAndState, EVMError>,
 ) -> Result<(), String> {
     match (&test.expect_exception, execution_result) {
-        (None, _) => {
+        (None, Ok(execution_result)) => {
             // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
-            if let Some((expected_output, output)) = expected_result.zip(execution_result.output())
+            if let Some((expected_output, output)) =
+                expected_result.zip(execution_result.result.output())
             {
                 if expected_output != output {
                     return Err("Wrong output".into());
@@ -110,7 +111,7 @@ fn verify_result(
             }
             Ok(())
         }
-        (Some(_), ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. }) => {
+        (Some(_), Err(_)) => {
             Ok(()) //Halt/Revert and want an error
         }
         _ => Err("Expected exception but got none".into()),
@@ -156,10 +157,17 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 
         for test in tests {
             let mut evm = setup_evm(test, &unit);
-            let res = evm.transact().unwrap();
-            verify_result(test, unit.out.as_ref(), &res.result)?;
+            let res = evm.transact();
+            verify_result(test, unit.out.as_ref(), &res)?;
             // TODO: use rlp and hash to check logs
-            verify_storage(&test.post_state, res.state);
+            match res {
+                Ok(res) => {
+                    verify_storage(&test.post_state, res.state);
+                }
+                Err(_) => {
+                    return Ok(()); // if it was an unexpected error, we verified it with verify_result
+                }
+            }
         }
     }
     Ok(())
