@@ -48,6 +48,7 @@ impl Env {
     /// [execution spec]: https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L332
     pub fn validate_transaction(&self, account: &DbAccount) -> Result<(), InvalidTransaction> {
         // if nonce is None, nonce check skipped
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L419
         if let Some(tx) = self.tx.nonce {
             let state = account.nonce;
 
@@ -59,6 +60,7 @@ impl Env {
         }
 
         // if it's a create tx, check max code size
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L376
         let is_create = matches!(self.tx.transact_to, TransactTo::Create);
 
         if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
@@ -66,6 +68,7 @@ impl Env {
         }
 
         // if the tx gas limit is greater than the available gas in the block
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L379
         if U256::from(self.tx.gas_limit) > self.block.gas_limit {
             return Err(InvalidTransaction::CallerGasLimitMoreThanBlock);
         }
