@@ -187,7 +187,7 @@ pub struct SyscallContext<'c> {
     pub inner_context: InnerContext,
     pub halt_reason: Option<HaltReason>,
     initial_gas: u64,
-    pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
+    // pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -212,7 +212,6 @@ impl<'c> SyscallContext<'c> {
             call_frame,
             halt_reason: None,
             inner_context: Default::default(),
-            transient_storage: Default::default(),
         }
     }
 
@@ -1111,26 +1110,161 @@ impl<'c> SyscallContext<'c> {
         // TODO: add gas cost for cold addresses
     }
 
-    pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+    // pub extern "C" fn read_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
+    //     let address = self.env.tx.get_address();
+
+    //     let key = stg_key.to_primitive_u256();
+    //     let is_cold = !self.journal.key_is_warm(&address, &key);
+    //     Read value from journaled_storage. If there isn't one, then read from db
+    //     let result = self
+    //         .journal
+    //         .read_storage(&address, &key)
+    //         .unwrap_or_default()
+    //         .present_value;
+
+    //     stg_value.hi = (result >> 128).low_u128();
+    //     stg_value.lo = result.low_u128();
+
+    //     if is_cold {
+    //         gas_cost::SLOAD_COLD
+    //     } else {
+    //         gas_cost::SLOAD_WARM
+    //     }
+    // }
+
+    pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
         let key = stg_key.to_primitive_u256();
-        let address = self.env.tx.get_address();
 
         let result = self
-            .transient_storage
-            .get(&(address, key))
-            .cloned()
-            .unwrap_or(EU256::zero());
+            .env.tx.read_tx_storage(&key).present_value;
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
+
+        gas_cost::TLOAD
     }
 
-    pub extern "C" fn write_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
-        let address = self.env.tx.get_address();
+    // pub extern "C" fn write_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
+    //     let key = stg_key.to_primitive_u256();
+    //     let value = stg_value.to_primitive_u256();
+    //     // TODO: Check if this case is ok. Can storage be written on Create?
+    //     let TransactTo::Call(address) = self.env.tx.transact_to else {
+    //         return 0;
+    //     };
+
+    //     let is_cold = !self.journal.key_is_warm(&address, &key);
+    //     let slot = self.journal.read_storage(&address, &key);
+    //     self.journal.write_storage(&address, key, value);
+
+    //     let (original, current) = match slot {
+    //         Some(slot) => (slot.original_value, slot.present_value),
+    //         None => (value, value),
+    //     };
+
+    //     // Compute the gas cost
+    //     let mut gas_cost: i64 = if original.is_zero() && current.is_zero() && current != value {
+    //         20_000
+    //     } else if original == current && current != value {
+    //         2_900
+    //     } else {
+    //         100
+    //     };
+
+    //     // When the value is cold, add extra 2100 gas
+    //     if is_cold {
+    //         gas_cost += 2_100;
+    //     }
+
+    //     // Compute the gas refund
+    //     let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
+    //     let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
+    //     let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
+    //     let reset_back_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
+    //     let reset_to_original = (current != value) && (original == value);
+
+    //     let gas_refund: i64 = if reset_non_zero_to_zero {
+    //         4_800
+    //     } else if undo_reset_to_zero_into_original {
+    //         -2_000
+    //     } else if undo_reset_to_zero {
+    //         -4_800
+    //     } else if reset_back_to_zero {
+    //         19_900
+    //     } else if reset_to_original {
+    //         2_800
+    //     } else {
+    //         0
+    //     };
+
+    //     if gas_refund > 0 {
+    //         self.inner_context.gas_refund += gas_refund as u64;
+    //     } else {
+    //         self.inner_context.gas_refund = self
+    //             .inner_context
+    //             .gas_refund
+    //             .saturating_sub(gas_refund.unsigned_abs());
+    //     };
+
+    //     gas_cost
+    // }
+
+    pub extern "C" fn write_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) -> i64 {
+        // let address = self.env.tx.get_address();
 
         let key = stg_key.to_primitive_u256();
         let value = stg_value.to_primitive_u256();
-        self.transient_storage.insert((address, key), value);
+        // self.transient_storage.insert((address, key), value);
+
+        let slot = self.env.tx.read_tx_storage(&key);
+        self.env.tx.write_tx_storage(key, value);
+
+        let (original, current) = (slot.original_value, slot.present_value);
+
+        // let (original, current) = match slot {
+        //     Some(slot) => (slot.original_value, slot.present_value),
+        //     None => (value, value),
+        // };
+
+        // Compute the gas cost
+        let gas_cost: i64 = if original.is_zero() && current.is_zero() && current != value {
+            20_000
+        } else if original == current && current != value {
+            2_900
+        } else {
+            100
+        };
+
+        let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
+        let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
+        let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
+        let reset_back_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
+        let reset_to_original = (current != value) && (original == value);
+
+        let gas_refund: i64 = if reset_non_zero_to_zero {
+            4_800
+        } else if undo_reset_to_zero_into_original {
+            -2_000
+        } else if undo_reset_to_zero {
+            -4_800
+        } else if reset_back_to_zero {
+            19_900
+        } else if reset_to_original {
+            2_800
+        } else {
+            0
+        };
+
+        if gas_refund > 0 {
+            self.inner_context.gas_refund += gas_refund as u64;
+        } else {
+            self.inner_context.gas_refund = self
+                .inner_context
+                .gas_refund
+                .saturating_sub(gas_refund.unsigned_abs());
+        };
+        println!("gas_cost: {gas_cost}");
+
+        gas_cost
     }
 }
 
@@ -2178,14 +2312,17 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let result = block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_READ),
             &[syscall_ctx, key, value],
-            &[],
+            &[uint64.into()],
             location,
-        ));
+        ))
+        .result(0)?;
+        Ok(result.into())
     }
 
     pub(crate) fn transient_storage_write_syscall<'c>(
@@ -2195,14 +2332,16 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let value = block.append_operation(func::call(
             mlir_ctx,
             FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_WRITE),
             &[syscall_ctx, key, value],
-            &[],
+            &[uint64.into()],
             location,
-        ));
+        )).result(0)?;
+        Ok(value.into())
     }
 
     /// Receives log data and appends a log to the logs vector
