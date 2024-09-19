@@ -4,7 +4,7 @@ use bytes::Bytes;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
-    result::{EVMError, ResultAndState},
+    result::{EVMError, ExecutionResult, ResultAndState},
     utils::precompiled_addresses,
     Env, Evm,
 };
@@ -113,6 +113,14 @@ fn verify_result(
         }
         (Some(_), Err(_)) => {
             Ok(()) //Got error and expeted one
+        }
+        (Some(_), Ok(execution_result)) => {
+            match execution_result.result {
+                ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. } => {
+                    Ok(()) // Got error and got expected halt/revert
+                }
+                _ => Err("Expected exception but got none".into()),
+            }
         }
         _ => Err("Expected exception but got none".into()),
     }
