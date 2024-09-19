@@ -98,7 +98,7 @@ fn verify_result(
     test: &Test,
     expected_result: Option<&Bytes>,
     execution_result: &Result<ResultAndState, EVMError>,
-) -> Result<(), String> {
+) -> Result<(), &'static str> {
     match (&test.expect_exception, execution_result) {
         (None, Ok(execution_result)) => {
             // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
@@ -106,7 +106,7 @@ fn verify_result(
                 expected_result.zip(execution_result.result.output())
             {
                 if expected_output != output {
-                    return Err("Wrong output".into());
+                    return Err("Wrong output");
                 }
             }
             Ok(())
@@ -119,10 +119,10 @@ fn verify_result(
                 ExecutionResult::Halt { .. } | ExecutionResult::Revert { .. } => {
                     Ok(()) // Got error and got expected halt/revert
                 }
-                _ => Err("Expected exception but got none".into()),
+                _ => Err("Expected exception but got none"),
             }
         }
-        (None, Err(_)) => Err("Expected success but got error".into()),
+        (None, Err(_)) => Err("Expected success but got error"),
     }
 }
 
