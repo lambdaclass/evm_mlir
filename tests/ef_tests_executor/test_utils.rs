@@ -112,7 +112,7 @@ fn verify_result(
             Ok(())
         }
         (Some(_), Err(_)) => {
-            Ok(()) //Got error and expeted one
+            Ok(()) //Got error and expected one
         }
         (Some(_), Ok(execution_result)) => {
             match execution_result.result {
