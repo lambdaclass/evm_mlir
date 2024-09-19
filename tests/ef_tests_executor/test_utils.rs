@@ -122,7 +122,7 @@ fn verify_result(
                 _ => Err("Expected exception but got none".into()),
             }
         }
-        _ => Err("Expected exception but got none".into()),
+        _ => Err("Expected success but gone error".into()),
     }
 }
 
