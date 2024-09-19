@@ -110,5 +110,5 @@ ethtests: ${ETHTEST_TAR}
 install-solc:
 	brew install solidity
 
-compile-solidity-examples:
+compile-solidity-test-examples:
 	solc --bin sources/fibonacci.sol -o ./programs; solc --bin sources/factorial.sol -o ./programs; solc --bin sources/recursive_fib.sol -o ./programs
