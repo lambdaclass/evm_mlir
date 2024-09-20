@@ -120,7 +120,7 @@ impl Env {
                 return Err(InvalidTransaction::EmptyBlobs);
             }
 
-            // the maximum number of blobs for now is 6
+            // the maximum number of blobs in a block for now is 6
             // https://eips.ethereum.org/EIPS/eip-4844#throughput
             if self.tx.number_of_blobs() > MAX_BLOB_NUMBER_PER_BLOCK as u64 {
                 return Err(InvalidTransaction::TooManyBlobs {
@@ -129,7 +129,7 @@ impl Env {
                 });
             }
 
-            // each blob's first byte must be 0x01
+            // each blob's first byte must be `VERSIONED_HASH_VERSION_KZG` (0x01)
             // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L408
             for blob in self.tx.blob_hashes.iter() {
                 if blob[0] != VERSIONED_HASH_VERSION_KZG {
