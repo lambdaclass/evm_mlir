@@ -80,6 +80,7 @@ impl From<&JournalAccount> for AccountInfo {
 
 type AccountState = HashMap<Address, JournalAccount>;
 type ContractState = HashMap<B256, Bytecode>;
+type TransientStorage = HashMap<(Address, U256), JournalStorageSlot>;
 
 #[derive(Default, Debug)]
 pub struct Journal<'a> {
@@ -87,6 +88,10 @@ pub struct Journal<'a> {
     contracts: ContractState,
     block_hashes: HashMap<U256, B256>,
     db: Option<&'a mut Db>,
+    // The storage of a transaction
+    //
+    // Incorporated in [EIP-1153]: https://eips.ethereum.org/EIPS/eip-1153
+    pub transient_storage: TransientStorage, // ((addr, key), (current, original))
 }
 
 // TODO: Handle unwraps and panics
@@ -329,6 +334,7 @@ impl<'a> Journal<'a> {
             contracts: self.contracts.clone(),
             block_hashes: self.block_hashes.clone(),
             db: self.db.take(),
+            transient_storage: self.transient_storage.clone(),
         }
     }
 
@@ -381,5 +387,18 @@ impl<'a> Journal<'a> {
             .and_then(|db| db.storage(*address, *key).ok())
             .unwrap_or_default();
         JournalStorageSlot::from(value)
+    }
+
+    pub fn read_tx_storage(&self, address: Address, key: U256) -> JournalStorageSlot {
+        self.transient_storage
+            .get(&(address, key))
+            .cloned()
+            .unwrap_or(JournalStorageSlot::default())
+    }
+
+    pub fn write_tx_storage(&mut self, address: Address, key: U256, value: U256) {
+        let mut slot = self.read_tx_storage(address, key);
+        slot.present_value = value;
+        self.transient_storage.insert((address, key), slot);
     }
 }

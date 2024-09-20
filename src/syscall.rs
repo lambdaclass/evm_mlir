@@ -1109,9 +1109,13 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let sender_address = self.env.tx.get_address();
         let key = stg_key.to_primitive_u256();
 
-        let result = self.env.tx.read_tx_storage(&key).present_value;
+        let result = self
+            .journal
+            .read_tx_storage(sender_address, key)
+            .present_value;
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
@@ -1122,22 +1126,14 @@ impl<'c> SyscallContext<'c> {
         stg_key: &U256,
         stg_value: &mut U256,
     ) -> i64 {
+        let sender_address = self.env.tx.get_address();
         let key = stg_key.to_primitive_u256();
         let value = stg_value.to_primitive_u256();
 
-        let slot = self.env.tx.read_tx_storage(&key);
-        self.env.tx.write_tx_storage(key, value);
+        let _slot = self.journal.read_tx_storage(sender_address, key);
+        self.journal.write_tx_storage(sender_address, key, value);
 
-        let (original, current) = (slot.original_value, slot.present_value);
-
-        // Compute the gas cost
-        if original.is_zero() && current.is_zero() && current != value {
-            20_000
-        } else if original == current && current != value {
-            2_900
-        } else {
-            100
-        }
+        gas_cost::TSTORE
     }
 }
 

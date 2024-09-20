@@ -5514,7 +5514,7 @@ fn codegen_tload<'c, 'r>(
     let pointer_size = start_block
         .append_operation(arith::constant(
             context,
-            IntegerAttribute::new(uint256.into(), 1_i64).into(),
+            IntegerAttribute::new(uint256.into(), 1).into(),
             location,
         ))
         .result(0)?

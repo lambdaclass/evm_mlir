@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     constants::{
         gas_cost::{
@@ -8,7 +6,6 @@ use crate::{
         },
         MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
-    journal::JournalStorageSlot,
     primitives::{Address, Bytes, B256, U256},
     result::InvalidTransaction,
     utils::{access_list_cost, calc_blob_gasprice},
@@ -211,11 +208,6 @@ pub struct TxEnv {
     //
     // [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844
     pub max_fee_per_blob_gas: Option<U256>,
-
-    // The storage of a transaction
-    //
-    // Incorporated in [EIP-1153]: https://eips.ethereum.org/EIPS/eip-1153
-    pub transient_storage: HashMap<U256, JournalStorageSlot>, // (key, (current, original))
 }
 
 impl Default for TxEnv {
@@ -234,7 +226,6 @@ impl Default for TxEnv {
             access_list: Default::default(),
             blob_hashes: Vec::new(),
             max_fee_per_blob_gas: None,
-            transient_storage: Default::default(),
         }
     }
 }
@@ -254,18 +245,5 @@ impl TxEnv {
             TransactTo::Call(addr) => addr,
             TransactTo::Create => self.caller,
         }
-    }
-
-    pub fn read_tx_storage(&self, key: &U256) -> JournalStorageSlot {
-        self.transient_storage
-            .get(key)
-            .cloned()
-            .unwrap_or(JournalStorageSlot::default())
-    }
-
-    pub fn write_tx_storage(&mut self, key: U256, value: U256) {
-        let mut slot = self.read_tx_storage(&key);
-        slot.present_value = value;
-        self.transient_storage.insert(key, slot);
     }
 }
