@@ -64,6 +64,8 @@ pub fn ecrecover(
 
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn sha2_256(
     calldata: &Bytes,
     gas_limit: u64,
@@ -78,6 +80,11 @@ pub fn sha2_256(
     Ok(Bytes::copy_from_slice(&hash))
 }
 
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
+///
+/// # Returns
+/// - a 20-byte hash right aligned to 32 bytes
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
 ///
@@ -102,6 +109,8 @@ pub fn ripemd_160(
 
 /// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn identity(
     calldata: &Bytes,
     gas_limit: u64,
@@ -115,6 +124,8 @@ pub fn identity(
     Ok(calldata.clone())
 }
 
+/// Arbitrary-precision exponentiation under modulo.
+/// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
 /// Arbitrary-precision exponentiation under modulo.
 /// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
 pub fn modexp(
@@ -274,7 +285,7 @@ pub fn ecmul(
     Err(PrecompileError::InvalidEcPoint)
 }
 
-/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve 'alt_bn128' (also referred as 'bn254').
+/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
 /// More info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
 /// - Loops over the calldata in chunks of 192 bytes. K times, where K = len / 192.
 /// - Two groups G_1 and G_2, which sum up to 192 bytes.
@@ -301,20 +312,20 @@ pub fn ecpairing(
         let g1_x =
             BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
         let g1_y = BN254FieldElement::from_bytes_be(
-            &calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE * 2],
+            &calldata[start + ECP_FIELD_SIZE..start + double_field_size()],
         )
         .unwrap();
 
         let g2_x_bytes = [
-            &calldata[start + (G1_POINT_POS + ECP_FIELD_SIZE)
-                ..start + (G1_POINT_POS + ECP_FIELD_SIZE * 2)], // calldata[start + 96..start + 128]
-            &calldata[start + G1_POINT_POS..start + (G1_POINT_POS + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
+            &calldata[start + ecpairing_g2_point1_start(G1_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G1_POINT_POS)], // calldata[start + 96..start + 128]
+            &calldata[start + G1_POINT_POS..start + ecpairing_g2_point1_start(G1_POINT_POS)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + (G2_POINT_POS + ECP_FIELD_SIZE)
-                ..start + (G2_POINT_POS + ECP_FIELD_SIZE * 2)], // calldata[start + 160..start + 192]
-            &calldata[start + G2_POINT_POS..start + (G2_POINT_POS + ECP_FIELD_SIZE)], // calldata[start + 128..start + 160]
+            &calldata[start + ecpairing_g2_point1_start(G2_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G2_POINT_POS)], // calldata[start + 160..start + 192]
+            &calldata[start + G2_POINT_POS..start + ecpairing_g2_point1_start(G2_POINT_POS)], // calldata[start + 128..start + 160]
         ]
         .concat();
 
@@ -435,6 +446,8 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 
 const CALLDATA_LEN: usize = 213;
 
+/// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
+/// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 /// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
 /// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 pub fn blake2f(
