@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        type: [ fast, slow ]
+        type: [ fast, slow, blake2B ]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -152,3 +152,7 @@ jobs:
       - name: Run slow ethereum tests
         if: ${{ matrix.type == 'slow' }}
         run: make test-eth-slow
+        
+      - name: Run blake2B ethereum test
+        if: ${{ matrix.type == 'blake2B' }}
+        run: make test-eth-blake2B

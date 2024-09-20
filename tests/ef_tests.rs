@@ -85,7 +85,7 @@ fn get_ignored_suites() -> HashSet<String> {
     HashSet::from([
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
-        "blake2B".into(),            // OK but takes like 40 min
+        "blake2B".into(), // this will be tested with the blake2B binary because takes like 37 min
     ])
 }
 
