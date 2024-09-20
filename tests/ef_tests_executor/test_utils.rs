@@ -10,7 +10,6 @@ use evm_mlir::{
     utils::precompiled_addresses,
     Env, Evm,
 };
-use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 
 use super::models::{AccountInfo, Test, TestSuite, TestUnit};
@@ -99,29 +98,13 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
 }
 
 pub fn rlp_hash(logs: &[Log]) -> H256 {
-    let mut rlp_hash = Vec::new();
     for log in logs {
-        let mut stream = RlpStream::new_list(3); // La lista tendrá 3 elementos
-        stream.append(&log.address.as_bytes());
-        stream.append_list(&log.data.data);
-        let topics_rlp: Vec<Vec<u8>> = log
-            .data
-            .topics
-            .iter()
-            .map(|topic| {
-                let mut tuki = vec![0; 32];
-                topic
-                    .to_primitive_u256()
-                    .to_big_endian(&mut tuki.as_mut_slice());
-                tuki
-            })
-            .collect();
-        let tuki = topics_rlp.concat();
-        stream.append_list(&tuki);
-        rlp_hash.extend(stream.out());
+        let tuki = rlp::encode(log).freeze();
+        eprintln!("TUKI ES: {:?}", tuki);
     }
+    let out = [0; 32];
     let mut hasher = Keccak256::new();
-    hasher.update(rlp_hash.to_vec());
+    hasher.update(&out);
     H256::from_slice(&hasher.finalize()[..])
 }
 

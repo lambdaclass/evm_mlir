@@ -36,6 +36,7 @@ use crate::{
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
+use rlp::{Encodable, RlpStream};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 
@@ -200,6 +201,33 @@ pub struct LogData {
 pub struct Log {
     pub address: Address,
     pub data: LogData,
+}
+
+impl Encodable for U256 {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        let mut lo = self.lo.to_be_bytes().to_vec();
+        let mut hi = self.hi.to_be_bytes().to_vec();
+        hi.append(&mut lo);
+        let tuki = &hi[..];
+        s.append(&tuki); // Convierte U256 a un array de bytes
+    }
+}
+
+impl Encodable for LogData {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2); // Número de elementos en el LogData
+        s.append_list(&self.topics);
+        s.append(&self.data);
+    }
+}
+
+impl Encodable for Log {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        s.begin_list(2); // Número de elementos en el Log
+        let address = &self.address.0[..];
+        s.append(&address);
+        s.append(&self.data);
+    }
 }
 
 /// Accessors for disponibilizing the execution results
