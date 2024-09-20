@@ -10,6 +10,7 @@ use evm_mlir::{
     utils::precompiled_addresses,
     Env, Evm,
 };
+use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 
 use super::models::{AccountInfo, Test, TestSuite, TestUnit};
@@ -98,11 +99,13 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
 }
 
 pub fn rlp_hash(logs: &[Log]) -> H256 {
+    let mut rlp_stream = RlpStream::new_list(logs.len());
+    eprintln!("LOGS: {:?}", logs);
     for log in logs {
-        let tuki = rlp::encode(log).freeze();
-        eprintln!("TUKI ES: {:?}", tuki);
+        rlp_stream.append(log);
     }
-    let out = [0; 32];
+    let out = rlp_stream.out().freeze().to_vec();
+    eprintln!("OUT ES ESTO: {:?}", out);
     let mut hasher = Keccak256::new();
     hasher.update(&out);
     H256::from_slice(&hasher.finalize()[..])
@@ -115,6 +118,8 @@ fn verify_result(
 ) -> Result<(), String> {
     let log_hash = rlp_hash(execution_result.logs());
     if log_hash != test.logs {
+        eprintln!("GOT: {:?}", log_hash);
+        eprintln!("EXPECTED: {:?}", test.logs);
         return Err("Wrong logs".into());
     }
 

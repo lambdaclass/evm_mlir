@@ -14,6 +14,7 @@ use melior::{
     },
     Context as MeliorContext,
 };
+use rlp::RlpStream;
 use sha3::{Digest, Keccak256};
 
 use crate::{
@@ -1739,16 +1740,13 @@ pub fn encode_rlp_u64(number: u64) -> Bytes {
 
 pub fn compute_contract_address(address: H160, nonce: u64) -> Address {
     // Compute the destination address as keccak256(rlp([sender_address,sender_nonce]))[12:]
-    // TODO: replace manual encoding once rlp is added
-    let encoded_nonce = encode_rlp_u64(nonce);
-    let mut buf = Vec::<u8>::new();
-    buf.push(0xd5);
-    buf.extend_from_slice(&encoded_nonce.len().to_be_bytes());
-    buf.push(0x94);
-    buf.extend_from_slice(address.as_bytes());
-    buf.extend_from_slice(&encoded_nonce);
+    let mut stream = RlpStream::new();
+    let address = &address.0[..];
+    stream.append(&address);
+    stream.append(&nonce);
+    let out = stream.out().freeze();
     let mut hasher = Keccak256::new();
-    hasher.update(&buf);
+    hasher.update(&out);
     Address::from_slice(&hasher.finalize()[12..])
 }
 

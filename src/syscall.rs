@@ -39,7 +39,6 @@ use melior::ExecutionEngine;
 use rlp::{Encodable, RlpStream};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
-
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
 
@@ -194,7 +193,7 @@ pub struct SyscallContext<'c> {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct LogData {
     pub topics: Vec<U256>,
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -209,24 +208,23 @@ impl Encodable for U256 {
         let mut hi = self.hi.to_be_bytes().to_vec();
         hi.append(&mut lo);
         let tuki = &hi[..];
-        s.append(&tuki); // Convierte U256 a un array de bytes
+        s.append(&tuki);
     }
 }
 
 impl Encodable for LogData {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2); // Número de elementos en el LogData
         s.append_list(&self.topics);
         s.append(&self.data);
     }
 }
-
 impl Encodable for Log {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_list(2); // Número de elementos en el Log
+        s.begin_unbounded_list(); // Número de elementos en el Log
         let address = &self.address.0[..];
         s.append(&address);
         s.append(&self.data);
+        s.finalize_unbounded_list();
     }
 }
 
@@ -799,6 +797,14 @@ impl<'c> SyscallContext<'c> {
 
         self.inner_context.resize_memory_if_necessary(offset, size);
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
+        eprintln!("DATA ES ESTO: {:?}", data);
+        eprintln!("OFFSET Y SIZE SON: {:?}, {:?}", offset, size);
+        let data = if data.is_empty() {
+            Bytes::new()
+        } else {
+            Bytes::from(data)
+        };
+        eprintln!("DATA AHORA ES ESTO: {:?}", data);
 
         let log = LogData { data, topics };
         self.inner_context.logs.push(log);

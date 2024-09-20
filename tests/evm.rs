@@ -589,8 +589,9 @@ fn log0() {
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let data = [0xff_u8; 32].as_slice();
     let expected_logs: Vec<LogData> = vec![LogData {
-        data: [0xff_u8; 32].into(),
+        data: Bytes::from(data),
         topics: vec![],
     }];
     assert_eq!(logs, expected_logs);
@@ -628,8 +629,9 @@ fn log1() {
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let data = [0xff_u8; 32].as_slice();
     let expected_logs: Vec<LogData> = vec![LogData {
-        data: [0xff_u8; 32].into(),
+        data: Bytes::from(data),
         topics: vec![U256 { lo: 1, hi: 0 }],
     }];
     assert_eq!(logs, expected_logs);
@@ -673,8 +675,9 @@ fn log2() {
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let data = [0xff_u8; 32].as_slice();
     let expected_logs: Vec<LogData> = vec![LogData {
-        data: [0xff_u8; 32].into(),
+        data: Bytes::from(data),
         topics: vec![U256 { lo: 1, hi: 0 }, U256 { lo: 2, hi: 0 }],
     }];
     assert_eq!(logs, expected_logs);
@@ -720,8 +723,9 @@ fn log3() {
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let data = [0xff_u8; 32].as_slice();
     let expected_logs: Vec<LogData> = vec![LogData {
-        data: [0xff_u8; 32].into(),
+        data: Bytes::from(data),
         topics: vec![
             U256 { lo: 1, hi: 0 },
             U256 { lo: 2, hi: 0 },
@@ -775,8 +779,9 @@ fn log4() {
 
     assert!(result.is_success());
     let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    let data = [0xff_u8; 32].as_slice();
     let expected_logs: Vec<LogData> = vec![LogData {
-        data: [0xff_u8; 32].into(),
+        data: Bytes::from(data),
         topics: vec![
             U256 { lo: 1, hi: 0 },
             U256 { lo: 2, hi: 0 },
