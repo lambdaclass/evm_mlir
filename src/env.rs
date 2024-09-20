@@ -108,29 +108,38 @@ impl Env {
         // if it's a blob tx (eip-4844)
         // https://eips.ethereum.org/EIPS/eip-4844
         if let Some(max) = self.tx.max_fee_per_blob_gas {
+            // a blob tx must have a recipient
+            // https://eips.ethereum.org/EIPS/eip-4844#blob-transaction
             if self.tx.is_create() {
                 return Err(InvalidTransaction::BlobCreateTransaction);
             }
 
-            let price = self.block.blob_gasprice.unwrap();
-            if U256::from(price) > max {
-                return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
-            }
+            // there must be at least one blob hash in a blob tx
+            // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L406
             if self.tx.blob_hashes.is_empty() {
                 return Err(InvalidTransaction::EmptyBlobs);
             }
+
+            // the maximum number of blobs for now is 6
+            // https://eips.ethereum.org/EIPS/eip-4844#throughput
+            if self.tx.number_of_blobs() > MAX_BLOB_NUMBER_PER_BLOCK as u64 {
+                return Err(InvalidTransaction::TooManyBlobs {
+                    have: self.tx.number_of_blobs() as usize,
+                    max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
+                });
+            }
+
+            // each blob's first byte must be 0x01
+            // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L408
             for blob in self.tx.blob_hashes.iter() {
                 if blob[0] != VERSIONED_HASH_VERSION_KZG {
                     return Err(InvalidTransaction::BlobVersionNotSupported);
                 }
             }
 
-            let num_blobs = self.tx.blob_hashes.len();
-            if num_blobs > MAX_BLOB_NUMBER_PER_BLOCK as usize {
-                return Err(InvalidTransaction::TooManyBlobs {
-                    have: num_blobs,
-                    max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
-                });
+            let price = self.block.blob_gasprice.unwrap();
+            if U256::from(price) > max {
+                return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
         }
         // TODO: check if more validations are needed
@@ -324,6 +333,10 @@ impl TxEnv {
     pub fn is_create(&self) -> bool {
         matches!(self.transact_to, TransactTo::Create)
     }
+
+    pub fn number_of_blobs(&self) -> u64 {
+        self.blob_hashes.len() as u64
+    }
 }
 
 #[cfg(test)]
@@ -515,6 +528,7 @@ mod tests {
     }
 
     #[test]
+    // Blob tx invalid if it's create
     fn tx_blob_is_create() {
         let tx_env = TxEnv {
             transact_to: TransactTo::Create,
@@ -536,6 +550,87 @@ mod tests {
         let tx_result = env.validate_transaction(&AccountInfo::default());
 
         assert_eq!(tx_result, Err(InvalidTransaction::BlobCreateTransaction))
+    }
+
+    #[test]
+    // Blob tx invalid if empty `blob_hashes`
+    fn tx_blob_with_no_hashes() {
+        let tx_env = TxEnv {
+            max_fee_per_blob_gas: Some(10.into()),
+            blob_hashes: Vec::default(),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(tx_result, Err(InvalidTransaction::EmptyBlobs))
+    }
+
+    #[test]
+    // Blob tx invalid if blobhashes length is greater
+    // than `MAX_BLOB_NUMBER_PER_BLOCK`
+    fn tx_too_many_blobs() {
+        let tx_env = TxEnv {
+            max_fee_per_blob_gas: Some(10.into()),
+            blob_hashes: vec![B256::default(); 7],
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::TooManyBlobs {
+                max: MAX_BLOB_NUMBER_PER_BLOCK as usize,
+                have: 7
+            })
+        )
+    }
+
+    #[test]
+    fn tx_blob_wrong_version_hashes() {
+        let tx_env = TxEnv {
+            max_fee_per_blob_gas: Some(10.into()),
+            blob_hashes: vec![B256::default(); 2],
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(tx_result, Err(InvalidTransaction::BlobVersionNotSupported))
     }
 
     #[test]
