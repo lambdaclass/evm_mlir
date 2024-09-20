@@ -601,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn modexp_gas_cost() {
+    fn modexp_min_gas_cost() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
         let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 10);
         let gas_limit = 100_000_000;
@@ -616,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    fn modexp_gas_cost2() {
+    fn modexp_variable_gas_cost() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
         let calldata = calldata_for_modexp(256, 1, 1, 8, 6, 10);
         let gas_limit = 100_000_000;
@@ -628,6 +628,21 @@ mod tests {
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::from(4_u8.to_be_bytes().to_vec()));
         assert_eq!(consumed_gas, 682);
+    }
+
+    #[test]
+    fn modexp_not_enought_gas() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 10);
+        let gas_limit = 199;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, gas_limit);
     }
 
     #[test]
