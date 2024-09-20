@@ -27,7 +27,7 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
-        "stEIP3651-warmcoinbase".into(),
+        //"stEIP3651-warmcoinbase".into(),
         "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
         "eip3855_push0".into(),
@@ -102,4 +102,9 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/Shanghai/stEIP3651-warmcoinbase/", r"^.*/*.json",);
+
+// ethtests/GeneralStateTests/Pyspecs/shanghai/eip3651_warm_coinbase/warm_coinbase_call_out_of_gas.json
+// ethtests/GeneralStateTests/Pyspecs/shanghai/eip3651_warm_coinbase/warm_coinbase_gas_usage.json
+// ethtests/GeneralStateTests/Shanghai/stEIP3651-warmcoinbase/coinbaseWarmAccountCallGas.json
+// ethtests/GeneralStateTests/Shanghai/stEIP3651-warmcoinbase/coinbaseWarmAccountCallGasFail.json
