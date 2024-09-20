@@ -172,19 +172,15 @@ pub mod precompiles {
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
     }
-
     pub fn sha2_256_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 12
     }
-
     pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 120
     }
-
     pub fn ecpairing_dynamic_cost(len: u64) -> u64 {
         ECPAIRING_PAIRING_COST * (len / 192)
     }
-
     pub fn blake2_gas_cost(rounds: u32) -> u64 {
         rounds as u64
     }

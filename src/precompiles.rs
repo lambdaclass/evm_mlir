@@ -30,6 +30,8 @@ use sha3::{Digest, Keccak256};
 
 /// ECDSA public key recovery function.
 /// More info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
+/// ECDSA public key recovery function.
+/// More info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
@@ -64,6 +66,8 @@ pub fn ecrecover(
 
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn sha2_256(
     calldata: &Bytes,
     gas_limit: u64,
@@ -78,6 +82,11 @@ pub fn sha2_256(
     Ok(Bytes::copy_from_slice(&hash))
 }
 
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
+///
+/// # Returns
+/// - a 20-byte hash right aligned to 32 bytes
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
 ///
@@ -102,6 +111,8 @@ pub fn ripemd_160(
 
 /// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn identity(
     calldata: &Bytes,
     gas_limit: u64,
@@ -115,6 +126,8 @@ pub fn identity(
     Ok(calldata.clone())
 }
 
+/// Arbitrary-precision exponentiation under modulo.
+/// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
 /// Arbitrary-precision exponentiation under modulo.
 /// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
 pub fn modexp(
@@ -172,7 +185,7 @@ pub fn modexp(
     Ok(Bytes::copy_from_slice(output))
 }
 
-/// Point addition on the elliptic curve 'alt_bn128'.
+/// Point addition on the elliptic curve 'alt_bn128' (also referred as 'bn254').
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecadd(
     calldata: &Bytes,
@@ -232,7 +245,7 @@ pub fn ecadd(
     Ok(Bytes::from(res))
 }
 
-/// Scalar multiplication on the elliptic curve 'alt_bn128'.
+/// Scalar multiplication on the elliptic curve 'alt_bn128' (also referred as 'bn254').
 /// More info in https://eips.ethereum.org/EIPS/eip-196 and https://www.evm.codes/precompiled.
 pub fn ecmul(
     calldata: &Bytes,
@@ -435,6 +448,8 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 
 const CALLDATA_LEN: usize = 213;
 
+/// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
+/// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 /// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
 /// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 pub fn blake2f(
