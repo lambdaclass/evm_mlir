@@ -59,7 +59,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stTransactionTest".into(),
         "eip3860_initcode".into(),
         "stCodeCopyTest".into(),
-        //"stPreCompiledContracts".into(),
         "stNonZeroCallsTest".into(),
         "stMemoryTest".into(),
         "stInitCodeTest".into(),
@@ -85,7 +84,7 @@ fn get_ignored_suites() -> HashSet<String> {
     HashSet::from([
         "ValueOverflow".into(),      // TODO: parse bigint tx value
         "ValueOverflowParis".into(), // TODO: parse bigint tx value
-        "blake2B".into(), // this will be tested with the blake2B binary because takes like 37 min
+        "blake2B".into(), // this is tested within the blake2B binary because takes like 37 min
     ])
 }
 
