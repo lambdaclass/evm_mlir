@@ -107,16 +107,19 @@ impl Env {
             return Err(InvalidTransaction::GasPriceLessThanBasefee);
         }
 
+        // if it's a blob tx (eip-4844)
+        // https://eips.ethereum.org/EIPS/eip-4844
         if let Some(max) = self.tx.max_fee_per_blob_gas {
+            if is_create {
+                return Err(InvalidTransaction::BlobCreateTransaction);
+            }
+
             let price = self.block.blob_gasprice.unwrap();
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
             if self.tx.blob_hashes.is_empty() {
                 return Err(InvalidTransaction::EmptyBlobs);
-            }
-            if is_create {
-                return Err(InvalidTransaction::BlobCreateTransaction);
             }
             for blob in self.tx.blob_hashes.iter() {
                 if blob[0] != VERSIONED_HASH_VERSION_KZG {
@@ -507,6 +510,30 @@ mod tests {
         let tx_result = env.validate_transaction(&AccountInfo::default());
 
         assert_eq!(tx_result, Err(InvalidTransaction::GasPriceLessThanBasefee))
+    }
+
+    #[test]
+    fn tx_blob_is_create() {
+        let tx_env = TxEnv {
+            transact_to: TransactTo::Create,
+            max_fee_per_blob_gas: Some(10.into()),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(tx_result, Err(InvalidTransaction::BlobCreateTransaction))
     }
 
     #[test]
