@@ -90,6 +90,7 @@ impl Env {
         }
 
         // if it's a fee market tx (eip-1559)
+        // https://eips.ethereum.org/EIPS/eip-1559
         if let Some(max_priority_fee_per_gas) = self.tx.gas_priority_fee {
             // the max tip fee i'm willing to pay can't exceed the
             // max total fee i'm willing to pay
