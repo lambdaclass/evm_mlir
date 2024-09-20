@@ -102,7 +102,11 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/Shanghai/stEIP3651-warmcoinbase/", r"^.*/*.json",);
+datatest_stable::harness!(
+    run_ef_test,
+    "ethtests/GeneralStateTests/Shanghai/stEIP3651-warmcoinbase/",
+    r"^.*/*.json",
+);
 
 // ethtests/GeneralStateTests/Pyspecs/shanghai/eip3651_warm_coinbase/warm_coinbase_call_out_of_gas.json
 // ethtests/GeneralStateTests/Pyspecs/shanghai/eip3651_warm_coinbase/warm_coinbase_gas_usage.json
