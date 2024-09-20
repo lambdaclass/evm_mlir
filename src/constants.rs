@@ -229,6 +229,7 @@ pub mod precompiles {
     /// Used to get values of B, E and M.
     pub const MXP_PARAMS_OFFSET: usize = 96;
     pub const MODEXP_ADDRESS: u64 = 0x05;
+    pub const MIN_MODEXP_COST: u64 = 200;
 
     // ecadd
     pub const ECADD_PARAMS_OFFSET: usize = 128;

@@ -154,7 +154,7 @@ pub fn modexp(
         0
     };
     let calculate_iteration_count = iteration_count.max(1);
-    let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(200);
+    let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(MIN_MODEXP_COST);
     if gas_limit < gas_cost {
         return Err(PrecompileError::NotEnoughGas);
     }
