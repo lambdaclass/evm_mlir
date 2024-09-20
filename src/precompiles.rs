@@ -646,6 +646,21 @@ mod tests {
     }
 
     #[test]
+    fn modexp_zero_modulo() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 0);
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(0_u8.to_be_bytes().to_vec()));
+        assert_eq!(consumed_gas, 200);
+    }
+
+    #[test]
     fn modexp_bigger_msize_than_necessary() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
         let calldata = calldata_for_modexp(1, 1, 32, 8, 6, 10);
