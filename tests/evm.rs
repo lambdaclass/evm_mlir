@@ -3897,7 +3897,7 @@ fn tstore_gas_consumption() {
         Operation::Push((1_u8, BigUint::from(2_u8))),
         Operation::Tstore,
     ];
-    let needed_gas = gas_cost::PUSHN * 2 + 20_000;
+    let needed_gas = gas_cost::PUSHN * 2 + gas_cost::TSTORE;
     let env = Env::default();
 
     run_program_assert_gas_exact(program, env, needed_gas as _);
