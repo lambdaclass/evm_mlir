@@ -1131,44 +1131,13 @@ impl<'c> SyscallContext<'c> {
         let (original, current) = (slot.original_value, slot.present_value);
 
         // Compute the gas cost
-        let gas_cost: i64 = if original.is_zero() && current.is_zero() && current != value {
+        if original.is_zero() && current.is_zero() && current != value {
             20_000
         } else if original == current && current != value {
             2_900
         } else {
             100
-        };
-
-        let reset_non_zero_to_zero = !original.is_zero() && !current.is_zero() && value.is_zero();
-        let undo_reset_to_zero = !original.is_zero() && current.is_zero() && !value.is_zero();
-        let undo_reset_to_zero_into_original = undo_reset_to_zero && (value == original);
-        let reset_back_to_zero = original.is_zero() && !current.is_zero() && value.is_zero();
-        let reset_to_original = (current != value) && (original == value);
-
-        let gas_refund: i64 = if reset_non_zero_to_zero {
-            4_800
-        } else if undo_reset_to_zero_into_original {
-            -2_000
-        } else if undo_reset_to_zero {
-            -4_800
-        } else if reset_back_to_zero {
-            19_900
-        } else if reset_to_original {
-            2_800
-        } else {
-            0
-        };
-
-        if gas_refund > 0 {
-            self.inner_context.gas_refund += gas_refund as u64;
-        } else {
-            self.inner_context.gas_refund = self
-                .inner_context
-                .gas_refund
-                .saturating_sub(gas_refund.unsigned_abs());
-        };
-
-        gas_cost
+        }
     }
 }
 
