@@ -137,7 +137,13 @@ impl Env {
                 }
             }
 
-            let price = self.block.blob_gasprice.unwrap();
+            // check that the tx is willing to pay at least the blob gas price
+            // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L412
+            let price = self
+                .block
+                .blob_gasprice
+                .expect("it's a blob tx, but the block has no blob gas price");
+
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
@@ -342,6 +348,7 @@ impl TxEnv {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     use ethereum_types::H160;
 
@@ -631,6 +638,37 @@ mod tests {
         let tx_result = env.validate_transaction(&AccountInfo::default());
 
         assert_eq!(tx_result, Err(InvalidTransaction::BlobVersionNotSupported))
+    }
+
+    #[test]
+    fn tx_blob_max_fee_per_blob_gas_lower_than_block_blob_gas_fee() {
+        let blobhash_str = "0x01124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+        let blobhash = B256::from_str(blobhash_str).expect("Error while converting str to B256");
+
+        let tx_env = TxEnv {
+            max_fee_per_blob_gas: Some(10.into()),
+            blob_hashes: vec![blobhash],
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            blob_gasprice: 11.into(),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::BlobGasPriceGreaterThanMax)
+        )
     }
 
     #[test]
