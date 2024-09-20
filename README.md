@@ -131,7 +131,7 @@ make test-eth
 To run the solidity tests if you don't have the compiled binaries, you can run
 
 ```bash
-make compile-solidity
+make compile-solidity-test-examples
 ```
 
 If you don't have the solc compiler, you should run if you have brew installed on macOs
