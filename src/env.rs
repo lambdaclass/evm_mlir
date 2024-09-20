@@ -70,9 +70,7 @@ impl Env {
 
         // if it's a create tx, check max code size
         // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L376
-        let is_create = matches!(self.tx.transact_to, TransactTo::Create);
-
-        if is_create && self.tx.data.len() > 2 * MAX_CODE_SIZE {
+        if self.tx.is_create() && self.tx.data.len() > 2 * MAX_CODE_SIZE {
             return Err(InvalidTransaction::CreateInitCodeSizeLimit);
         }
 
@@ -110,7 +108,7 @@ impl Env {
         // if it's a blob tx (eip-4844)
         // https://eips.ethereum.org/EIPS/eip-4844
         if let Some(max) = self.tx.max_fee_per_blob_gas {
-            if is_create {
+            if self.tx.is_create() {
                 return Err(InvalidTransaction::BlobCreateTransaction);
             }
 
@@ -321,6 +319,10 @@ impl TxEnv {
             TransactTo::Call(addr) => addr,
             TransactTo::Create => self.caller,
         }
+    }
+
+    pub fn is_create(&self) -> bool {
+        matches!(self.transact_to, TransactTo::Create)
     }
 }
 
