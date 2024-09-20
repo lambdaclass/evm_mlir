@@ -30,8 +30,6 @@ use sha3::{Digest, Keccak256};
 
 /// ECDSA public key recovery function.
 /// More info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
-/// ECDSA public key recovery function.
-/// More info in https://eips.ethereum.org/EIPS/eip-2, https://eips.ethereum.org/EIPS/eip-1271 and https://www.evm.codes/precompiled.
 pub fn ecrecover(
     calldata: &Bytes,
     gas_limit: u64,
