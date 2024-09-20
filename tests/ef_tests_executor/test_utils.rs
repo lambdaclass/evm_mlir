@@ -4,6 +4,7 @@ use bytes::Bytes;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
+    primitives::B256,
     result::ExecutionResult,
     utils::precompiled_addresses,
     Env, Evm,
@@ -94,11 +95,18 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     Evm::new(env, db)
 }
 
+pub fn rlp_hash(logs: &[Log]) -> B256 {}
+
 fn verify_result(
     test: &Test,
     expected_result: Option<&Bytes>,
     execution_result: &ExecutionResult,
 ) -> Result<(), String> {
+    let log_hash = rlp_hash(execution_result.logs());
+    if log_hash != test.logs {
+        return Err("Wrong logs".into());
+    }
+
     match (&test.expect_exception, execution_result) {
         (None, _) => {
             // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
