@@ -1,13 +1,16 @@
 use std::{collections::HashMap, path::Path};
 
 use bytes::Bytes;
+use ethereum_types::H256;
 use evm_mlir::{
     db::Db,
     env::{AccessList, TransactTo},
     result::ExecutionResult,
+    syscall::Log,
     utils::precompiled_addresses,
     Env, Evm,
 };
+use sha3::{Digest, Keccak256};
 
 use super::models::{AccountInfo, Test, TestSuite, TestUnit};
 
@@ -94,11 +97,27 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     Evm::new(env, db)
 }
 
+pub fn rlp_hash(logs: &[Log]) -> H256 {
+    for log in logs {
+        let tuki = rlp::encode(log).freeze();
+        eprintln!("TUKI ES: {:?}", tuki);
+    }
+    let out = [0; 32];
+    let mut hasher = Keccak256::new();
+    hasher.update(&out);
+    H256::from_slice(&hasher.finalize()[..])
+}
+
 fn verify_result(
     test: &Test,
     expected_result: Option<&Bytes>,
     execution_result: &ExecutionResult,
 ) -> Result<(), String> {
+    let log_hash = rlp_hash(execution_result.logs());
+    if log_hash != test.logs {
+        return Err("Wrong logs".into());
+    }
+
     match (&test.expect_exception, execution_result) {
         (None, _) => {
             // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
