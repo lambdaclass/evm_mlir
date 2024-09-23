@@ -120,7 +120,7 @@ pub struct InnerContext {
     pub gas_remaining: Option<u64>,
     gas_refund: u64,
     exit_status: Option<ExitStatusCode>,
-    logs: Vec<LogData>,
+    logs: Vec<Log>,
 }
 
 impl InnerContext {
@@ -253,14 +253,7 @@ impl<'c> SyscallContext<'c> {
 
     pub fn logs(&self) -> Vec<Log> {
         eprintln!("EN INNER_CONTEXT LOGS: {:?}", self.inner_context.logs);
-        self.inner_context
-            .logs
-            .iter()
-            .map(|logdata| Log {
-                address: self.env.tx.get_address(),
-                data: logdata.clone(),
-            })
-            .collect()
+        self.inner_context.logs.clone()
     }
 
     pub fn get_result(&self) -> Result<ResultAndState, EVMError> {
@@ -808,6 +801,10 @@ impl<'c> SyscallContext<'c> {
         };
 
         let log = LogData { data, topics };
+        let log = Log {
+            address: self.env.tx.get_address(),
+            data: log,
+        };
         self.inner_context.logs.push(log);
     }
 
