@@ -612,7 +612,7 @@ mod tests {
 
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::from(8_u8.to_be_bytes().to_vec()));
-        assert_eq!(consumed_gas, 200);
+        assert_eq!(consumed_gas, MIN_MODEXP_COST);
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod tests {
 
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::new());
-        assert_eq!(consumed_gas, 200);
+        assert_eq!(consumed_gas, MIN_MODEXP_COST);
     }
 
     #[test]
