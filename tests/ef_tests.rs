@@ -102,17 +102,4 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-// 6001600055600080808080620c0de05af160016000f3
-// esto hace un CALL aca 0c0de0, que tiene de codigo 60ff60005260206000a060fa60206000a160fb60fa60206000a260fc60fb60fa60206000a360fd60fc60fb60fa60206000a400
-
-//datatest_stable::harness!(
-//    run_ef_test,
-//    "ethtests/GeneralStateTests/stArgsZeroOneBalance/log0NonConst.json",
-//    r"^.*/*.json",
-//);
-
-datatest_stable::harness!(
-    run_ef_test,
-    "ethtests/GeneralStateTests/stCreateTest/CreateOOGFromCallRefunds.json",
-    r"^.*/*.json",
-);
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

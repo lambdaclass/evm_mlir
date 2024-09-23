@@ -47,9 +47,6 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
     env.tx.value = unit.transaction.value[test.indexes.value];
     env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
-    eprintln!("EL INDICE ES: {:?}", test.indexes.data);
-    eprintln!("Y DATA ES: {:?}", unit.transaction.data[test.indexes.data]);
-    eprintln!("TEST ES: {:?}", test.logs);
     let access_list_vector = unit
         .transaction
         .access_lists
@@ -107,15 +104,10 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
 // stRandom2/randomStatetest433.json
 pub fn rlp_hash(logs: &[Log]) -> H256 {
     let mut rlp_stream = RlpStream::new_list(logs.len());
-    eprintln!("LOGS: {:?}", logs);
     for log in logs {
-        if log.data.data.len() <= 1024 {
-            eprintln!("LOG: {:?}", log);
-        }
         rlp_stream.append(log);
     }
     let out = rlp_stream.out().freeze().to_vec();
-    eprintln!("OUT ES: {:?}", out);
     let mut hasher = Keccak256::new();
     hasher.update(&out);
     H256::from_slice(&hasher.finalize()[..])
@@ -128,9 +120,6 @@ fn verify_result(
 ) -> Result<(), String> {
     let log_hash = rlp_hash(execution_result.logs());
     if log_hash != test.logs {
-        eprintln!("GOT: {:?}", log_hash);
-        eprintln!("EXPECTED: {:?}", test.logs);
-        eprintln!("TEST_NAME: {:?}", test.txbytes); // el data.15
         return Err("Wrong logs".into());
     }
 
@@ -190,13 +179,9 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
 
         for test in tests {
-            if test.indexes.data != 15 {
-                continue;
-            }
             let mut evm = setup_evm(test, &unit);
             let res = evm.transact().unwrap();
             verify_result(test, unit.out.as_ref(), &res.result)?;
-            // TODO: use rlp and hash to check logs
             verify_storage(&test.post_state, res.state);
         }
     }

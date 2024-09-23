@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::{ffi::c_void, path::PathBuf};
+use std::ffi::c_void;
 
 use crate::{
     constants::{
@@ -30,13 +30,12 @@ use crate::{
     journal::Journal,
     precompiles::*,
     primitives::{Address, Bytes, B256, U256 as EU256},
-    program::{Operation, Program},
+    program::Program,
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::AccountStatus,
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
-use num_bigint::BigUint;
 use rlp::{Encodable, RlpStream};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
@@ -208,23 +207,18 @@ impl Encodable for U256 {
         let mut lo = self.lo.to_be_bytes().to_vec();
         let mut hi = self.hi.to_be_bytes().to_vec();
         hi.append(&mut lo);
-        let tuki = &hi[..];
-        s.append(&tuki);
+        let bytes = &hi[..];
+        s.append(&bytes);
     }
 }
 
-impl Encodable for LogData {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        s.append_list(&self.topics);
-        s.append(&self.data);
-    }
-}
 impl Encodable for Log {
     fn rlp_append(&self, s: &mut RlpStream) {
-        s.begin_unbounded_list(); // Número de elementos en el Log
         let address = &self.address.0[..];
+        s.begin_unbounded_list();
         s.append(&address);
-        s.append(&self.data);
+        s.append_list(&self.data.topics);
+        s.append(&self.data.data);
         s.finalize_unbounded_list();
     }
 }
@@ -438,7 +432,10 @@ impl<'c> SyscallContext<'c> {
             let remaining_gas = available_gas.saturating_sub(*consumed_gas);
             let gas_fraction = remaining_gas - remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR;
 
-            gas_to_send = std::cmp::min(gas_fraction, gas_to_send);
+            gas_to_send = std::cmp::min(
+                remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
+                gas_to_send,
+            );
             *consumed_gas += gas_to_send;
             gas_to_send += stipend;
 
@@ -789,12 +786,11 @@ impl<'c> SyscallContext<'c> {
     fn create_log(&mut self, offset: u32, size: u32, topics: Vec<U256>) {
         let offset = offset as usize;
         let size = size as usize;
-
-        self.inner_context.resize_memory_if_necessary(offset, size);
-        let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
-        let data = if data.is_empty() {
+        let data = if size == 0 {
             Bytes::new()
         } else {
+            self.inner_context.resize_memory_if_necessary(offset, size);
+            let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
             Bytes::from(data)
         };
 
