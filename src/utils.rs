@@ -1619,9 +1619,11 @@ pub(crate) fn get_basefee<'a>(
 }
 
 /// Calculates the blob gas price from the header's excess blob gas field.
-///
-/// See also [the EIP-4844 helpers](https://eips.ethereum.org/EIPS/eip-4844#helpers)
 /// (`get_blob_gasprice`).
+///
+/// See [EIP-4844 helpers].
+///
+/// [EIP-4844 helpers]: https://eips.ethereum.org/EIPS/eip-4844#helpers
 pub fn calc_blob_gasprice(excess_blob_gas: u64) -> u128 {
     fake_exponential(
         gas_cost::MIN_BLOB_GASPRICE,
