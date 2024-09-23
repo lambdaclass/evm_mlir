@@ -71,7 +71,11 @@ impl Evm<Db> {
             .expect("failed to compile program");
 
         let gas_limit = self.env.tx.gas_limit;
+        let from = self.env.tx.caller;
+        let to = self.env.tx.get_address();
+        let balance_to_transfer = self.env.tx.value;
         let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
+        context.journal.transfer(&from, &to, balance_to_transfer);
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit

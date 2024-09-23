@@ -123,6 +123,25 @@ impl<'a> Journal<'a> {
         accounts
     }
 
+    pub fn transfer(
+        &mut self,
+        from: &Address,
+        to: &Address,
+        balance_to_transfer: U256,
+    ) -> Option<()> {
+        let from = self._get_account_mut(from)?;
+
+        from.balance = from.balance.checked_sub(balance_to_transfer)?;
+        from.status |= AccountStatus::Touched;
+
+        let to = self._get_account_mut(to)?;
+        to.balance = to.balance.checked_add(balance_to_transfer)?;
+        to.status |= AccountStatus::Touched;
+
+        // TODO: Should we add somewhere that we made this transfer?
+        Some(())
+    }
+
     /* ACCOUNT HANDLING */
 
     pub fn new_account(&mut self, address: Address, balance: U256) {

@@ -107,3 +107,5 @@ datatest_stable::harness!(
     "ethtests/GeneralStateTests/stArgsZeroOneBalance/log0NonConst.json",
     r"^.*/*.json",
 );
+
+//datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
