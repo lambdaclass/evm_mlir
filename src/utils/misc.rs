@@ -709,3 +709,13 @@ pub fn right_pad(calldata: &Bytes, target_len: usize) -> Bytes {
     }
     padded_calldata.into()
 }
+
+pub fn left_pad(calldata: &Bytes, target_len: usize) -> Bytes {
+    let mut padded_calldata = vec![0u8; target_len];
+    if calldata.len() < target_len {
+        padded_calldata[target_len - calldata.len()..].copy_from_slice(calldata);
+    } else {
+        return calldata.clone();
+    }
+    padded_calldata.into()
+}
