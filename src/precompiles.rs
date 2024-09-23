@@ -590,9 +590,9 @@ mod tests {
 
         let mut calldata = vec![0_u8; calldata_size];
         let calldata_slice = calldata.as_mut_slice();
-        b_data_size.to_big_endian(&mut calldata_slice[..32]);
-        e_data_size.to_big_endian(&mut calldata_slice[32..64]);
-        m_data_size.to_big_endian(&mut calldata_slice[64..96]);
+        b_data_size.to_big_endian(&mut calldata_slice[..BSIZE_END]);
+        e_data_size.to_big_endian(&mut calldata_slice[BSIZE_END..ESIZE_END]);
+        m_data_size.to_big_endian(&mut calldata_slice[ESIZE_END..MSIZE_END]);
         calldata_slice[calldata_size - m_size - e_size - 1] = b;
         calldata_slice[calldata_size - m_size - 1] = e;
         calldata_slice[calldata_size - 1] = m;
