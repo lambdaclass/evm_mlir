@@ -16,7 +16,18 @@ pub const EMPTY_CODE_HASH_STR: &str =
     "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
 pub const VERSIONED_HASH_VERSION_KZG: u8 = 0x01;
+
+/// Maximum number of blobs per block for EIP-4844 transactions.
+/// This number is derived from the chosen `TARGET_BLOB_GAS_PER_BLOCK`
+/// and `MAX_BLOB_GAS_PER_BLOCK`. [Reference].
+/// 
+/// [Reference]: https://eips.ethereum.org/EIPS/eip-4844#throughput
 pub const MAX_BLOB_NUMBER_PER_BLOCK: u8 = 6;
+
+/// Gas cost for a blob transaction ([EIP-4844]).
+///
+/// [EIP-4844]: https://eips.ethereum.org/EIPS/eip-4844#parameters
+pub const GAS_PER_BLOB: u64 = 1 << 17;
 
 //TODO: Add missing opcodes gas consumption costs
 //  -> This implies refactoring codegen/operations.rs
