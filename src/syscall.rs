@@ -37,7 +37,6 @@ use crate::{
 };
 use melior::ExecutionEngine;
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
 
 /// Function type for the main entrypoint of the generated code
 pub type MainFunc = extern "C" fn(&mut SyscallContext, initial_gas: u64) -> u8;
@@ -187,7 +186,6 @@ pub struct SyscallContext<'c> {
     pub inner_context: InnerContext,
     pub halt_reason: Option<HaltReason>,
     initial_gas: u64,
-    pub transient_storage: HashMap<(Address, EU256), EU256>, // TODO: Move this to Journal
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
@@ -212,7 +210,6 @@ impl<'c> SyscallContext<'c> {
             call_frame,
             halt_reason: None,
             inner_context: Default::default(),
-            transient_storage: Default::default(),
         }
     }
 
@@ -1112,25 +1109,31 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub extern "C" fn read_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
+        let sender_address = self.env.tx.get_address();
         let key = stg_key.to_primitive_u256();
-        let address = self.env.tx.get_address();
 
         let result = self
-            .transient_storage
-            .get(&(address, key))
-            .cloned()
-            .unwrap_or(EU256::zero());
+            .journal
+            .read_tx_storage(sender_address, key)
+            .present_value;
 
         stg_value.hi = (result >> 128).low_u128();
         stg_value.lo = result.low_u128();
     }
 
-    pub extern "C" fn write_transient_storage(&mut self, stg_key: &U256, stg_value: &mut U256) {
-        let address = self.env.tx.get_address();
-
+    pub extern "C" fn write_transient_storage(
+        &mut self,
+        stg_key: &U256,
+        stg_value: &mut U256,
+    ) -> i64 {
+        let sender_address = self.env.tx.get_address();
         let key = stg_key.to_primitive_u256();
         let value = stg_value.to_primitive_u256();
-        self.transient_storage.insert((address, key), value);
+
+        let _slot = self.journal.read_tx_storage(sender_address, key);
+        self.journal.write_tx_storage(sender_address, key, value);
+
+        gas_cost::TSTORE
     }
 }
 
@@ -1901,7 +1904,7 @@ pub(crate) mod mlir {
             context,
             StringAttribute::new(context, symbols::TRANSIENT_STORAGE_WRITE),
             r#TypeAttribute::new(
-                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[]).into(),
+                FunctionType::new(context, &[ptr_type, ptr_type, ptr_type], &[uint64]).into(),
             ),
             Region::new(),
             attributes,
@@ -2195,14 +2198,18 @@ pub(crate) mod mlir {
         key: Value<'c, 'c>,
         value: Value<'c, 'c>,
         location: Location<'c>,
-    ) {
-        block.append_operation(func::call(
-            mlir_ctx,
-            FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_WRITE),
-            &[syscall_ctx, key, value],
-            &[],
-            location,
-        ));
+    ) -> Result<Value<'c, 'c>, CodegenError> {
+        let uint64 = IntegerType::new(mlir_ctx, 64);
+        let value = block
+            .append_operation(func::call(
+                mlir_ctx,
+                FlatSymbolRefAttribute::new(mlir_ctx, symbols::TRANSIENT_STORAGE_WRITE),
+                &[syscall_ctx, key, value],
+                &[uint64.into()],
+                location,
+            ))
+            .result(0)?;
+        Ok(value.into())
     }
 
     /// Receives log data and appends a log to the logs vector
