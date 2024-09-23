@@ -44,6 +44,10 @@ impl Db {
         Self::default()
     }
 
+    pub fn get_account(&self, address: Address) -> Option<&DbAccount> {
+        self.accounts.get(&address)
+    }
+
     pub fn insert_block_hash(&mut self, number: U256, hash: B256) {
         self.block_hashes.insert(number, hash);
     }
@@ -213,6 +217,17 @@ impl AccountInfo {
 
 impl From<DbAccount> for AccountInfo {
     fn from(db_account: DbAccount) -> Self {
+        Self {
+            balance: db_account.balance,
+            nonce: db_account.nonce,
+            code_hash: db_account.bytecode_hash,
+            code: None,
+        }
+    }
+}
+
+impl From<&DbAccount> for AccountInfo {
+    fn from(db_account: &DbAccount) -> Self {
         Self {
             balance: db_account.balance,
             nonce: db_account.nonce,
