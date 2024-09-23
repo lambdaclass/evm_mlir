@@ -5,7 +5,7 @@ use crate::{
     },
     primitives::U256,
     result::PrecompileError,
-    utils::right_pad,
+    utils::{left_pad, right_pad},
 };
 use bytes::Bytes;
 use ethereum_types::Address;
@@ -122,6 +122,11 @@ pub fn modexp(
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
+    if calldata.is_empty() {
+        *consumed_gas += MIN_MODEXP_COST;
+        return Ok(Bytes::new());
+    }
+
     let calldata = right_pad(calldata, MXP_PARAMS_OFFSET);
 
     // Cast sizes as usize and check for overflow.
@@ -168,14 +173,14 @@ pub fn modexp(
         b.modpow(&e, &m)
     };
 
-    let mut bytes = result.to_bytes_be();
-    if bytes.len() < m_size {
-        bytes.resize(m_size, 0);
-        bytes.reverse();
-    }
+    let bytes = result.to_bytes_be();
+    let output = if bytes.len() <= m_size {
+        left_pad(&Bytes::from(bytes), m_size)
+    } else {
+        Bytes::from(bytes)
+    };
 
-    let output = &bytes[..m_size];
-    Ok(Bytes::copy_from_slice(output))
+    Ok(output)
 }
 
 /// Point addition on the elliptic curve 'alt_bn128' (also referred as 'bn254').
