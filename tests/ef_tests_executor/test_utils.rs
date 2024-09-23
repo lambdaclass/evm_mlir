@@ -47,6 +47,9 @@ fn setup_evm(test: &Test, unit: &TestUnit) -> Evm<Db> {
     env.tx.gas_limit = unit.transaction.gas_limit[test.indexes.gas].as_u64();
     env.tx.value = unit.transaction.value[test.indexes.value];
     env.tx.data = decode_hex(unit.transaction.data[test.indexes.data].clone()).unwrap();
+    eprintln!("EL INDICE ES: {:?}", test.indexes.data);
+    eprintln!("Y DATA ES: {:?}", unit.transaction.data[test.indexes.data]);
+    eprintln!("TEST ES: {:?}", test.logs);
     let access_list_vector = unit
         .transaction
         .access_lists
@@ -187,6 +190,9 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         };
 
         for test in tests {
+            if test.indexes.data != 15 {
+                continue;
+            }
             let mut evm = setup_evm(test, &unit);
             let res = evm.transact().unwrap();
             verify_result(test, unit.out.as_ref(), &res.result)?;

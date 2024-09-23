@@ -252,6 +252,7 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub fn logs(&self) -> Vec<Log> {
+        eprintln!("EN INNER_CONTEXT LOGS: {:?}", self.inner_context.logs);
         self.inner_context
             .logs
             .iter()
@@ -497,7 +498,9 @@ impl<'c> SyscallContext<'c> {
             executor.execute(&mut context, env.tx.gas_limit);
 
             let result = context.get_result().unwrap().result;
-
+            self.inner_context
+                .logs
+                .extend_from_slice(&context.inner_context.logs);
             let unused_gas = gas_to_send - result.gas_used();
             *consumed_gas -= unused_gas;
             *consumed_gas -= result.gas_refunded();
@@ -1037,6 +1040,9 @@ impl<'c> SyscallContext<'c> {
         executor.execute(&mut context, new_env.tx.gas_limit);
 
         let result = context.get_result().unwrap().result;
+        self.inner_context
+            .logs
+            .extend_from_slice(&context.inner_context.logs);
         let bytecode = result.output().cloned().unwrap_or_default();
 
         self.journal.extend_from_successful(context.journal);
