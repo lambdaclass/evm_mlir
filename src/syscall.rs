@@ -15,7 +15,7 @@
 //! [`mlir::declare_syscalls`], which will make the syscall available inside the MLIR code.
 //! Finally, the function can be called from the MLIR code like a normal function (see
 //! [`mlir::write_result_syscall`] for an example).
-use std::ffi::c_void;
+use std::{ffi::c_void, path::PathBuf};
 
 use crate::{
     constants::{
@@ -30,12 +30,13 @@ use crate::{
     journal::Journal,
     precompiles::*,
     primitives::{Address, Bytes, B256, U256 as EU256},
-    program::Program,
+    program::{Operation, Program},
     result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
     state::AccountStatus,
     utils::{compute_contract_address, compute_contract_address2},
 };
 use melior::ExecutionEngine;
+use num_bigint::BigUint;
 use rlp::{Encodable, RlpStream};
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
@@ -208,7 +209,6 @@ impl Encodable for U256 {
         let mut hi = self.hi.to_be_bytes().to_vec();
         hi.append(&mut lo);
         let tuki = &hi[..];
-        eprintln!("TUKI ES: {:?}", tuki);
         s.append(&tuki);
     }
 }
@@ -252,7 +252,6 @@ impl<'c> SyscallContext<'c> {
     }
 
     pub fn logs(&self) -> Vec<Log> {
-        eprintln!("EN INNER_CONTEXT LOGS: {:?}", self.inner_context.logs);
         self.inner_context.logs.clone()
     }
 
@@ -437,10 +436,9 @@ impl<'c> SyscallContext<'c> {
             }
 
             let remaining_gas = available_gas.saturating_sub(*consumed_gas);
-            gas_to_send = std::cmp::min(
-                remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR,
-                gas_to_send,
-            );
+            let gas_fraction = remaining_gas - remaining_gas / call_opcode::GAS_CAP_DIVISION_FACTOR;
+
+            gas_to_send = std::cmp::min(gas_fraction, gas_to_send);
             *consumed_gas += gas_to_send;
             gas_to_send += stipend;
 

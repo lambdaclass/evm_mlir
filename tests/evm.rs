@@ -4421,7 +4421,6 @@ fn extcodehash_warm_cold_gas_cost() {
 #[test]
 fn multiple_logs() {
     let program = Program::from(vec![
-        // store data in memory
         Operation::Push((1, BigUint::from(255_u8))),
         Operation::Push0,
         Operation::Mstore,
