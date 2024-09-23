@@ -798,14 +798,11 @@ impl<'c> SyscallContext<'c> {
 
         self.inner_context.resize_memory_if_necessary(offset, size);
         let data: Vec<u8> = self.inner_context.memory[offset..offset + size].into();
-        //eprintln!("DATA ES ESTO: {:?}", data);
-        eprintln!("OFFSET Y SIZE SON: {:?}, {:?}", offset, size);
         let data = if data.is_empty() {
             Bytes::new()
         } else {
             Bytes::from(data)
         };
-        //eprintln!("DATA AHORA ES ESTO: {:?}", data);
 
         let log = LogData { data, topics };
         self.inner_context.logs.push(log);
@@ -859,8 +856,6 @@ impl<'c> SyscallContext<'c> {
         } else {
             let address_hi_slice = address.hi.to_be_bytes();
             let address_lo_slice = address.lo.to_be_bytes();
-            eprintln!("ESTE ES EL ADDRESS: {:?}", address);
-            eprintln!("ESTE ES EL BALANCE: {:?}", balance);
 
             let address_slice = [&address_hi_slice[12..16], &address_lo_slice[..]].concat();
 

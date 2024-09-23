@@ -102,10 +102,14 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
+//datatest_stable::harness!(
+//    run_ef_test,
+//    "ethtests/GeneralStateTests/stArgsZeroOneBalance/log0NonConst.json",
+//    r"^.*/*.json",
+//);
+
 datatest_stable::harness!(
     run_ef_test,
-    "ethtests/GeneralStateTests/stArgsZeroOneBalance/log0NonConst.json",
+    "ethtests/GeneralStateTests/stCreateTest/CreateOOGFromCallRefunds.json",
     r"^.*/*.json",
 );
-
-//datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);
