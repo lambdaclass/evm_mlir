@@ -6,7 +6,7 @@ use crate::{
             init_code_cost, MAX_CODE_SIZE, TX_BASE_COST, TX_CREATE_COST, TX_DATA_COST_PER_NON_ZERO,
             TX_DATA_COST_PER_ZERO,
         },
-        MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
+        GAS_PER_BLOB, MAX_BLOB_NUMBER_PER_BLOCK, VERSIONED_HASH_VERSION_KZG,
     },
     db::AccountInfo,
     primitives::{Address, Bytes, B256, U256},
@@ -105,6 +105,11 @@ impl Env {
             return Err(InvalidTransaction::GasPriceLessThanBasefee);
         }
 
+        // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/fork.py#L396
+        let mut max_gas_fee = U256::from(self.tx.gas_limit)
+            .checked_mul(self.tx.gas_price)
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
         // if it's a blob tx (eip-4844)
         // https://eips.ethereum.org/EIPS/eip-4844
         if let Some(max) = self.tx.max_fee_per_blob_gas {
@@ -143,13 +148,40 @@ impl Env {
                 .block
                 .blob_gasprice
                 .expect("it's a blob tx, but the block has no blob gas price");
+            // TODO: this should probably return an error, but it would violate
+            // revms api.
 
             if U256::from(price) > max {
                 return Err(InvalidTransaction::BlobGasPriceGreaterThanMax);
             }
+
+            max_gas_fee += self.calculate_total_blob_gas() * max;
+        } else if !self.tx.blob_hashes.is_empty() {
+            return Err(InvalidTransaction::BlobVersionedHashesNotSupported);
         }
-        // TODO: check if more validations are needed
+
+        let fee = max_gas_fee
+            .checked_add(self.tx.value)
+            .ok_or(InvalidTransaction::OverflowPaymentInTransaction)?;
+
+        if fee > account.balance {
+            return Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(fee),
+                balance: Box::new(account.balance),
+            });
+        }
+
         Ok(())
+    }
+
+    // calculates the total blob gas for the transaction, which is
+    // https://github.com/ethereum/execution-specs/blob/c854868f4abf2ab0c3e8790d4c40607e0d251147/src/ethereum/cancun/vm/gas.py#L295
+    fn calculate_total_blob_gas(&self) -> U256 {
+        if self.tx.max_fee_per_blob_gas.is_some() {
+            (GAS_PER_BLOB * self.tx.blob_hashes.len() as u64).into()
+        } else {
+            0.into()
+        }
     }
 
     /// Calculates the gas that is charged before execution is started.
@@ -669,6 +701,206 @@ mod tests {
             tx_result,
             Err(InvalidTransaction::BlobGasPriceGreaterThanMax)
         )
+    }
+
+    #[test]
+    fn tx_not_enough_balance_to_cover_fee() {
+        let tx_env = TxEnv {
+            gas_limit: 99_999,
+            gas_price: 1.into(),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.set_account(Address::default(), 41, 99_998.into(), HashMap::default());
+
+        let tx_result =
+            env.validate_transaction(&db.get_account(Address::default()).unwrap().clone().into());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(99_999.into()),
+                balance: Box::new(99_998.into())
+            })
+        )
+    }
+
+    #[test]
+    fn tx_with_blobs_not_enough_balance_to_cover_fee() {
+        let blobhash_str = "0x01124dee50136f3f93f19667fb4198c6b94eecbacfa300469e5280012757be94";
+        let blobhash = B256::from_str(blobhash_str).expect("Error while converting str to B256");
+
+        let tx_env = TxEnv {
+            gas_limit: 99_999,
+            gas_price: 1.into(),
+            max_fee_per_blob_gas: Some(1.into()),
+            blob_hashes: vec![blobhash; 5],
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            blob_gasprice: Some(1),
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env.clone(),
+            block: block_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.set_account(Address::default(), 41, 99_998.into(), HashMap::default());
+
+        let tx_result =
+            env.validate_transaction(&db.get_account(Address::default()).unwrap().clone().into());
+
+        let expected_fee = U256::from(tx_env.gas_limit) * tx_env.gas_price
+            + env.calculate_total_blob_gas() * tx_env.max_fee_per_blob_gas.unwrap();
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(expected_fee),
+                balance: Box::new(99_998.into())
+            })
+        )
+    }
+
+    #[test]
+    fn tx_with_value_not_enough_balance_to_cover_fee() {
+        let tx_env = TxEnv {
+            gas_limit: 99_999,
+            gas_price: 1.into(),
+            value: 1.into(),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env.clone(),
+            block: block_env,
+            ..Default::default()
+        };
+
+        let mut db = Db::default();
+        db.set_account(Address::default(), 41, 99_999.into(), HashMap::default());
+
+        let tx_result =
+            env.validate_transaction(&db.get_account(Address::default()).unwrap().clone().into());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::LackOfFundForMaxFee {
+                fee: Box::new(100_000.into()),
+                balance: Box::new(99_999.into())
+            })
+        )
+    }
+
+    #[test]
+    fn tx_overflows_fee() {
+        let tx_env = TxEnv {
+            gas_limit: u64::MAX,
+            gas_price: U256::MAX,
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env.clone(),
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::OverflowPaymentInTransaction)
+        )
+    }
+
+    #[test]
+    fn tx_with_value_overflows_fee() {
+        let tx_env = TxEnv {
+            gas_limit: u64::MAX,
+            gas_price: U256::MAX / u64::MAX,
+            value: 1.into(),
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env.clone(),
+            block: block_env,
+            ..Default::default()
+        };
+
+        let tx_result = env.validate_transaction(&AccountInfo::default());
+
+        assert_eq!(
+            tx_result,
+            Err(InvalidTransaction::OverflowPaymentInTransaction)
+        )
+    }
+
+    #[test]
+    fn calculate_total_blob_gas_zero() {
+        let env = Env::default();
+
+        let res = env.calculate_total_blob_gas();
+
+        assert_eq!(res, 0.into())
+    }
+
+    #[test]
+    fn calculate_total_blob_gas() {
+        let tx_env = TxEnv {
+            max_fee_per_blob_gas: Some(1.into()),
+            blob_hashes: vec![B256::default(); 5],
+            ..Default::default()
+        };
+
+        let block_env = BlockEnv {
+            gas_limit: U256::MAX,
+            ..Default::default()
+        };
+
+        let env = Env {
+            tx: tx_env,
+            block: block_env,
+            ..Default::default()
+        };
+
+        let res = env.calculate_total_blob_gas();
+
+        assert_eq!(res, U256::from(GAS_PER_BLOB * 5))
     }
 
     #[test]
