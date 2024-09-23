@@ -65,7 +65,6 @@ fn get_ignored_groups() -> HashSet<String> {
         "stSolidityTest".into(),
         "yul".into(),
         "stEIP3607".into(),
-        "eip198_modexp_precompile".into(),
         "stZeroCallsTest".into(),
         "stAttackTest".into(),
         "stExample".into(),
