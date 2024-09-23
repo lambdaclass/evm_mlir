@@ -4417,3 +4417,56 @@ fn extcodehash_warm_cold_gas_cost() {
     let used_gas = gas_cost::PUSHN * 2 + gas_cost::EXTCODEHASH_COLD + gas_cost::EXTCODEHASH_WARM;
     run_program_assert_gas_exact_with_db(env, db, used_gas as _)
 }
+
+#[test]
+fn multiple_logs() {
+    let program = Program::from(vec![
+        // store data in memory
+        Operation::Push((1, BigUint::from(255_u8))),
+        Operation::Push0,
+        Operation::Mstore,
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Log(0),
+        Operation::Push((1, BigUint::from(250_u8))),
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Log(1),
+        Operation::Push((1, BigUint::from(251_u8))),
+        Operation::Push((1, BigUint::from(250_u8))),
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Log(2),
+        Operation::Push((1, BigUint::from(252_u8))),
+        Operation::Push((1, BigUint::from(251_u8))),
+        Operation::Push((1, BigUint::from(250_u8))),
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Log(3),
+        Operation::Push((1, BigUint::from(253_u8))),
+        Operation::Push((1, BigUint::from(252_u8))),
+        Operation::Push((1, BigUint::from(251_u8))),
+        Operation::Push((1, BigUint::from(250_u8))),
+        Operation::Push((1, BigUint::from(32_u8))),
+        Operation::Push0,
+        Operation::Log(4),
+        Operation::Stop,
+    ]);
+
+    let mut env = Env::default();
+    env.tx.gas_limit = 999_999;
+
+    let (address, bytecode) = (
+        Address::from_low_u64_be(40),
+        Bytecode::from(program.to_bytecode()),
+    );
+    env.tx.transact_to = TransactTo::Call(address);
+    let db = Db::new().with_contract(address, bytecode);
+    let mut evm = Evm::new(env, db);
+
+    let result = evm.transact_commit().unwrap();
+
+    assert!(result.is_success());
+    let logs: Vec<LogData> = result.into_logs().into_iter().map(|log| log.data).collect();
+    assert_eq!(logs.len(), 5);
+}
