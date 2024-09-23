@@ -157,7 +157,6 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
         for test in tests {
             let mut evm = setup_evm(test, &unit);
             let res = evm.transact().unwrap();
-            println!("RESULT AND STATE: {:?}", res);
             verify_result(test, unit.out.as_ref(), &res.result)?;
             // TODO: use rlp and hash to check logs
             verify_storage(&test.post_state, res.state);
