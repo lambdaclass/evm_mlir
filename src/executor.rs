@@ -28,13 +28,14 @@ impl Executor {
 
     pub fn execute(&self, context: &mut SyscallContext, initial_gas: u64) -> u8 {
         let main_fn: MainFunc = self.get_main_entrypoint();
-
+        println!("main_fn: {:?}", main_fn);
         main_fn(context, initial_gas)
     }
 
     fn get_main_entrypoint(&self) -> MainFunc {
         let function_name = format!("_mlir_ciface_{MAIN_ENTRYPOINT}");
         let fptr = self.engine.lookup(&function_name);
+
         unsafe { std::mem::transmute(fptr) }
     }
 }

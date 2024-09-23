@@ -26,7 +26,7 @@ fn get_suite_name_from_path(path: &Path) -> String {
 fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
-        "stEIP5656-MCOPY".into(),
+        // "stEIP5656-MCOPY".into(),
         "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
         "eip3855_push0".into(),
@@ -104,3 +104,6 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
 datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_expansion_cost.json", r"^.*/*.json",);
 
 // ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_expansion_cost.json
+// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_hash.json done
+// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY.json done
+// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_copy_cost.json done
