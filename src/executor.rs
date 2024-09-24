@@ -28,7 +28,6 @@ impl Executor {
 
     pub fn execute(&self, context: &mut SyscallContext, initial_gas: u64) -> u8 {
         let main_fn: MainFunc = self.get_main_entrypoint();
-        println!("main_fn: {:?}", main_fn);
         main_fn(context, initial_gas)
     }
 

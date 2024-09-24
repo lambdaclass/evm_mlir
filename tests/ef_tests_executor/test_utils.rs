@@ -99,9 +99,6 @@ fn verify_result(
     expected_result: Option<&Bytes>,
     execution_result: &ExecutionResult,
 ) -> Result<(), String> {
-    // println!("test Expected except: {:?}", test.expect_exception);
-    // println!("Execution result: {:?}", execution_result);
-
     match (&test.expect_exception, execution_result) {
         (None, _) => {
             // We need to do the .zip as some tests of the ef returns "None" as expected when the results are big
@@ -164,8 +161,6 @@ pub fn run_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
             verify_result(test, unit.out.as_ref(), &res.result)?;
             // TODO: use rlp and hash to check logs
             verify_storage(&test.post_state, res.state);
-
-            drop(evm);
         }
     }
     Ok(())

@@ -525,8 +525,8 @@ impl Operation {
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub operations: Vec<Operation>,
-    pub code_size: u32,
+    pub(crate) operations: Vec<Operation>,
+    pub(crate) code_size: u32,
 }
 
 impl Program {

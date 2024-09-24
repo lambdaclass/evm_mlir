@@ -192,75 +192,6 @@ pub(crate) fn compute_copy_cost<'c>(
     Ok(memory_cost)
 }
 
-pub(crate) fn compute_mcopy_cost<'c>(
-    op_ctx: &'c OperationCtx,
-    block: &'c Block,
-    memory_byte_size: Value<'c, 'c>,
-) -> Result<Value<'c, 'c>, CodegenError> {
-    // this function computes memory copying cost (excluding expansion), which is given by the following equations
-    // words_copied = (length + 31) // 32
-    // g_verylow    = 3
-    // g_copy       = 3 * words_copied + memory_expansion_cost
-    // gas_cost     = g_verylow + g_copy
-    //
-    let context = op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint64 = IntegerType::new(context, 64).into();
-
-    let memory_size_extended = block
-        .append_operation(arith::extui(memory_byte_size, uint64, location))
-        .result(0)?
-        .into();
-
-    let constant_3 = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint64, 3).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_31 = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint64, 31).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let constant_32 = block
-        .append_operation(arith::constant(
-            context,
-            IntegerAttribute::new(uint64, 32).into(),
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let memory_byte_size_plus_31 = block
-        .append_operation(arith::addi(memory_size_extended, constant_31, location))
-        .result(0)?
-        .into();
-
-    let memory_size_word = block
-        .append_operation(arith::divui(
-            memory_byte_size_plus_31,
-            constant_32,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let memory_cost = block
-        .append_operation(arith::muli(memory_size_word, constant_3, location))
-        .result(0)?
-        .into();
-
-    Ok(memory_cost)
-}
-
 /// Wrapper for calling the [`extend_memory`](crate::syscall::SyscallContext::extend_memory) syscall.
 /// Extends memory only if the current memory size is less than the required size, consuming the corresponding gas.
 pub(crate) fn extend_memory<'c>(
@@ -306,7 +237,7 @@ pub(crate) fn extend_memory<'c>(
         block,
         CmpiPredicate::Ult,
         memory_size,
-        rounded_required_size, 
+        rounded_required_size,
     )?;
     let extension_block = region.append_block(Block::new(&[]));
     let no_extension_block = region.append_block(Block::new(&[]));

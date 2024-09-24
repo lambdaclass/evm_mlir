@@ -101,9 +101,4 @@ fn run_ef_test(path: &Path, contents: String) -> datatest_stable::Result<()> {
     run_test(path, contents)
 }
 
-datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_expansion_cost.json", r"^.*/*.json",);
-
-// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_expansion_cost.json
-// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_memory_hash.json done
-// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY.json done
-// ethtests/GeneralStateTests/Cancun/stEIP5656-MCOPY/MCOPY_copy_cost.json done
+datatest_stable::harness!(run_ef_test, "ethtests/GeneralStateTests/", r"^.*/*.json",);

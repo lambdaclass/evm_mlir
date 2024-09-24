@@ -7,9 +7,6 @@ use program::Program;
 use result::{EVMError, ExecutionResult, ResultAndState};
 use syscall::{CallFrame, SyscallContext};
 
-use crate::program::Operation::{Push, Push0, Sstore, CalldataLoad, Jump, Msize, Mcopy, Stop, Jumpdest};
-use num_bigint::BigUint;
-
 use crate::context::Context;
 
 pub mod builder;
@@ -63,19 +60,11 @@ impl Evm<Db> {
         SyscallContext::new(self.env.clone(), journal, call_frame, initial_gas)
     }
 
-    pub fn custom_program() -> Program {
-        Program { 
-            operations: [Push((1, BigUint::from_bytes_be(&[1]))), Push0, Sstore, Push((1, BigUint::from_bytes_be(&[17]))), Push((1, BigUint::from_bytes_be(&[64]))), CalldataLoad, Push((1, BigUint::from_bytes_be(&[32]))), CalldataLoad, Push0, CalldataLoad, Push((1, BigUint::from_bytes_be(&[22]))), Jump, Jumpdest { pc: 17 }, Msize, Push0, Sstore, Stop, Jumpdest { pc: 22 }, Mcopy, Jump].to_vec(), 
-            code_size: 25 
-        }
-    }
-
     fn run_program(
         &mut self,
         program: Program,
         initial_gas_consumed: u64,
     ) -> Result<ResultAndState, EVMError> {
-        let program = Self::custom_program();
         let context = Context::new();
         let module = context
             .compile(&program, Default::default())
@@ -83,11 +72,9 @@ impl Evm<Db> {
 
         let gas_limit = self.env.tx.gas_limit;
         let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
-        println!("CONTEXT: {:?}", context);
-        println!("PROGRAM: {:?}", program);
 
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
-        
+
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
 

@@ -250,14 +250,8 @@ impl<'a> Journal<'a> {
     }
 
     pub fn write_storage(&mut self, address: &Address, key: U256, value: U256) {
-        let acc = match self._get_account(address) {
-            Some(acc) => acc,
-            None => {
-                println!("Account not found");
-                return;
-            },
-        };
-            
+        let acc = self._get_account(address).unwrap(); //TODO handle error here
+
         let mut slot = acc
             .storage
             .get(&key)

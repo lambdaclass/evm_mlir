@@ -1119,7 +1119,6 @@ fn codegen_push<'c, 'r>(
     value_to_push: BigUint,
     is_zero: bool,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    println!("STARTING PUSH");
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -1157,7 +1156,6 @@ fn codegen_push<'c, 'r>(
 
     stack_push(context, &ok_block, constant_value)?;
 
-    println!("ENDING PUSH");
     Ok((start_block, ok_block))
 }
 
@@ -2440,7 +2438,6 @@ fn codegen_sstore<'c, 'r>(
         location,
         LoadStoreOptions::default(),
     ));
-    println!("ENDING SSTORE");
     Ok((start_block, end_block))
 }
 
@@ -2815,8 +2812,6 @@ fn codegen_jumpdest<'c>(
     // Register jumpdest block in context
     op_ctx.register_jump_destination(pc, landing_block);
 
-    println!("ENDING JUMPDEST");
-
     Ok((landing_block, ok_block))
 }
 
@@ -2932,7 +2927,6 @@ fn codegen_jump<'c, 'r: 'c>(
     // probably there's a better way to do this
     let empty_block = region.append_block(Block::new(&[]));
 
-    println!("ENDING JUMP");
     Ok((start_block, empty_block))
 }
 
@@ -3040,8 +3034,6 @@ fn codegen_msize<'c>(
 
     stack_push(context, &ok_block, memory_size_extended)?;
 
-    println!("ENDING MSIZE");
-
     Ok((start_block, ok_block))
 }
 
@@ -3121,8 +3113,6 @@ fn codegen_stop<'c, 'r>(
     return_empty_result(op_ctx, &start_block, ExitStatusCode::Stop, location)?;
 
     let empty_block = region.append_block(Block::new(&[]));
-
-    println!("ENDING STOP");
 
     Ok((start_block, empty_block))
 }
@@ -3564,259 +3554,6 @@ fn codegen_mcopy<'c, 'r>(
     op_ctx: &mut OperationCtx<'c>,
     region: &'r Region<'c>,
 ) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    println!("ENTERED MCOPY");
-    let start_block = region.append_block(Block::new(&[]));
-    let context = &op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32);
-    let uint8 = IntegerType::new(context, 8);
-    let ptr_type = pointer(context, 0);
-
-    let flag = check_stack_has_at_least(context, &start_block, 3)?;
-
-    let ok_block = region.append_block(Block::new(&[]));
-
-    start_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &ok_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    // where to copy
-    let dest_offset = stack_pop(context, &ok_block)?;
-    // where to copy from
-    let offset = stack_pop(context, &ok_block)?;
-    let size = stack_pop(context, &ok_block)?;
-
-    // truncate offset and dest_offset to 32 bits
-    let offset = ok_block
-        .append_operation(arith::trunci(offset, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    let dest_offset = ok_block
-        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    let size = ok_block
-        .append_operation(arith::trunci(size, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    // required_size = offset + size
-    let src_required_size = ok_block
-        .append_operation(arith::addi(offset, size, location))
-        .result(0)?
-        .into();
-
-    // dest_required_size = dest_offset + size
-    let dest_required_size = ok_block
-        .append_operation(arith::addi(dest_offset, size, location))
-        .result(0)?
-        .into();
-
-    let required_size = ok_block
-        .append_operation(arith::maxui(
-            src_required_size,
-            dest_required_size,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    let memory_access_block = region.append_block(Block::new(&[]));
-
-    extend_memory(
-        op_ctx,
-        &ok_block,
-        &memory_access_block,
-        region,
-        required_size,
-        gas_cost::MCOPY,
-    )?;
-
-    println!("Memory extended");
-
-    // Memory access
-    let memory_ptr_ptr = memory_access_block
-        .append_operation(llvm_mlir::addressof(
-            context,
-            MEMORY_PTR_GLOBAL,
-            ptr_type,
-            location,
-        ))
-        .result(0)?;
-
-    let memory_ptr = memory_access_block
-        .append_operation(llvm::load(
-            context,
-            memory_ptr_ptr.into(),
-            ptr_type,
-            location,
-            LoadStoreOptions::default(),
-        ))
-        .result(0)?
-        .into();
-
-    let source = memory_access_block
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_ptr,
-            &[offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    // memory_destination = memory_ptr + dest_offset
-    let destination = memory_access_block
-        .append_operation(llvm::get_element_ptr_dynamic(
-            context,
-            memory_ptr,
-            &[dest_offset],
-            uint8.into(),
-            ptr_type,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    memory_access_block.append_operation(
-        ods::llvm::intr_memmove(
-            context,
-            destination,
-            source,
-            size,
-            IntegerAttribute::new(IntegerType::new(context, 1).into(), 0),
-            location,
-        )
-        .into(),
-    );
-
-    let dynamic_gas = compute_copy_cost(op_ctx, &memory_access_block, size)?;
-
-    consume_gas_as_value(context, &memory_access_block, dynamic_gas)?;
-
-    Ok((start_block, memory_access_block))
-}
-
-fn codegen_returndatacopy_copy<'c, 'r>(
-    op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
-) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
-    let start_block = region.append_block(Block::new(&[]));
-    let context = &op_ctx.mlir_context;
-    let location = Location::unknown(context);
-    let uint32 = IntegerType::new(context, 32);
-
-    let flag = check_stack_has_at_least(context, &start_block, 3)?;
-    let ok_block = region.append_block(Block::new(&[]));
-
-    start_block.append_operation(cf::cond_br(
-        context,
-        flag,
-        &ok_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-    // where to copy
-    let dest_offset = stack_pop(context, &ok_block)?;
-    // where to copy from
-    let offset = stack_pop(context, &ok_block)?;
-    let size = stack_pop(context, &ok_block)?;
-
-    // Truncate values to u32
-    let dest_offset = ok_block
-        .append_operation(arith::trunci(dest_offset, uint32.into(), location))
-        .result(0)?
-        .into();
-    let offset = ok_block
-        .append_operation(arith::trunci(offset, uint32.into(), location))
-        .result(0)?
-        .into();
-    let size = ok_block
-        .append_operation(arith::trunci(size, uint32.into(), location))
-        .result(0)?
-        .into();
-
-    //gas_cost = copy_gas_cost + memory_expansion_cost + static_gas_cost
-    let copy_gas_cost = compute_copy_cost(op_ctx, &ok_block, size)?;
-    let copy_gas_cost_flag = consume_gas_as_value(context, &ok_block, copy_gas_cost)?;
-    let gas_ok_block = region.append_block(Block::new(&[]));
-
-    ok_block.append_operation(cf::cond_br(
-        context,
-        copy_gas_cost_flag,
-        &gas_ok_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    // Extend memory to required size
-    let req_mem_size = gas_ok_block
-        .append_operation(arith::addi(dest_offset, size, location))
-        .result(0)?
-        .into();
-    // Calculate required return_data_size based on provided arguments
-    let req_return_data_size = gas_ok_block
-        .append_operation(arith::addi(offset, size, location))
-        .result(0)?
-        .into();
-
-    let ext_mem_block = region.append_block(Block::new(&[]));
-    extend_memory(
-        op_ctx,
-        &gas_ok_block,
-        &ext_mem_block,
-        region,
-        req_mem_size,
-        gas_cost::RETURNDATACOPY,
-    )?;
-
-    //Check that offset + size < return_data_size
-    let end_block = region.append_block(Block::new(&[]));
-    let return_data_size = op_ctx.get_return_data_size(&ext_mem_block, location)?;
-    let req_mem_size_ok = ext_mem_block
-        .append_operation(arith::cmpi(
-            context,
-            arith::CmpiPredicate::Ule,
-            req_return_data_size,
-            return_data_size,
-            location,
-        ))
-        .result(0)?
-        .into();
-
-    ext_mem_block.append_operation(cf::cond_br(
-        context,
-        req_mem_size_ok,
-        &end_block,
-        &op_ctx.revert_block,
-        &[],
-        &[],
-        location,
-    ));
-
-    op_ctx.copy_return_data_into_memory(&end_block, dest_offset, offset, size, location);
-
-    Ok((start_block, end_block))
-}
-
-fn codegen_mcopy2<'c, 'r>(
-    op_ctx: &mut OperationCtx<'c>,
-    region: &'r Region<'c>,
-) -> Result<(BlockRef<'c, 'r>, BlockRef<'c, 'r>), CodegenError> {
     let start_block = region.append_block(Block::new(&[]));
     let context = &op_ctx.mlir_context;
     let location = Location::unknown(context);
@@ -4130,7 +3867,6 @@ fn codegen_calldataload<'c, 'r>(
     offset_ok_block.append_operation(cf::br(&end_block, &[], location));
 
     /******************** offset_OK_block *******************/
-    println!("ENDING CALLDATALOAD");
     Ok((start_block, end_block))
 }
 
