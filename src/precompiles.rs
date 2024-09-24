@@ -5,7 +5,7 @@ use crate::{
     },
     primitives::U256,
     result::PrecompileError,
-    utils::right_pad,
+    utils::{left_pad, right_pad},
 };
 use bytes::Bytes;
 use ethereum_types::Address;
@@ -64,6 +64,8 @@ pub fn ecrecover(
 
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn sha2_256(
     calldata: &Bytes,
     gas_limit: u64,
@@ -78,6 +80,11 @@ pub fn sha2_256(
     Ok(Bytes::copy_from_slice(&hash))
 }
 
+/// Hashing function.
+/// More info in https://github.com/ethereum/yellowpaper.
+///
+/// # Returns
+/// - a 20-byte hash right aligned to 32 bytes
 /// Hashing function.
 /// More info in https://github.com/ethereum/yellowpaper.
 ///
@@ -102,6 +109,8 @@ pub fn ripemd_160(
 
 /// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
 /// More info in https://github.com/ethereum/yellowpaper.
+/// The identity function is typically used to copy a chunk of memory. It copies its input to its output. It can be used to copy between memory portions.
+/// More info in https://github.com/ethereum/yellowpaper.
 pub fn identity(
     calldata: &Bytes,
     gas_limit: u64,
@@ -117,11 +126,18 @@ pub fn identity(
 
 /// Arbitrary-precision exponentiation under modulo.
 /// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
+/// Arbitrary-precision exponentiation under modulo.
+/// More info in https://eips.ethereum.org/EIPS/eip-198 and https://www.evm.codes/precompiled.
 pub fn modexp(
     calldata: &Bytes,
     gas_limit: u64,
     consumed_gas: &mut u64,
 ) -> Result<Bytes, PrecompileError> {
+    if calldata.is_empty() {
+        *consumed_gas += MIN_MODEXP_COST;
+        return Ok(Bytes::new());
+    }
+
     let calldata = right_pad(calldata, MXP_PARAMS_OFFSET);
 
     // Cast sizes as usize and check for overflow.
@@ -154,7 +170,7 @@ pub fn modexp(
         0
     };
     let calculate_iteration_count = iteration_count.max(1);
-    let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(200);
+    let gas_cost = (multiplication_complexity * calculate_iteration_count / 3).max(MIN_MODEXP_COST);
     if gas_limit < gas_cost {
         return Err(PrecompileError::NotEnoughGas);
     }
@@ -168,8 +184,14 @@ pub fn modexp(
         b.modpow(&e, &m)
     };
 
-    let output = &result.to_bytes_be()[..m_size];
-    Ok(Bytes::copy_from_slice(output))
+    let bytes = result.to_bytes_be();
+    let output = if bytes.len() <= m_size {
+        left_pad(&Bytes::from(bytes), m_size)
+    } else {
+        Bytes::from(bytes)
+    };
+
+    Ok(output)
 }
 
 /// Point addition on the elliptic curve 'alt_bn128' (also referred as 'bn254').
@@ -274,7 +296,7 @@ pub fn ecmul(
     Err(PrecompileError::InvalidEcPoint)
 }
 
-/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve 'alt_bn128' (also referred as 'bn254').
+/// Elliptic curve pairing operation required in order to perform zkSNARK verification within the block gas limit. Bilinear function on groups on the elliptic curve “alt_bn128”.
 /// More info in https://eips.ethereum.org/EIPS/eip-197 and https://www.evm.codes/precompiled.
 /// - Loops over the calldata in chunks of 192 bytes. K times, where K = len / 192.
 /// - Two groups G_1 and G_2, which sum up to 192 bytes.
@@ -301,20 +323,20 @@ pub fn ecpairing(
         let g1_x =
             BN254FieldElement::from_bytes_be(&calldata[start..start + ECP_FIELD_SIZE]).unwrap();
         let g1_y = BN254FieldElement::from_bytes_be(
-            &calldata[start + ECP_FIELD_SIZE..start + ECP_FIELD_SIZE * 2],
+            &calldata[start + ECP_FIELD_SIZE..start + double_field_size()],
         )
         .unwrap();
 
         let g2_x_bytes = [
-            &calldata[start + (G1_POINT_POS + ECP_FIELD_SIZE)
-                ..start + (G1_POINT_POS + ECP_FIELD_SIZE * 2)], // calldata[start + 96..start + 128]
-            &calldata[start + G1_POINT_POS..start + (G1_POINT_POS + ECP_FIELD_SIZE)], // calldata[start + 64..start + 96]
+            &calldata[start + ecpairing_g2_point1_start(G1_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G1_POINT_POS)], // calldata[start + 96..start + 128]
+            &calldata[start + G1_POINT_POS..start + ecpairing_g2_point1_start(G1_POINT_POS)], // calldata[start + 64..start + 96]
         ]
         .concat();
         let g2_y_bytes = [
-            &calldata[start + (G2_POINT_POS + ECP_FIELD_SIZE)
-                ..start + (G2_POINT_POS + ECP_FIELD_SIZE * 2)], // calldata[start + 160..start + 192]
-            &calldata[start + G2_POINT_POS..start + (G2_POINT_POS + ECP_FIELD_SIZE)], // calldata[start + 128..start + 160]
+            &calldata[start + ecpairing_g2_point1_start(G2_POINT_POS)
+                ..start + ecpairing_g2_point1_end(G2_POINT_POS)], // calldata[start + 160..start + 192]
+            &calldata[start + G2_POINT_POS..start + ecpairing_g2_point1_start(G2_POINT_POS)], // calldata[start + 128..start + 160]
         ]
         .concat();
 
@@ -435,6 +457,8 @@ fn blake2f_compress(rounds: usize, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2]
 
 const CALLDATA_LEN: usize = 213;
 
+/// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
+/// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 /// Compression function F used in the BLAKE2 cryptographic hashing algorithm.
 /// More info in https://eips.ethereum.org/EIPS/eip-152 and https://www.evm.codes/precompiled.
 pub fn blake2f(
@@ -574,23 +598,30 @@ pub fn execute_precompile(
 mod tests {
     use super::*;
 
+    fn calldata_for_modexp(b_size: u16, e_size: u16, m_size: u16, b: u8, e: u8, m: u8) -> Bytes {
+        let calldata_size = (b_size + e_size + m_size + MXP_PARAMS_OFFSET as u16) as usize;
+        let b_data_size = U256::from(b_size);
+        let e_data_size = U256::from(e_size);
+        let m_data_size = U256::from(m_size);
+        let e_size = e_size as usize;
+        let m_size = m_size as usize;
+
+        let mut calldata = vec![0_u8; calldata_size];
+        let calldata_slice = calldata.as_mut_slice();
+        b_data_size.to_big_endian(&mut calldata_slice[..BSIZE_END]);
+        e_data_size.to_big_endian(&mut calldata_slice[BSIZE_END..ESIZE_END]);
+        m_data_size.to_big_endian(&mut calldata_slice[ESIZE_END..MSIZE_END]);
+        calldata_slice[calldata_size - m_size - e_size - 1] = b;
+        calldata_slice[calldata_size - m_size - 1] = e;
+        calldata_slice[calldata_size - 1] = m;
+
+        Bytes::from(calldata_slice.to_vec())
+    }
+
     #[test]
-    fn modexp_gas_cost() {
+    fn modexp_min_gas_cost() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
-        let b_size = U256::from(1_u8);
-        let e_size = U256::from(1_u8);
-        let m_size = U256::from(1_u8);
-        let b = 8_u8;
-        let e = 9_u8;
-        let m = 10_u8;
-        let mut calldata = [0_u8; 99];
-        b_size.to_big_endian(&mut calldata[..32]);
-        e_size.to_big_endian(&mut calldata[32..64]);
-        m_size.to_big_endian(&mut calldata[64..96]);
-        calldata[96] = b;
-        calldata[97] = e;
-        calldata[98] = m;
-        let calldata = Bytes::from(calldata.to_vec());
+        let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 10);
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -599,26 +630,13 @@ mod tests {
 
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::from(8_u8.to_be_bytes().to_vec()));
-        assert_eq!(consumed_gas, 200);
+        assert_eq!(consumed_gas, MIN_MODEXP_COST);
     }
 
     #[test]
-    fn modexp_gas_cost2() {
+    fn modexp_variable_gas_cost() {
         let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
-        let b_size = U256::from(256_u16);
-        let e_size = U256::from(1_u8);
-        let m_size = U256::from(1_u8);
-        let b = 8_u8;
-        let e = 6_u8;
-        let m = 10_u8;
-        let mut calldata = [0_u8; 354];
-        b_size.to_big_endian(&mut calldata[..32]);
-        e_size.to_big_endian(&mut calldata[32..64]);
-        m_size.to_big_endian(&mut calldata[64..96]);
-        calldata[351] = b;
-        calldata[352] = e;
-        calldata[353] = m;
-        let calldata = Bytes::from(calldata.to_vec());
+        let calldata = calldata_for_modexp(256, 1, 1, 8, 6, 10);
         let gas_limit = 100_000_000;
         let mut consumed_gas = 0;
 
@@ -628,6 +646,70 @@ mod tests {
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::from(4_u8.to_be_bytes().to_vec()));
         assert_eq!(consumed_gas, 682);
+    }
+
+    #[test]
+    fn modexp_not_enought_gas() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 10);
+        let gas_limit = 199;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, REVERT_RETURN_CODE);
+        assert_eq!(return_data, Bytes::new());
+        assert_eq!(consumed_gas, gas_limit);
+    }
+
+    #[test]
+    fn modexp_zero_modulo() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(1, 1, 1, 8, 9, 0);
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(0_u8.to_be_bytes().to_vec()));
+        assert_eq!(consumed_gas, MIN_MODEXP_COST);
+    }
+
+    #[test]
+    fn modexp_bigger_msize_than_necessary() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(1, 1, 32, 8, 6, 10);
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        let mut expected_return_data = 4_u8.to_be_bytes().to_vec();
+        expected_return_data.resize(32, 0);
+        expected_return_data.reverse();
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(expected_return_data));
+    }
+
+    #[test]
+    fn modexp_big_sizes_for_values() {
+        let callee_address = Address::from_low_u64_be(MODEXP_ADDRESS);
+        let calldata = calldata_for_modexp(256, 255, 255, 8, 6, 10);
+        let gas_limit = 100_000_000;
+        let mut consumed_gas = 0;
+
+        let (return_code, return_data) =
+            execute_precompile(callee_address, calldata, gas_limit, &mut consumed_gas);
+
+        let mut expected_return_data = 4_u8.to_be_bytes().to_vec();
+        expected_return_data.resize(255, 0);
+        expected_return_data.reverse();
+        assert_eq!(return_code, SUCCESS_RETURN_CODE);
+        assert_eq!(return_data, Bytes::from(expected_return_data));
     }
 
     #[test]
@@ -642,7 +724,7 @@ mod tests {
 
         assert_eq!(return_code, SUCCESS_RETURN_CODE);
         assert_eq!(return_data, Bytes::new());
-        assert_eq!(consumed_gas, 200);
+        assert_eq!(consumed_gas, MIN_MODEXP_COST);
     }
 
     #[test]

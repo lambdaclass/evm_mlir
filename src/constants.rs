@@ -172,21 +172,29 @@ pub mod precompiles {
     pub fn identity_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 3
     }
-
     pub fn sha2_256_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 12
     }
-
     pub fn ripemd_160_dynamic_cost(len: u64) -> u64 {
         (len + 31) / 32 * 120
     }
-
     pub fn ecpairing_dynamic_cost(len: u64) -> u64 {
         ECPAIRING_PAIRING_COST * (len / 192)
     }
-
     pub fn blake2_gas_cost(rounds: u32) -> u64 {
         rounds as u64
+    }
+
+    pub const fn ecpairing_g2_point1_start(pos: usize) -> usize {
+        pos + ECP_FIELD_SIZE
+    }
+
+    pub const fn ecpairing_g2_point1_end(pos: usize) -> usize {
+        pos + double_field_size()
+    }
+
+    pub const fn double_field_size() -> usize {
+        ECP_FIELD_SIZE * 2
     }
 
     // ecRecover
@@ -229,6 +237,7 @@ pub mod precompiles {
     /// Used to get values of B, E and M.
     pub const MXP_PARAMS_OFFSET: usize = 96;
     pub const MODEXP_ADDRESS: u64 = 0x05;
+    pub const MIN_MODEXP_COST: u64 = 200;
 
     // ecadd
     pub const ECADD_PARAMS_OFFSET: usize = 128;
