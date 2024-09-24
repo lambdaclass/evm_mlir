@@ -121,6 +121,8 @@ pub mod gas_cost {
     pub const TX_ACCESS_LIST_STORAGE_KEY_COST: u64 = 1900;
     pub const MAX_CODE_SIZE: usize = 0x6000;
 
+    /// calculates the init_code_cost of create transactions as specified by the eip 3860
+    /// -> https://eips.ethereum.org/EIPS/eip-3860
     pub fn init_code_cost(init_code_length: u64) -> u64 {
         assert!(init_code_length <= ((MAX_CODE_SIZE * 2) as u64));
         let number_of_words = init_code_length.saturating_add(31) / 32;

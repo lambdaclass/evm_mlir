@@ -4445,6 +4445,7 @@ fn transact_to_create_init_code_gas_cost() {
     let returned_code = result.output().unwrap().to_vec();
     assert_eq!(returned_code, initialization_code.clone());
     let create_base_cost = TX_BASE_COST + gas_cost::CREATE as u64;
+    // the cost of the "00000000" -> 8 zeros -> 4 bytes of zeros -> 16 gas
     let data_cost = 16;
     let init_code_gas_cost = 2;
     let execution_cost = 2;
