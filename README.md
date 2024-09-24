@@ -128,6 +128,26 @@ make ethtests   # downloads the tests
 make test-eth
 ```
 
+To run the solidity tests if you don't have the compiled binaries, you can run
+
+```bash
+make compile-solidity-test-examples
+```
+
+If you don't have the solc compiler, you should run if you have brew installed on macOs
+
+```bash
+make install-solc
+```
+
+Or if you are on Linux
+
+```bash
+sudo add-apt-repository ppa:ethereum/ethereum
+sudo apt-get update
+sudo apt-get install solc
+```
+
 ## Debugging the compiler
 
 ### Compile a program

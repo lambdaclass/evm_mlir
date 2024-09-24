@@ -100,6 +100,12 @@ jobs:
 
       - name: Install Link deps
         run: sudo apt-get install libc-dev build-essential
+      
+      - name: Install Solc compiler
+        run: sudo add-apt-repository ppa:ethereum/ethereum; sudo apt-get update; sudo apt-get install solc
+      
+      - name: Compile example test contracts
+        run: make compile-solidity-test-examples
 
       - name: Install testing tools
         uses: taiki-e/install-action@v2
