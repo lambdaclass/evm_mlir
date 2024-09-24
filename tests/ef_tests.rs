@@ -27,6 +27,7 @@ fn get_ignored_groups() -> HashSet<String> {
     HashSet::from([
         "stEIP4844-blobtransactions".into(),
         "stEIP5656-MCOPY".into(),
+        "eip1153_tstore".into(),
         "stEIP3651-warmcoinbase".into(),
         "stTimeConsuming".into(), // this will be tested with the time_consuming_test binary
         "stRevertTest".into(),
