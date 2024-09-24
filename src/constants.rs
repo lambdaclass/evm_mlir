@@ -122,7 +122,7 @@ pub mod gas_cost {
     pub const MAX_CODE_SIZE: usize = 0x6000;
 
     pub fn init_code_cost(init_code_length: u64) -> u64 {
-        assert!(init_code_length <= MAX_CODE_SIZE * 2 as u64);
+        assert!(init_code_length <= (MAX_CODE_SIZE * 2 as u64));
         let number_of_words = init_code_length.saturating_add(31) / 32;
         INIT_WORD_COST as u64 * number_of_words
     }
