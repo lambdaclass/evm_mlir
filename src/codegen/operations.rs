@@ -2438,7 +2438,6 @@ fn codegen_sstore<'c, 'r>(
         location,
         LoadStoreOptions::default(),
     ));
-
     Ok((start_block, end_block))
 }
 
@@ -2927,6 +2926,7 @@ fn codegen_jump<'c, 'r: 'c>(
     // TODO: we are creating an empty block that won't ever be reached
     // probably there's a better way to do this
     let empty_block = region.append_block(Block::new(&[]));
+
     Ok((start_block, empty_block))
 }
 
@@ -3867,7 +3867,6 @@ fn codegen_calldataload<'c, 'r>(
     offset_ok_block.append_operation(cf::br(&end_block, &[], location));
 
     /******************** offset_OK_block *******************/
-
     Ok((start_block, end_block))
 }
 

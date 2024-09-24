@@ -72,10 +72,12 @@ impl Evm<Db> {
 
         let gas_limit = self.env.tx.gas_limit;
         let mut context = self.create_syscall_context(gas_limit + initial_gas_consumed);
+
         let executor = Executor::new(&module, &context, OptLevel::Aggressive);
 
         // TODO: improve this once we stabilize the API a bit
         context.inner_context.program = program.to_bytecode();
+
         executor.execute(&mut context, gas_limit);
 
         context.get_result()
