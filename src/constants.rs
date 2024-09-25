@@ -228,7 +228,7 @@ pub mod precompiles {
     pub const RIPEMD_160_ADDRESS: u64 = 0x03;
 
     // identity
-    pub const IDENTITY_COST: u64 = 15;
+    pub const IDENTITY_STATIC_COST: u64 = 15;
     pub const IDENTITY_ADDRESS: u64 = 0x04;
 
     // modexp
