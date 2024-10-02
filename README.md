@@ -1,5 +1,7 @@
 # EVM MLIR
 
+:warning: This repository has been archived; code and development of this project has been migrated to [ethereum_rust](https://github.com/lambdaclass/ethereum_rust) :warning:
+
 [![Telegram Chat][tg-badge]][tg-url]
 [![rust](https://github.com/lambdaclass/evm_mlir/actions/workflows/ci.yml/badge.svg)](https://github.com/lambdaclass/emv_mlir/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/lambdaclass/evm_mlir)](/LICENSE)
